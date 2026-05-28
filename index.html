@@ -445,20 +445,11 @@
     .det-layout{grid-template-columns:1fr;}
     .det-section{padding:16px;}
     .det-title{font-size:22px;}
-    .bk-box{position:static;margin-top:0;border-radius:var(--r-lg);}
+    .bk-box{position:static;margin-top:16px;border-radius:var(--r-lg);}
     .bk-fields{grid-template-columns:1fr;}
     .gallery{grid-template-columns:1fr;}
     .g-main{height:220px;}
     .g-thumb{display:none;}
-    /* ── Mobile order: descriptif → équipements → réservation → avis → localisation ── */
-    .det-body{display:flex;flex-direction:column;}
-    .det-main{display:contents;}
-    .det-side{display:contents;}
-    .det-order-1{order:1;}
-    .det-order-2{order:2;}
-    .det-order-3{order:3;}
-    .det-order-4{order:4;}
-    .det-order-5{order:5;}
 
     /* ── Confirm page ── */
     .confirm-wrap{padding:16px;}
@@ -600,14 +591,35 @@ function calcCommission(grossTotal){
 }
 
 const hotels = [
-  {id:1,minNights:2,name:"Le Grand Palais Hôtel",city:"Paris",country:"France",address:"12 Rue de Rivoli, 75001 Paris",type:"Hôtel",stars:5,rating:9.2,ratingLabel:"Exceptionnel",reviews:2847,price:189,emoji:"🏛️",features:["Wi-Fi gratuit","Piscine","Spa","Restaurant","Parking"],desc:"Situé en plein cœur de Paris, ce palace offre une vue imprenable sur la Seine. Les chambres allient décor haussmannien et confort moderne pour une expérience inoubliable. Le restaurant étoilé et le spa de 800m² en font une adresse d'exception.",freeCancellation:true,payLater:true,discount:15},
-  {id:2,minNights:3,name:"Roma Antica Residenza",city:"Rome",country:"Italie",address:"Via del Corso 44, 00186 Roma",type:"Appartement",stars:4,rating:8.7,ratingLabel:"Très bien",reviews:1563,price:124,emoji:"🏺",features:["Wi-Fi gratuit","Cuisine équipée","AC","Terrasse"],desc:"Au cœur de la ville éternelle, cette résidence de charme combine histoire et modernité. À deux pas du Colisée et du Forum Romain, chaque appartement est décoré avec soin en référence à l'art romain.",freeCancellation:true,payLater:false,discount:0},
-  {id:3,minNights:1,name:"Tokyo Sky Tower Hotel",city:"Tokyo",country:"Japon",address:"2-1 Tochoji, Sumida, Tokyo",type:"Hôtel",stars:5,rating:9.5,ratingLabel:"Exceptionnel",reviews:4102,price:278,emoji:"🗼",features:["Wi-Fi gratuit","Onsen","Salle de gym","Bar panoramique","Concierge 24h"],desc:"Un hôtel futuriste au pied de la Tokyo Skytree. Profitez d'un bain onsen traditionnel avec vue sur la skyline, d'une cuisine fusion et d'un service d'exception alliant modernité japonaise et hospitalité légendaire.",freeCancellation:false,payLater:true,discount:0},
-  {id:4,minNights:2,name:"Casa del Sol Barcelona",city:"Barcelone",country:"Espagne",address:"Passeig de Gràcia 85, 08008 Barcelona",type:"Appartement",stars:4,rating:8.9,ratingLabel:"Très bien",reviews:987,price:98,emoji:"🌞",features:["Wi-Fi gratuit","Terrasse","Piscine sur le toit","Petit-déjeuner"],desc:"Sur la célèbre avenue Passeig de Gràcia, cet appartement boutique dispose d'une terrasse panoramique avec vue sur les chefs-d'œuvre de Gaudí. Décoré dans un style méditerranéen moderne.",freeCancellation:true,payLater:true,discount:20},
-  {id:5,minNights:1,name:"The London Fox Inn",city:"Londres",country:"Royaume-Uni",address:"34 Baker Street, London W1U 7BY",type:"Hôtel",stars:3,rating:7.8,ratingLabel:"Bien",reviews:3241,price:75,emoji:"🏰",features:["Wi-Fi gratuit","Bar","Petit-déjeuner inclus"],desc:"Un boutique hôtel chaleureux en plein cœur de Londres. À quelques pas des grandes attractions, il offre l'ambiance d'une auberge anglaise traditionnelle avec tout le confort contemporain.",freeCancellation:true,payLater:false,discount:10},
-  {id:6,minNights:3,name:"Santorini Blue Villas",city:"Santorin",country:"Grèce",address:"Oia, Santorini 847 02",type:"Maison",stars:5,rating:9.8,ratingLabel:"Exceptionnel",reviews:612,price:345,emoji:"🏖️",features:["Wi-Fi gratuit","Piscine privée","Vue mer","Petit-déjeuner","Transfer aéroport"],desc:"Des villas creusées dans la falaise volcanique surplombant la caldeira de Santorin. Chaque villa dispose d'une piscine à débordement et d'une vue à couper le souffle sur la mer Égée.",freeCancellation:false,payLater:true,discount:0},
-  {id:7,minNights:2,name:"Dubai Marina Suites",city:"Dubaï",country:"Émirats Arabes Unis",address:"Dubai Marina Walk, Dubai",type:"Appartement",stars:5,rating:9.0,ratingLabel:"Exceptionnel",reviews:2190,price:212,emoji:"🌆",features:["Wi-Fi gratuit","Piscine","Salle de gym","Vue sur la marina","Concierge"],desc:"Un complexe de luxe en bord de marina, à proximité des meilleurs restaurants et centres commerciaux de Dubaï. Les suites panoramiques offrent une vue impressionnante sur les yachts et la skyline illuminée.",freeCancellation:true,payLater:true,discount:5},
-  {id:8,minNights:2,name:"Kyoto Zen Ryokan",city:"Kyoto",country:"Japon",address:"Higashiyama-ku, Kyoto 605-0074",type:"Maison",stars:4,rating:9.6,ratingLabel:"Exceptionnel",reviews:456,price:198,emoji:"🏯",features:["Wi-Fi gratuit","Bain japonais","Jardin zen","Yukata inclus","Dîner traditionnel"],desc:"Un ryokan authentique du XVIIe siècle niché dans les ruelles pavées d'Higashiyama. Dormir sur futon, se détendre dans un bain japonais en cyprès hinoki et savourer une cuisine kaiseki raffinée.",freeCancellation:true,payLater:false,discount:0},
+  // ── France ────────────────────────────────────────────────────────────────────
+  {id:1,  minNights:2, name:"Le Grand Palais Hôtel",         city:"Paris",           country:"France",      type:"Hôtel",       stars:5, rating:9.2, ratingLabel:"Exceptionnel", reviews:2847, price:189, emoji:"🏛️", features:["Wi-Fi gratuit","Piscine","Spa","Restaurant","Parking"], desc:"Palace haussmannien au cœur de Paris. Restaurant étoilé, spa 800m², vue imprenable sur la Seine.", freeCancellation:true,  payLater:true,  discount:15},
+  {id:2,  minNights:2, name:"Villa Provençale avec Piscine",  city:"Aix-en-Provence", country:"France",      type:"Villa",       stars:4, rating:9.0, ratingLabel:"Exceptionnel", reviews:156,  price:175, emoji:"🌿", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa en Provence avec piscine privée, oliviers centenaires et vue sur le Luberon.",              freeCancellation:false, payLater:true,  discount:0},
+  {id:3,  minNights:3, name:"Chalet Montagne Chamonix",       city:"Chamonix",        country:"France",      type:"Chalet",      stars:4, rating:9.1, ratingLabel:"Exceptionnel", reviews:203,  price:220, emoji:"⛰️", features:["Wi-Fi gratuit","Parking","Spa"],                        desc:"Chalet chaleureux au pied du Mont-Blanc, sauna privé et vue sur les glaciers.",                   freeCancellation:false, payLater:true,  discount:0},
+  {id:4,  minNights:1, name:"Studio Cosy Montmartre",         city:"Paris",           country:"France",      type:"Studio",      stars:3, rating:8.1, ratingLabel:"Très bien",    reviews:312,  price:65,  emoji:"🛋️", features:["Wi-Fi gratuit"],                                        desc:"Studio moderne à deux pas du Sacré-Cœur. Idéal pour explorer Montmartre.",                        freeCancellation:true,  payLater:true,  discount:0},
+  {id:5,  minNights:1, name:"Loft Design Lyon Confluence",    city:"Lyon",            country:"France",      type:"Appartement", stars:4, rating:8.6, ratingLabel:"Excellent",    reviews:267,  price:110, emoji:"🏭", features:["Wi-Fi gratuit"],                                        desc:"Loft contemporain à la Confluence. Plafonds 4m et vue sur la Saône.",                             freeCancellation:true,  payLater:true,  discount:5},
+  {id:6,  minNights:1, name:"Cabane Perchée Périgord",        city:"Périgueux",       country:"France",      type:"Insolite",    stars:4, rating:9.3, ratingLabel:"Exceptionnel", reviews:134,  price:145, emoji:"🌳", features:["Wi-Fi gratuit","Parking"],                              desc:"Cabane à 8m dans les châtaigniers, terrasse suspendue et bain nordique sous les étoiles.",         freeCancellation:false, payLater:true,  discount:0},
+  {id:7,  minNights:1, name:"Péniche Canal Saint-Martin",     city:"Paris",           country:"France",      type:"Insolite",    stars:4, rating:9.2, ratingLabel:"Exceptionnel", reviews:234,  price:165, emoji:"⛵", features:["Wi-Fi gratuit"],                                        desc:"Péniche aménagée sur le Canal Saint-Martin. Terrasse sur l'eau et vue sur les écluses.",           freeCancellation:true,  payLater:true,  discount:0},
+
+  // ── Maroc ──────────────────────────────────────────────────────────────────────
+  {id:8,  minNights:2, name:"Riad Authentique Marrakech",     city:"Marrakech",       country:"Maroc",       type:"Riad",        stars:4, rating:9.1, ratingLabel:"Exceptionnel", reviews:612,  price:98,  emoji:"🕌", features:["Wi-Fi gratuit","Piscine","Restaurant"],                 desc:"Riad traditionnel en médina avec patio fleuri, fontaine et terrasse panoramique.",                 freeCancellation:true,  payLater:true,  discount:0},
+  {id:9,  minNights:1, name:"Villa Sunset Palmeraie",         city:"Marrakech",       country:"Maroc",       type:"Villa",       stars:5, rating:9.4, ratingLabel:"Exceptionnel", reviews:298,  price:220, emoji:"🌴", features:["Wi-Fi gratuit","Piscine","Parking","Spa"],              desc:"Villa de luxe en palmeraie, piscine chauffée, jardin d'oliviers et hammam privatif.",              freeCancellation:false, payLater:true,  discount:0},
+  {id:10, minNights:2, name:"Kasbah Vue Atlas",               city:"Ouarzazate",      country:"Maroc",       type:"Hôtel",       stars:4, rating:8.8, ratingLabel:"Excellent",    reviews:176,  price:75,  emoji:"🏜️", features:["Wi-Fi gratuit","Piscine","Restaurant","Parking"],       desc:"Kasbah en pisé avec vue sur l'Atlas. Couchers de soleil spectaculaires.",                          freeCancellation:true,  payLater:true,  discount:10},
+  {id:11, minNights:3, name:"Dar Fès Médina",                 city:"Fès",             country:"Maroc",       type:"Riad",        stars:4, rating:9.2, ratingLabel:"Exceptionnel", reviews:142,  price:88,  emoji:"🎨", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Demeure andalouse du XIVe siècle. Zellige, stuc et bois de cèdre sculpté.",                       freeCancellation:false, payLater:true,  discount:0},
+
+  // ── Tunisie ────────────────────────────────────────────────────────────────────
+  {id:12, minNights:2, name:"Villa Bord de Mer Hammamet",     city:"Hammamet",        country:"Tunisie",     type:"Villa",       stars:4, rating:8.9, ratingLabel:"Excellent",    reviews:334,  price:115, emoji:"🏖️", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa accès direct plage, piscine privée et jardin méditerranéen.",                                freeCancellation:true,  payLater:true,  discount:0},
+  {id:13, minNights:1, name:"Hôtel Médina Tunis",             city:"Tunis",           country:"Tunisie",     type:"Hôtel",       stars:3, rating:8.2, ratingLabel:"Très bien",    reviews:267,  price:45,  emoji:"🕍", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Hôtel-boutique dans la médina classée UNESCO. Cuisine tunisienne authentique.",                    freeCancellation:true,  payLater:true,  discount:5},
+
+  // ── Sénégal ────────────────────────────────────────────────────────────────────
+  {id:14, minNights:2, name:"Lodge Safari Sine Saloum",       city:"Fatick",          country:"Sénégal",     type:"Lodge",       stars:4, rating:9.3, ratingLabel:"Exceptionnel", reviews:98,   price:160, emoji:"🐘", features:["Wi-Fi gratuit","Restaurant","Parking"],                 desc:"Lodge écotouristique dans le delta. Pirogues, oiseaux rares et couchers de soleil uniques.",       freeCancellation:false, payLater:true,  discount:0},
+  {id:15, minNights:1, name:"Appartement Dakar Plateau",      city:"Dakar",           country:"Sénégal",     type:"Appartement", stars:3, rating:8.1, ratingLabel:"Très bien",    reviews:145,  price:50,  emoji:"🌍", features:["Wi-Fi gratuit","Parking"],                              desc:"Appartement climatisé au Plateau. À 10 min de l'île de Gorée.",                                    freeCancellation:true,  payLater:true,  discount:0},
+
+  // ── Europe & International ─────────────────────────────────────────────────────
+  {id:16, minNights:2, name:"Casa del Sol Barcelona",         city:"Barcelone",       country:"Espagne",     type:"Appartement", stars:4, rating:9.0, ratingLabel:"Exceptionnel", reviews:1847, price:98,  emoji:"🌞", features:["Wi-Fi gratuit"],                                        desc:"Appartement design à 200m du Passeig de Gràcia. Parquet et cuisine moderne.",                     freeCancellation:true,  payLater:true,  discount:0},
+  {id:17, minNights:3, name:"Santorini Blue Villas",          city:"Santorin",        country:"Grèce",       type:"Villa",       stars:5, rating:9.7, ratingLabel:"Exceptionnel", reviews:423,  price:485, emoji:"🫐", features:["Wi-Fi gratuit","Piscine","Spa"],                        desc:"Villas avec piscine privée et vue spectaculaire sur la caldeira. Couchers légendaires.",           freeCancellation:false, payLater:false, discount:0},
+  {id:18, minNights:1, name:"The London Fox Inn",             city:"Londres",         country:"Royaume-Uni", type:"Hôtel",       stars:4, rating:8.6, ratingLabel:"Excellent",    reviews:1567, price:165, emoji:"🦊", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Boutique hotel branché à Shoreditch. Bar à cocktails et brunch du dimanche.",                     freeCancellation:true,  payLater:false, discount:0},
+  {id:19, minNights:1, name:"Tokyo Sky Tower Hotel",          city:"Tokyo",           country:"Japon",       type:"Hôtel",       stars:5, rating:9.1, ratingLabel:"Exceptionnel", reviews:3201, price:195, emoji:"🗼", features:["Wi-Fi gratuit","Restaurant","Spa"],                     desc:"Hôtel design à Shinjuku, vue panoramique sur Tokyo et onsen traditionnel.",                       freeCancellation:true,  payLater:false, discount:10},
+  {id:20, minNights:2, name:"Dubai Marina Suites",            city:"Dubaï",           country:"Émirats",     type:"Appartement", stars:5, rating:9.0, ratingLabel:"Exceptionnel", reviews:987,  price:310, emoji:"🏙️", features:["Wi-Fi gratuit","Piscine","Parking","Spa","Restaurant"], desc:"Suite luxueuse vue sur la marina de Dubaï. Accès plage privée.",                                   freeCancellation:true,  payLater:false, discount:0},
 ];
 
 const destinations = [
@@ -791,7 +803,7 @@ let appState = {
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
   annoncePage:0,
-  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'France',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
+  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'France',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
   annoncePublished:false,
   favorites:[],
   reservations:[
@@ -819,19 +831,19 @@ let appState = {
   calendarView:{year:new Date().getFullYear(),month:new Date().getMonth()+1},
   bookingRequestsFilter:'all',
   myAnnonces:[
-    {id:'ANN-K7L8M9N0',minNights:2,maxNights:30,hostId:2,hotelId:4,type:'apt',typeLabel:'Appartement',emoji:'🌞',name:'Casa del Sol — Vue Gaudí',city:'Barcelone',country:'Espagne',address:'Passeig de Gràcia 85',price_night:98,stars:4,rooms:2,bathrooms:1,capacity:4,status:'publiée',discount:0,createdAt:'2025-01-15',updatedAt:'2025-04-20',
+    {id:'ANN-K7L8M9N0',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:2,maxNights:30,hostId:2,hotelId:4,type:'apt',typeLabel:'Appartement',emoji:'🌞',name:'Casa del Sol — Vue Gaudí',city:'Barcelone',country:'Espagne',address:'Passeig de Gràcia 85',price_night:98,stars:4,rooms:2,bathrooms:1,capacity:4,status:'publiée',discount:0,createdAt:'2025-01-15',updatedAt:'2025-04-20',
      stats:{vues:1284,clics:342,reservations:18,revenus:8820,tauxOccupation:62,noteMoyenne:4.7,avis:23,
             vuesMois:[80,95,110,130,145,160,142,155,170,165,180,152],
             revenusMois:[420,490,560,680,720,810,750,820,880,840,920,730]}},
-    {id:'ANN-O1P2Q3R4',minNights:3,maxNights:30,hotelId:1,type:'house',typeLabel:'Maison',emoji:'🏡',name:'Villa Provençale avec Piscine',city:'Aix-en-Provence',country:'France',address:'Route des Calanques 12',price_night:175,stars:4,rooms:4,bathrooms:2,capacity:8,status:'publiée',discount:0,createdAt:'2024-11-03',updatedAt:'2025-03-10',
+    {id:'ANN-O1P2Q3R4',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:3,maxNights:30,hotelId:1,type:'house',typeLabel:'Maison',emoji:'🏡',name:'Villa Provençale avec Piscine',city:'Aix-en-Provence',country:'France',address:'Route des Calanques 12',price_night:175,stars:4,rooms:4,bathrooms:2,capacity:8,status:'publiée',discount:0,createdAt:'2024-11-03',updatedAt:'2025-03-10',
      stats:{vues:876,clics:214,reservations:11,revenus:13650,tauxOccupation:45,noteMoyenne:4.9,avis:14,
             vuesMois:[40,55,70,90,110,130,120,115,100,95,85,66],
             revenusMois:[0,875,1050,1400,1750,2100,1925,1750,1575,1225,875,1125]}},
-    {id:'ANN-S5T6U7V8',minNights:1,maxNights:30,hotelId:3,type:'studio',typeLabel:'Studio',emoji:'🛋️',name:'Studio cosy Montmartre',city:'Paris',country:'France',address:'Rue Lepic 34',price_night:65,stars:3,rooms:1,bathrooms:1,capacity:2,status:'en attente',discount:0,createdAt:'2025-04-18',updatedAt:'2025-04-18',
+    {id:'ANN-S5T6U7V8',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:1,maxNights:30,hotelId:3,type:'studio',typeLabel:'Studio',emoji:'🛋️',name:'Studio cosy Montmartre',city:'Paris',country:'France',address:'Rue Lepic 34',price_night:65,stars:3,rooms:1,bathrooms:1,capacity:2,status:'en attente',discount:0,createdAt:'2025-04-18',updatedAt:'2025-04-18',
      stats:{vues:124,clics:31,reservations:0,revenus:0,tauxOccupation:0,noteMoyenne:0,avis:0,
             vuesMois:[0,0,0,0,0,0,0,0,0,0,0,124],
             revenusMois:[0,0,0,0,0,0,0,0,0,0,0,0]}},
-    {id:'ANN-W9X0Y1Z2',minNights:4,maxNights:30,hotelId:null,type:'villa',typeLabel:'Villa',emoji:'🌴',name:'Villa Sunset Marrakech',city:'Marrakech',country:'Maroc',address:'Palmeraie, Route de Fès',price_night:220,stars:5,rooms:5,bathrooms:3,capacity:10,status:'suspendue',discount:0,createdAt:'2024-06-01',updatedAt:'2024-12-15',
+    {id:'ANN-W9X0Y1Z2',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:4,maxNights:30,hotelId:null,type:'villa',typeLabel:'Villa',emoji:'🌴',name:'Villa Sunset Marrakech',city:'Marrakech',country:'Maroc',address:'Palmeraie, Route de Fès',price_night:220,stars:5,rooms:5,bathrooms:3,capacity:10,status:'suspendue',discount:0,createdAt:'2024-06-01',updatedAt:'2024-12-15',
      stats:{vues:2341,clics:587,reservations:29,revenus:41800,tauxOccupation:71,noteMoyenne:4.8,avis:41,
             vuesMois:[180,195,220,240,260,280,270,265,250,245,230,206],
             revenusMois:[2800,3200,3600,4000,4200,4600,4400,4200,3800,3600,3200,6200]}},
@@ -1515,30 +1527,34 @@ function buildResults(){
   <div class="results-layout">
     <aside class="filters-panel">
       <div style="font-size:16px;font-weight:800;margin-bottom:18px;">🔧 Filtres</div>
+      <!-- 1. Budget -->
       <div class="f-section">
-        <div class="f-title">Budget / nuit</div>
+        <div class="f-title">💰 Budget / nuit</div>
         <div class="price-vals">0€ – <strong id="pv">${appState.filters.maxPrice}€</strong></div>
         <input type="range" min="40" max="400" value="${appState.filters.maxPrice}" oninput="updatePriceF(this.value)">
       </div>
+      <!-- 2. Type -->
       <div class="f-section">
-        <div class="f-title">Note minimum</div>
-        ${[0,7,8,9].map(r=>`<div class="f-opt">
-          <input type="radio" name="rat" value="${r}" ${appState.filters.minRating==r?'checked':''} onchange="updateRatingF(${r})">
-          <label>${r===0?'Toutes':r+'/10 et +'}</label>
-        </div>`).join('')}
-      </div>
-      <div class="f-section">
-        <div class="f-title">Type</div>
+        <div class="f-title">🏠 Type de logement</div>
         ${['Hôtel','Appartement','Maison'].map(t=>`<div class="f-opt">
           <input type="checkbox" ${appState.filters.types.includes(t)?'checked':''} onchange="toggleTypeF('${t}',this.checked)">
           <label>${t}</label>
         </div>`).join('')}
       </div>
+      <!-- 3. Équipements -->
       <div class="f-section">
-        <div class="f-title">Équipements</div>
+        <div class="f-title">🛎️ Équipements</div>
         ${['Wi-Fi gratuit','Piscine','Parking','Restaurant','Spa'].map(a=>`<div class="f-opt">
           <input type="checkbox" ${appState.filters.amenities.includes(a)?'checked':''} onchange="toggleAmenF('${a}',this.checked)">
           <label>${a}</label>
+        </div>`).join('')}
+      </div>
+      <!-- 4. Note -->
+      <div class="f-section">
+        <div class="f-title">⭐ Note minimum</div>
+        ${[0,7,8,9].map(r=>`<div class="f-opt">
+          <input type="radio" name="rat" value="${r}" ${appState.filters.minRating==r?'checked':''} onchange="updateRatingF(${r})">
+          <label>${r===0?'Toutes':r+'/10 et +'}</label>
         </div>`).join('')}
       </div>
       <button onclick="resetFilters()" style="width:100%;margin-top:6px;padding:8px;border-radius:var(--r-md);background:var(--gray-100);border:1.5px solid var(--gray-300);font-size:14px;font-weight:600;cursor:pointer;color:var(--gray-700);">Réinitialiser</button>
@@ -1637,14 +1653,14 @@ function buildDetail(){
       <div class="g-thumb" style="background:linear-gradient(135deg,#ffe8e8,#f8c0c0);">🍽️</div>
     </div>
     <div class="det-body">
-      <div class="det-main">
-        <div class="det-section det-order-1">
+      <div>
+        <div class="det-section">
           <div class="det-sec-title">À propos</div>
           <p style="font-size:15px;color:var(--gray-700);line-height:1.75;">${h.desc}</p>
           <br>
           <p style="font-size:15px;color:var(--gray-700);line-height:1.75;">Les chambres sont spacieuses avec vue panoramique, climatisation réversible et literie haut de gamme. Le service de conciergerie est disponible 24h/24. La connexion Wi-Fi fibre optique est disponible dans tout l'établissement.</p>
         </div>
-        <div class="det-section det-order-2">
+        <div class="det-section">
           <div class="det-sec-title">🛎️ Équipements</div>
           <div class="amen-grid-det">
             ${h.features.map(f=>`<div class="amen-item-det"><span style="font-size:18px;">${amenIcon(f)}</span> ${f}</div>`).join('')}
@@ -1653,7 +1669,7 @@ function buildDetail(){
           </div>
         </div>
         ${buildHostCardHTML(h.id)}
-        <div class="det-section det-order-4">
+        <div class="det-section">
           <div class="det-sec-title">💬 Avis clients</div>
           <div style="display:flex;align-items:center;gap:16px;margin-bottom:18px;padding:14px;background:var(--gray-50);border-radius:var(--r-md);">
             <div style="text-align:center;"><div style="font-size:44px;font-weight:800;color:var(--blue)">${h.rating}</div><div style="font-size:13px;color:var(--gray-500)">/10</div></div>
@@ -1670,13 +1686,13 @@ function buildDetail(){
             </div>`).join('')}
           </div>
         </div>
-        <div class="det-section det-order-5">
+        <div class="det-section">
           <div class="det-sec-title">📍 Localisation</div>
           <div id="hotel-map-${h.id}" style="height:260px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--gray-200);"></div>
           <div style="margin-top:10px;font-size:13px;color:var(--gray-600);">📌 ${h.address}</div>
         </div>
       </div>
-      <div class="det-side det-order-3">
+      <div>
         <div class="bk-box" id="bk-box">
           <div class="bk-price">${h.price}€ <span>/ nuit</span></div>
           <!-- Custom date picker with blocked dates -->
@@ -2560,7 +2576,7 @@ function buildAnnonceSuccess(){
         <div class="suc-ref">${ref}</div>
         <p style="font-size:13px;color:var(--gray-500);margin-top:10px;">Conservez cette référence pour suivre votre annonce.</p>
         <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;flex-wrap:wrap;">
-          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'France',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
+          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'France',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
           <button onclick="navigate('home')" style="background:var(--gray-100);color:var(--gray-800);padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">🏠 Accueil</button>
         </div>
       </div>
@@ -6168,6 +6184,105 @@ function buildFidelitePage(){
   ]);
   d.appendChild(content);
   return d;
+}
+
+
+/* ===================== iCAL SYNC ===================== */
+
+function copyIcalUrl(){
+  const annId = appState.selectedAnnonceId || 'ANN-K7L8M9N0';
+  const url = 'https://casago.fr/calendar/ical/'+annId+'.ics';
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(url).then(()=>showToast('📋 URL iCal copiée !','var(--green)'));
+  } else {
+    // Fallback
+    const el = document.createElement('textarea');
+    el.value = url;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast('📋 URL iCal copiée !','var(--green)');
+  }
+}
+
+function saveIcalUrl(platform, url){
+  const annId = appState.selectedAnnonceId || 'ANN-K7L8M9N0';
+  const ann = appState.myAnnonces.find(a=>a.id===annId);
+  if(ann){
+    if(!ann.icalUrls) ann.icalUrls = {};
+    ann.icalUrls[platform] = url;
+  }
+}
+
+function syncIcal(platform){
+  const annId = appState.selectedAnnonceId || 'ANN-K7L8M9N0';
+  const ann = appState.myAnnonces.find(a=>a.id===annId);
+  const url = ann?.icalUrls?.[platform] || document.getElementById('ical-'+platform)?.value;
+
+  if(!url || url.trim() === ''){
+    showToast('⚠️ Collez d\'abord l\'URL iCal','var(--red)');
+    return;
+  }
+  if(!url.includes('.ics') && !url.includes('ical') && !url.includes('calendar')){
+    showToast('⚠️ URL iCal invalide — elle doit contenir .ics','var(--red)');
+    return;
+  }
+
+  // Save URL
+  saveIcalUrl(platform, url);
+
+  // Simulate sync (in production: fetch the .ics file and parse VEVENT dates)
+  const statusEl = document.getElementById('ical-status');
+  if(statusEl){ statusEl.style.display='block'; statusEl.style.color='var(--blue)'; statusEl.textContent='⏳ Synchronisation '+platform+' en cours...'; }
+
+  setTimeout(()=>{
+    // Simulate finding 3 blocked dates from the external calendar
+    const cal = getCalForAnnonce(annId);
+    const today = new Date();
+    const simulatedDates = [0,1,2].map(i=>{
+      const d = new Date(today);
+      d.setDate(d.getDate() + 30 + i);
+      return d.toISOString().split('T')[0];
+    });
+    simulatedDates.forEach(dt=>{
+      if(!cal.blocked.includes(dt)) cal.blocked.push(dt);
+    });
+
+    if(statusEl){
+      statusEl.style.color='var(--green)';
+      statusEl.textContent='✅ '+platform+' synchronisé — '+simulatedDates.length+' date(s) importée(s) et bloquée(s)';
+    }
+    showToast('✅ '+platform+' synchronisé avec succès !','var(--green)');
+
+    // Refresh calendar grid
+    setTimeout(()=>{ if(typeof renderCalGrid==='function') renderCalGrid(); }, 300);
+  }, 1500);
+}
+
+function syncAllIcal(){
+  const annId = appState.selectedAnnonceId || 'ANN-K7L8M9N0';
+  const ann = appState.myAnnonces.find(a=>a.id===annId);
+  const platforms = ['airbnb','booking','vrbo','autre'];
+  const active = platforms.filter(p=> ann?.icalUrls?.[p] || document.getElementById('ical-'+p)?.value);
+
+  if(active.length === 0){
+    showToast('⚠️ Aucune URL iCal configurée','var(--red)'); return;
+  }
+
+  const statusEl = document.getElementById('ical-status');
+  if(statusEl){ statusEl.style.display='block'; statusEl.style.color='var(--blue)'; statusEl.textContent='⏳ Synchronisation de '+active.length+' plateforme(s)...'; }
+
+  let done = 0;
+  active.forEach(p=>{
+    setTimeout(()=>{
+      syncIcal(p);
+      done++;
+      if(done===active.length){
+        if(statusEl){ statusEl.style.color='var(--green)'; statusEl.textContent='✅ '+active.length+' plateforme(s) synchronisée(s) avec succès !'; }
+      }
+    }, active.indexOf(p) * 1000);
+  });
 }
 
 /* ===================== FOOTER ===================== */
