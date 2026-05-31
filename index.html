@@ -596,34 +596,34 @@ function calcCommission(grossTotal){
 
 const hotels = [
   // ── France ────────────────────────────────────────────────────────────────────
-  {id:1,  minNights:2, name:"Le Grand Palais Hôtel",         city:"Paris",           country:"France",      type:"Hôtel",       stars:5, rating:9.2, ratingLabel:"Exceptionnel", reviews:2847, price:189, emoji:"🏛️", features:["Wi-Fi gratuit","Piscine","Spa","Restaurant","Parking"], desc:"Palace haussmannien au cœur de Paris. Restaurant étoilé, spa 800m², vue imprenable sur la Seine.", freeCancellation:true,  payLater:true,  discount:15},
-  {id:2,  minNights:2, name:"Villa Provençale avec Piscine",  city:"Aix-en-Provence", country:"France",      type:"Villa",       stars:4, rating:9.0, ratingLabel:"Exceptionnel", reviews:156,  price:175, emoji:"🌿", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa en Provence avec piscine privée, oliviers centenaires et vue sur le Luberon.",              freeCancellation:false, payLater:true,  discount:0},
-  {id:3,  minNights:3, name:"Chalet Montagne Chamonix",       city:"Chamonix",        country:"France",      type:"Chalet",      stars:4, rating:9.1, ratingLabel:"Exceptionnel", reviews:203,  price:220, emoji:"⛰️", features:["Wi-Fi gratuit","Parking","Spa"],                        desc:"Chalet chaleureux au pied du Mont-Blanc, sauna privé et vue sur les glaciers.",                   freeCancellation:false, payLater:true,  discount:0},
-  {id:4,  minNights:1, name:"Studio Cosy Montmartre",         city:"Paris",           country:"France",      type:"Studio",      stars:3, rating:8.1, ratingLabel:"Très bien",    reviews:312,  price:65,  emoji:"🛋️", features:["Wi-Fi gratuit"],                                        desc:"Studio moderne à deux pas du Sacré-Cœur. Idéal pour explorer Montmartre.",                        freeCancellation:true,  payLater:true,  discount:0},
-  {id:5,  minNights:1, name:"Loft Design Lyon Confluence",    city:"Lyon",            country:"France",      type:"Appartement", stars:4, rating:8.6, ratingLabel:"Excellent",    reviews:267,  price:110, emoji:"🏭", features:["Wi-Fi gratuit"],                                        desc:"Loft contemporain à la Confluence. Plafonds 4m et vue sur la Saône.",                             freeCancellation:true,  payLater:true,  discount:5},
-  {id:6,  minNights:1, name:"Cabane Perchée Périgord",        city:"Périgueux",       country:"France",      type:"Insolite",    stars:4, rating:9.3, ratingLabel:"Exceptionnel", reviews:134,  price:145, emoji:"🌳", features:["Wi-Fi gratuit","Parking"],                              desc:"Cabane à 8m dans les châtaigniers, terrasse suspendue et bain nordique sous les étoiles.",         freeCancellation:false, payLater:true,  discount:0},
-  {id:7,  minNights:1, name:"Péniche Canal Saint-Martin",     city:"Paris",           country:"France",      type:"Insolite",    stars:4, rating:9.2, ratingLabel:"Exceptionnel", reviews:234,  price:165, emoji:"⛵", features:["Wi-Fi gratuit"],                                        desc:"Péniche aménagée sur le Canal Saint-Martin. Terrasse sur l'eau et vue sur les écluses.",           freeCancellation:true,  payLater:true,  discount:0},
+  {id:1,  minNights:2, name:"Le Grand Palais Hôtel",         city:"Paris",           country:"France",      type:"Hôtel",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:2847, price:189, emoji:"🏛️", features:["Wi-Fi gratuit","Piscine","Spa","Restaurant","Parking"], desc:"Palace haussmannien au cœur de Paris. Restaurant étoilé, spa 800m², vue imprenable sur la Seine.", freeCancellation:true,  payLater:true,  discount:15},
+  {id:2,  minNights:2, name:"Villa Provençale avec Piscine",  city:"Aix-en-Provence", country:"France",      type:"Villa",       stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:156,  price:175, emoji:"🌿", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa en Provence avec piscine privée, oliviers centenaires et vue sur le Luberon.",              freeCancellation:false, payLater:true,  discount:0},
+  {id:3,  minNights:3, name:"Chalet Montagne Chamonix",       city:"Chamonix",        country:"France",      type:"Chalet",      stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:203,  price:220, emoji:"⛰️", features:["Wi-Fi gratuit","Parking","Spa"],                        desc:"Chalet chaleureux au pied du Mont-Blanc, sauna privé et vue sur les glaciers.",                   freeCancellation:false, payLater:true,  discount:0},
+  {id:4,  minNights:1, name:"Studio Cosy Montmartre",         city:"Paris",           country:"France",      type:"Studio",      stars:3, rating:4.0, ratingLabel:"Très bien",    reviews:312,  price:65,  emoji:"🛋️", features:["Wi-Fi gratuit"],                                        desc:"Studio moderne à deux pas du Sacré-Cœur. Idéal pour explorer Montmartre.",                        freeCancellation:true,  payLater:true,  discount:0},
+  {id:5,  minNights:1, name:"Loft Design Lyon Confluence",    city:"Lyon",            country:"France",      type:"Appartement", stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:267,  price:110, emoji:"🏭", features:["Wi-Fi gratuit"],                                        desc:"Loft contemporain à la Confluence. Plafonds 4m et vue sur la Saône.",                             freeCancellation:true,  payLater:true,  discount:5},
+  {id:6,  minNights:1, name:"Cabane Perchée Périgord",        city:"Périgueux",       country:"France",      type:"Insolite",    stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:134,  price:145, emoji:"🌳", features:["Wi-Fi gratuit","Parking"],                              desc:"Cabane à 8m dans les châtaigniers, terrasse suspendue et bain nordique sous les étoiles.",         freeCancellation:false, payLater:true,  discount:0},
+  {id:7,  minNights:1, name:"Péniche Canal Saint-Martin",     city:"Paris",           country:"France",      type:"Insolite",    stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:234,  price:165, emoji:"⛵", features:["Wi-Fi gratuit"],                                        desc:"Péniche aménagée sur le Canal Saint-Martin. Terrasse sur l'eau et vue sur les écluses.",           freeCancellation:true,  payLater:true,  discount:0},
 
   // ── Maroc ──────────────────────────────────────────────────────────────────────
-  {id:8,  minNights:2, name:"Riad Authentique Marrakech",     city:"Marrakech",       country:"Maroc",       type:"Riad",        stars:4, rating:9.1, ratingLabel:"Exceptionnel", reviews:612,  price:98,  emoji:"🕌", features:["Wi-Fi gratuit","Piscine","Restaurant"],                 desc:"Riad traditionnel en médina avec patio fleuri, fontaine et terrasse panoramique.",                 freeCancellation:true,  payLater:true,  discount:0},
-  {id:9,  minNights:1, name:"Villa Sunset Palmeraie",         city:"Marrakech",       country:"Maroc",       type:"Villa",       stars:5, rating:9.4, ratingLabel:"Exceptionnel", reviews:298,  price:220, emoji:"🌴", features:["Wi-Fi gratuit","Piscine","Parking","Spa"],              desc:"Villa de luxe en palmeraie, piscine chauffée, jardin d'oliviers et hammam privatif.",              freeCancellation:false, payLater:true,  discount:0},
-  {id:10, minNights:2, name:"Kasbah Vue Atlas",               city:"Ouarzazate",      country:"Maroc",       type:"Hôtel",       stars:4, rating:8.8, ratingLabel:"Excellent",    reviews:176,  price:75,  emoji:"🏜️", features:["Wi-Fi gratuit","Piscine","Restaurant","Parking"],       desc:"Kasbah en pisé avec vue sur l'Atlas. Couchers de soleil spectaculaires.",                          freeCancellation:true,  payLater:true,  discount:10},
-  {id:11, minNights:3, name:"Dar Fès Médina",                 city:"Fès",             country:"Maroc",       type:"Riad",        stars:4, rating:9.2, ratingLabel:"Exceptionnel", reviews:142,  price:88,  emoji:"🎨", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Demeure andalouse du XIVe siècle. Zellige, stuc et bois de cèdre sculpté.",                       freeCancellation:false, payLater:true,  discount:0},
+  {id:8,  minNights:2, name:"Riad Authentique Marrakech",     city:"Marrakech",       country:"Maroc",       type:"Riad",        stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:612,  price:98,  emoji:"🕌", features:["Wi-Fi gratuit","Piscine","Restaurant"],                 desc:"Riad traditionnel en médina avec patio fleuri, fontaine et terrasse panoramique.",                 freeCancellation:true,  payLater:true,  discount:0},
+  {id:9,  minNights:1, name:"Villa Sunset Palmeraie",         city:"Marrakech",       country:"Maroc",       type:"Villa",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:298,  price:220, emoji:"🌴", features:["Wi-Fi gratuit","Piscine","Parking","Spa"],              desc:"Villa de luxe en palmeraie, piscine chauffée, jardin d'oliviers et hammam privatif.",              freeCancellation:false, payLater:true,  discount:0},
+  {id:10, minNights:2, name:"Kasbah Vue Atlas",               city:"Ouarzazate",      country:"Maroc",       type:"Hôtel",       stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:176,  price:75,  emoji:"🏜️", features:["Wi-Fi gratuit","Piscine","Restaurant","Parking"],       desc:"Kasbah en pisé avec vue sur l'Atlas. Couchers de soleil spectaculaires.",                          freeCancellation:true,  payLater:true,  discount:10},
+  {id:11, minNights:3, name:"Dar Fès Médina",                 city:"Fès",             country:"Maroc",       type:"Riad",        stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:142,  price:88,  emoji:"🎨", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Demeure andalouse du XIVe siècle. Zellige, stuc et bois de cèdre sculpté.",                       freeCancellation:false, payLater:true,  discount:0},
 
   // ── Tunisie ────────────────────────────────────────────────────────────────────
-  {id:12, minNights:2, name:"Villa Bord de Mer Hammamet",     city:"Hammamet",        country:"Tunisie",     type:"Villa",       stars:4, rating:8.9, ratingLabel:"Excellent",    reviews:334,  price:115, emoji:"🏖️", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa accès direct plage, piscine privée et jardin méditerranéen.",                                freeCancellation:true,  payLater:true,  discount:0},
-  {id:13, minNights:1, name:"Hôtel Médina Tunis",             city:"Tunis",           country:"Tunisie",     type:"Hôtel",       stars:3, rating:8.2, ratingLabel:"Très bien",    reviews:267,  price:45,  emoji:"🕍", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Hôtel-boutique dans la médina classée UNESCO. Cuisine tunisienne authentique.",                    freeCancellation:true,  payLater:true,  discount:5},
+  {id:12, minNights:2, name:"Villa Bord de Mer Hammamet",     city:"Hammamet",        country:"Tunisie",     type:"Villa",       stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:334,  price:115, emoji:"🏖️", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa accès direct plage, piscine privée et jardin méditerranéen.",                                freeCancellation:true,  payLater:true,  discount:0},
+  {id:13, minNights:1, name:"Hôtel Médina Tunis",             city:"Tunis",           country:"Tunisie",     type:"Hôtel",       stars:3, rating:4.0, ratingLabel:"Très bien",    reviews:267,  price:45,  emoji:"🕍", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Hôtel-boutique dans la médina classée UNESCO. Cuisine tunisienne authentique.",                    freeCancellation:true,  payLater:true,  discount:5},
 
   // ── Sénégal ────────────────────────────────────────────────────────────────────
-  {id:14, minNights:2, name:"Lodge Safari Sine Saloum",       city:"Fatick",          country:"Sénégal",     type:"Lodge",       stars:4, rating:9.3, ratingLabel:"Exceptionnel", reviews:98,   price:160, emoji:"🐘", features:["Wi-Fi gratuit","Restaurant","Parking"],                 desc:"Lodge écotouristique dans le delta. Pirogues, oiseaux rares et couchers de soleil uniques.",       freeCancellation:false, payLater:true,  discount:0},
-  {id:15, minNights:1, name:"Appartement Dakar Plateau",      city:"Dakar",           country:"Sénégal",     type:"Appartement", stars:3, rating:8.1, ratingLabel:"Très bien",    reviews:145,  price:50,  emoji:"🌍", features:["Wi-Fi gratuit","Parking"],                              desc:"Appartement climatisé au Plateau. À 10 min de l'île de Gorée.",                                    freeCancellation:true,  payLater:true,  discount:0},
+  {id:14, minNights:2, name:"Lodge Safari Sine Saloum",       city:"Fatick",          country:"Sénégal",     type:"Lodge",       stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:98,   price:160, emoji:"🐘", features:["Wi-Fi gratuit","Restaurant","Parking"],                 desc:"Lodge écotouristique dans le delta. Pirogues, oiseaux rares et couchers de soleil uniques.",       freeCancellation:false, payLater:true,  discount:0},
+  {id:15, minNights:1, name:"Appartement Dakar Plateau",      city:"Dakar",           country:"Sénégal",     type:"Appartement", stars:3, rating:4.0, ratingLabel:"Très bien",    reviews:145,  price:50,  emoji:"🌍", features:["Wi-Fi gratuit","Parking"],                              desc:"Appartement climatisé au Plateau. À 10 min de l'île de Gorée.",                                    freeCancellation:true,  payLater:true,  discount:0},
 
   // ── Europe & International ─────────────────────────────────────────────────────
-  {id:16, minNights:2, name:"Casa del Sol Barcelona",         city:"Barcelone",       country:"Espagne",     type:"Appartement", stars:4, rating:9.0, ratingLabel:"Exceptionnel", reviews:1847, price:98,  emoji:"🌞", features:["Wi-Fi gratuit"],                                        desc:"Appartement design à 200m du Passeig de Gràcia. Parquet et cuisine moderne.",                     freeCancellation:true,  payLater:true,  discount:0},
-  {id:17, minNights:3, name:"Santorini Blue Villas",          city:"Santorin",        country:"Grèce",       type:"Villa",       stars:5, rating:9.7, ratingLabel:"Exceptionnel", reviews:423,  price:485, emoji:"🫐", features:["Wi-Fi gratuit","Piscine","Spa"],                        desc:"Villas avec piscine privée et vue spectaculaire sur la caldeira. Couchers légendaires.",           freeCancellation:false, payLater:false, discount:0},
-  {id:18, minNights:1, name:"The London Fox Inn",             city:"Londres",         country:"Royaume-Uni", type:"Hôtel",       stars:4, rating:8.6, ratingLabel:"Excellent",    reviews:1567, price:165, emoji:"🦊", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Boutique hotel branché à Shoreditch. Bar à cocktails et brunch du dimanche.",                     freeCancellation:true,  payLater:false, discount:0},
-  {id:19, minNights:1, name:"Tokyo Sky Tower Hotel",          city:"Tokyo",           country:"Japon",       type:"Hôtel",       stars:5, rating:9.1, ratingLabel:"Exceptionnel", reviews:3201, price:195, emoji:"🗼", features:["Wi-Fi gratuit","Restaurant","Spa"],                     desc:"Hôtel design à Shinjuku, vue panoramique sur Tokyo et onsen traditionnel.",                       freeCancellation:true,  payLater:false, discount:10},
-  {id:20, minNights:2, name:"Dubai Marina Suites",            city:"Dubaï",           country:"Émirats",     type:"Appartement", stars:5, rating:9.0, ratingLabel:"Exceptionnel", reviews:987,  price:310, emoji:"🏙️", features:["Wi-Fi gratuit","Piscine","Parking","Spa","Restaurant"], desc:"Suite luxueuse vue sur la marina de Dubaï. Accès plage privée.",                                   freeCancellation:true,  payLater:false, discount:0},
+  {id:16, minNights:2, name:"Casa del Sol Barcelona",         city:"Barcelone",       country:"Espagne",     type:"Appartement", stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:1847, price:98,  emoji:"🌞", features:["Wi-Fi gratuit"],                                        desc:"Appartement design à 200m du Passeig de Gràcia. Parquet et cuisine moderne.",                     freeCancellation:true,  payLater:true,  discount:0},
+  {id:17, minNights:3, name:"Santorini Blue Villas",          city:"Santorin",        country:"Grèce",       type:"Villa",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:423,  price:485, emoji:"🫐", features:["Wi-Fi gratuit","Piscine","Spa"],                        desc:"Villas avec piscine privée et vue spectaculaire sur la caldeira. Couchers légendaires.",           freeCancellation:false, payLater:false, discount:0},
+  {id:18, minNights:1, name:"The London Fox Inn",             city:"Londres",         country:"Royaume-Uni", type:"Hôtel",       stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:1567, price:165, emoji:"🦊", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Boutique hotel branché à Shoreditch. Bar à cocktails et brunch du dimanche.",                     freeCancellation:true,  payLater:false, discount:0},
+  {id:19, minNights:1, name:"Tokyo Sky Tower Hotel",          city:"Tokyo",           country:"Japon",       type:"Hôtel",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:3201, price:195, emoji:"🗼", features:["Wi-Fi gratuit","Restaurant","Spa"],                     desc:"Hôtel design à Shinjuku, vue panoramique sur Tokyo et onsen traditionnel.",                       freeCancellation:true,  payLater:false, discount:10},
+  {id:20, minNights:2, name:"Dubai Marina Suites",            city:"Dubaï",           country:"Émirats",     type:"Appartement", stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:987,  price:310, emoji:"🏙️", features:["Wi-Fi gratuit","Piscine","Parking","Spa","Restaurant"], desc:"Suite luxueuse vue sur la marina de Dubaï. Accès plage privée.",                                   freeCancellation:true,  payLater:false, discount:0},
 ];
 
 const destinations = [
@@ -802,7 +802,7 @@ let appState = {
   page:'home',
   searchDest:'', searchCheckIn:'', searchCheckOut:'', searchGuests:2,
   selectedHotelId:null,
-  filters:{maxPrice:400,minRating:0,types:[],amenities:[]},filterExpanded:{types:false,amenities:false,ratings:false},
+  filters:{minPrice:30,maxPrice:410,minRating:0,types:[],amenities:[]},filterExpanded:{types:false,amenities:false,ratings:false},
   sort:'recommended',
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
@@ -861,10 +861,10 @@ function render() {
   app.appendChild(buildHeader());
   const pg = appState.page;
   if(pg==='home') app.appendChild(buildHome());
-  else if(pg==='results') app.appendChild(buildResults());
+  else if(pg==='results'){ app.appendChild(buildResults()); setTimeout(priceDrawThumbs,80); }
   else if(pg==='detail') app.appendChild(buildDetail());
   else if(pg==='confirm') app.appendChild(buildConfirm());
-  else if(pg==='annonce') app.appendChild(buildAnnonce());
+  else if(pg==='annonce'){ annAutoFill(); app.appendChild(buildAnnonce()); }
   else if(pg==='reservations') app.appendChild(buildReservations());
   else if(pg==='favoris') app.appendChild(buildFavoris());
   else if(pg==='mesannonces') app.appendChild(buildMesAnnonces());
@@ -872,7 +872,7 @@ function render() {
   else if(pg==='profil') app.appendChild(buildProfil());
   else if(pg==='excursions') app.appendChild(buildExcursions());
   else if(pg==='excursion-detail') app.appendChild(buildExcursionDetail());
-  else if(pg==='excursion-form') app.appendChild(buildExcursionForm());
+  else if(pg==='excursion-form'){ excAutoFill(); app.appendChild(buildExcursionForm()); }
   else if(pg==='payment') app.appendChild(buildPayment());
   else if(pg==='host-profile') app.appendChild(buildHostProfile());
   else if(pg==='messages') app.appendChild(buildMessages());
@@ -1156,6 +1156,76 @@ function switchMode(mode){
   showToast(mode==='hote' ? '🏠 Mode Hôte activé' : '✈️ Mode Voyageur activé', 'var(--blue)');
   // Redirect to relevant page
   navigate(mode==='hote' ? 'mesannonces' : 'home');
+}
+
+/* ── Price range drag ── */
+let _prDragging = null;
+
+function priceDrawThumbs(){
+  const lo = appState.filters.minPrice || 0;
+  const hi = appState.filters.maxPrice || 410;
+  const lPct = lo / 410 * 100;
+  const hPct = hi / 410 * 100;
+  const fill = document.getElementById('pr-fill');
+  const tn   = document.getElementById('pr-tn');
+  const tx   = document.getElementById('pr-tx');
+  if(fill){ fill.style.left=lPct+'%'; fill.style.right=(100-hPct)+'%'; }
+  if(tn)  tn.style.left = lPct+'%';
+  if(tx)  tx.style.left = hPct+'%';
+}
+
+function priceStartDrag(e, which){
+  e.stopPropagation();
+  e.preventDefault();
+  _prDragging = which;
+  document.addEventListener('mousemove', priceDragMove);
+  document.addEventListener('mouseup',   priceDragEnd);
+  document.addEventListener('touchmove', priceDragMove, {passive:false});
+  document.addEventListener('touchend',  priceDragEnd);
+}
+
+function priceDragMove(e){
+  if(!_prDragging) return;
+  e.preventDefault();
+  const track = document.getElementById('pr-track');
+  if(!track) return;
+  const rect = track.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  let pct = (clientX - rect.left) / rect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  const val = Math.round(pct * 410 / 5) * 5;
+  if(_prDragging === 'min') priceMin(val);
+  else priceMax(val);
+}
+
+function priceDragEnd(){
+  _prDragging = null;
+  document.removeEventListener('mousemove', priceDragMove);
+  document.removeEventListener('mouseup',   priceDragEnd);
+  document.removeEventListener('touchmove', priceDragMove);
+  document.removeEventListener('touchend',  priceDragEnd);
+}
+
+function priceTrackClick(e){
+  if(e.target.id==='pr-tn'||e.target.id==='pr-tx') return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct  = (e.clientX - rect.left) / rect.width;
+  const val  = Math.round(pct * 410 / 5) * 5;
+  const lo   = appState.filters.minPrice || 0;
+  const hi   = appState.filters.maxPrice || 410;
+  if(Math.abs(val-lo) < Math.abs(val-hi)) priceMin(val);
+  else priceMax(val);
+}
+
+function priceTrackTouch(e){
+  if(e.target.id==='pr-tn'||e.target.id==='pr-tx') return;
+  const rect  = e.currentTarget.getBoundingClientRect();
+  const pct   = (e.touches[0].clientX - rect.left) / rect.width;
+  const val   = Math.round(pct * 410 / 5) * 5;
+  const lo    = appState.filters.minPrice || 0;
+  const hi    = appState.filters.maxPrice || 410;
+  if(Math.abs(val-lo) < Math.abs(val-hi)) priceMin(val);
+  else priceMax(val);
 }
 
 function closeDropdown(){const dd=document.getElementById('user-dropdown');if(dd)dd.remove();}
@@ -1667,7 +1737,7 @@ function hotelCardHTML(h){
     <div class="hc-body">
       <div class="hc-name">${h.name}</div>
       <div class="hc-loc">📍 ${h.city}, ${h.country}</div>
-      <div class="hc-rating"><div class="r-badge">${h.rating}</div><span class="r-label">${h.ratingLabel}</span><span class="r-count">${h.reviews.toLocaleString()} avis</span></div>
+      <div class="hc-rating"><div class="r-badge">${h.rating}★</div><span class="r-count">${h.reviews.toLocaleString()} avis</span></div>
       <div class="hc-price">${h.price}€<span style="font-size:13px;color:var(--gray-500);font-weight:400">/nuit</span></div>
       ${h.freeCancellation?'<div class="hc-free">✓ Annulation gratuite</div>':''}
     </div>
@@ -1699,7 +1769,7 @@ function doSearch(){
   appState.searchCheckIn=document.getElementById('s-in').value;
   appState.searchCheckOut=document.getElementById('s-out').value;
   appState.searchGuests=parseInt(document.getElementById('s-guests').value)||2;
-  appState.filters={maxPrice:400,minRating:0,types:[],amenities:[]};
+  appState.filters={minPrice:0,maxPrice:410,minRating:0,types:[],amenities:[]};
   appState.sort='recommended';
   navigate('results');
 }
@@ -1710,9 +1780,12 @@ function searchByDest(dest){appState.searchDest=dest;navigate('results');}
 function getFiltered(){
   let list = hotels.filter(h=>{
     if(appState.searchDest && !h.city.toLowerCase().includes(appState.searchDest.toLowerCase()) && !h.country.toLowerCase().includes(appState.searchDest.toLowerCase())) return false;
-    if(h.price>appState.filters.maxPrice) return false;
+    
+    if(h.price < (appState.filters.minPrice||0)) return false;
+    if((appState.filters.maxPrice||410) < 410 && h.price > (appState.filters.maxPrice||410)) return false;
     if(h.rating<appState.filters.minRating) return false;
     if(appState.filters.types.length>0 && !appState.filters.types.includes(h.type)) return false;
+    if(appState.filters.amenities.length>0 && !appState.filters.amenities.every(a=>h.features.includes(a))) return false;
     return true;
   });
   if(appState.sort==='price_asc') list.sort((a,b)=>a.price-b.price);
@@ -1733,11 +1806,43 @@ function buildResults(){
       <div style="font-size:16px;font-weight:800;margin-bottom:18px;">🔧 Filtres</div>
       <!-- 1. Budget -->
       <div class="f-section">
-        <div class="f-title">💰 Budget / nuit</div>
-        <div class="price-vals">0€ – <strong id="pv">${appState.filters.maxPrice}€</strong></div>
-        <input type="range" min="40" max="400" value="${appState.filters.maxPrice}" oninput="updatePriceF(this.value)">
+        <div class="f-title">💰 BUDGET / NUIT</div>
+
+        <!-- Champs saisissables -->
+        <div style="display:flex;align-items:center;gap:8px;margin:12px 0 16px;">
+          <div style="flex:1;position:relative;">
+            <input type="number" id="pr-min" min="0" max="405" step="5"
+              value="${appState.filters.minPrice||0}"
+              onchange="priceMin(+this.value)"
+              style="width:100%;padding:8px 20px 8px 8px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;text-align:center;">
+            <span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--gray-400);pointer-events:none;">€</span>
+          </div>
+          <span style="color:var(--gray-400);font-weight:700;">—</span>
+          <div style="flex:1;position:relative;">
+            <input type="number" id="pr-max" min="5" max="410" step="5"
+              value="${appState.filters.maxPrice||410}"
+              onchange="priceMax(+this.value)"
+              style="width:100%;padding:8px 20px 8px 8px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;text-align:center;">
+            <span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--gray-400);pointer-events:none;">€</span>
+          </div>
+        </div>
+
+        <!-- Track custom draggable -->
+        <div id="pr-track" style="position:relative;height:6px;background:var(--gray-200);border-radius:3px;margin:14px 10px 20px;cursor:pointer;"
+          onmousedown="priceTrackClick(event)" ontouchstart="priceTrackTouch(event)">
+          <div id="pr-fill" style="position:absolute;top:0;bottom:0;background:var(--blue);border-radius:3px;left:0%;right:0%;"></div>
+          <div id="pr-tn" style="position:absolute;top:50%;width:22px;height:22px;border-radius:50%;background:#fff;border:2.5px solid var(--blue);box-shadow:0 2px 8px rgba(0,0,0,.2);transform:translate(-50%,-50%);cursor:grab;touch-action:none;"
+            onmousedown="priceStartDrag(event,'min')" ontouchstart="priceStartDrag(event,'min')"></div>
+          <div id="pr-tx" style="position:absolute;top:50%;width:22px;height:22px;border-radius:50%;background:#fff;border:2.5px solid var(--blue);box-shadow:0 2px 8px rgba(0,0,0,.2);transform:translate(-50%,-50%);cursor:grab;touch-action:none;"
+            onmousedown="priceStartDrag(event,'max')" ontouchstart="priceStartDrag(event,'max')"></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-400);">
+          <span>0€</span><span>410+€</span>
+        </div>
       </div>
-      <!-- 2. Type -->
+
+            <!-- 2. Type -->
       <!-- 2. Type de logement (expandable) -->
       <div class="f-section">
         <div class="f-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleFilter('types')">
@@ -1746,7 +1851,7 @@ function buildResults(){
         </div>
         <div id="filter-types">
           ${(()=>{
-            const allTypes = ['Hôtel','Appartement','Maison','Villa','Studio','Chalet','Riad','Lodge','Insolite'];
+            const allTypes = ['Hôtel','Appartement','Maison','Villa','Studio','Chalet'];
             const visibleCount = appState.filterExpanded?.types ? allTypes.length : 3;
             const shown = allTypes.slice(0, visibleCount);
             return shown.map(t=>'<div class="f-opt">'
@@ -1768,8 +1873,7 @@ function buildResults(){
           ${(()=>{
             const allAmen = ['Wi-Fi gratuit','Piscine','Parking','Restaurant','Spa','Climatisation','Salle de sport','Animaux acceptés','Cuisine équipée','Vue mer'];
             const visibleCount = appState.filterExpanded?.amenities ? allAmen.length : 3;
-            const shown = allAmen.slice(0, visibleCount);
-            return shown.map(a=>'<div class="f-opt">'
+            return allAmen.slice(0, visibleCount).map(a=>'<div class="f-opt">'
               +'<input type="checkbox" '+(appState.filters.amenities.includes(a)?'checked':'')+' onchange="toggleAmenF(\''+a+'\',this.checked)">'
               +'<label>'+a+'</label></div>').join('')
             + (allAmen.length > 3 ? '<button onclick="toggleFilterExpand(\'amenities\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
@@ -1786,7 +1890,7 @@ function buildResults(){
         </div>
         <div id="filter-ratings">
           ${(()=>{
-            const allRatings = [{v:0,l:'Toutes'},{v:6,l:'6/10 et +'},{v:7,l:'7/10 et +'},{v:8,l:'8/10 et +'},{v:9,l:'9/10 et +'}];
+            const allRatings = [{v:0,l:'Toutes'},{v:2,l:'2★ et +'},{v:3,l:'3★ et +'},{v:4,l:'4★ et +'},{v:5,l:'5★'}];
             const visibleCount = appState.filterExpanded?.ratings ? allRatings.length : 3;
             return allRatings.slice(0, visibleCount).map(r=>'<div class="f-opt">'
               +'<input type="radio" name="rat" value="'+r.v+'" '+(appState.filters.minRating==r.v?'checked':'')+' onchange="updateRatingF('+r.v+')">'
@@ -1796,7 +1900,8 @@ function buildResults(){
           })()}
         </div>
       </div>
-      <button onclick="resetFilters()" style="width:100%;margin-top:6px;padding:8px;border-radius:var(--r-md);background:var(--gray-100);border:1.5px solid var(--gray-300);font-size:14px;font-weight:600;cursor:pointer;color:var(--gray-700);">Réinitialiser</button>
+
+    <button onclick="resetFilters()" style="width:100%;margin-top:16px;padding:10px;background:none;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;color:var(--gray-700);cursor:pointer;transition:all .2s;" onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background='none'">Réinitialiser</button>
     </aside>
     <div>
       <div class="results-head">
@@ -1833,7 +1938,7 @@ function resultCardHTML(h){
         <div class="rc-desc">${h.desc.substring(0,120)}…</div>
       </div>
       <div class="rc-price">
-        <div style="display:flex;align-items:center;gap:6px;"><div class="r-badge">${h.rating}</div><div><div style="font-size:12px;font-weight:700;color:var(--gray-700)">${h.ratingLabel}</div><div style="font-size:11px;color:var(--gray-500)">${h.reviews.toLocaleString()} avis</div></div></div>
+        <div style="display:flex;align-items:center;gap:6px;"><div class="r-badge">${h.rating}★</div><div><div style="font-size:12px;font-weight:700;color:var(--gray-700)">${h.ratingLabel}</div><div style="font-size:11px;color:var(--gray-500)">${h.reviews.toLocaleString()} avis</div></div></div>
         <div class="rc-badges">
           ${h.freeCancellation?'<span class="badge-green">✓ Annulation gratuite</span>':''}
           ${h.payLater?'<span class="badge-green">✓ Payez sur place</span>':''}
@@ -1849,7 +1954,45 @@ function resultCardHTML(h){
   </div>`;
 }
 
-function updatePriceF(v){appState.filters.maxPrice=parseInt(v);document.getElementById('pv').textContent=v+'€';refreshResults();}
+
+
+
+
+function priceMin(v){
+  v = Math.max(0, Math.min(+v, (appState.filters.maxPrice||410) - 5));
+  appState.filters.minPrice = v;
+  const f = document.getElementById('pr-min');
+  if(f) f.value = v;
+  priceDrawThumbs();
+  refreshResults();
+}
+
+function priceMax(v){
+  v = Math.min(410, Math.max(+v, (appState.filters.minPrice||0) + 5));
+  appState.filters.maxPrice = v;
+  const f = document.getElementById('pr-max');
+  if(f) f.value = v;
+  priceDrawThumbs();
+  refreshResults();
+}
+
+
+function updatePriceF(v){
+  appState.filters.maxPrice = parseInt(v);
+  const el = document.getElementById('pv');
+  if(el) el.textContent = v+(parseInt(v)>=410?'+':'')+'€';
+  refreshResults();
+}
+
+
+
+
+
+
+
+
+
+
 function updateRatingF(v){appState.filters.minRating=v;refreshResults();}
 function toggleTypeF(t,c){if(c)appState.filters.types.push(t);else appState.filters.types=appState.filters.types.filter(x=>x!==t);refreshResults();}
 
@@ -1871,8 +2014,19 @@ function toggleFilter(section){
 }
 function toggleAmenF(a,c){if(c)appState.filters.amenities.push(a);else appState.filters.amenities=appState.filters.amenities.filter(x=>x!==a);refreshResults();}
 function updateSort(v){appState.sort=v;refreshResults();}
-function resetFilters(){appState.filters={maxPrice:400,minRating:0,types:[],amenities:[]};navigate('results');}
-function refreshResults(){const old=document.querySelector('.results-layout');if(!old)return;const n=buildResults();old.parentNode.replaceChild(n.querySelector('.results-layout'),old);}
+function resetFilters(){
+  appState.filters = {minPrice:0, maxPrice:410, minRating:0, types:[], amenities:[]};
+  appState.filterExpanded = {types:false, amenities:false, ratings:false};
+  // Reset input fields
+  const mn = document.getElementById('pr-min');
+  const mx = document.getElementById('pr-max');
+  if(mn) mn.value = 0;
+  if(mx) mx.value = 410;
+  // Reset price slider thumbs
+  setTimeout(priceDrawThumbs, 80);
+  navigate('results');
+}
+function refreshResults(){const old=document.querySelector('.results-layout');if(!old)return;const n=buildResults();old.parentNode.replaceChild(n.querySelector('.results-layout'),old);setTimeout(priceDrawThumbs,50);}
 
 /* ===================== DETAIL ===================== */
 function buildDetail(){
@@ -1896,7 +2050,7 @@ function buildDetail(){
     </div>
     <div class="det-meta">
       <span class="stars-txt">${'★'.repeat(h.stars)}</span>
-      <div class="r-badge">${h.rating}</div>
+      <div class="r-badge">${h.rating}★</div>
       <strong>${h.ratingLabel}</strong>
       <span style="color:var(--gray-500)">· ${h.reviews.toLocaleString()} avis</span>
       <span class="det-loc">📍 ${h.address}</span>
@@ -1928,7 +2082,7 @@ function buildDetail(){
         <div class="det-section">
           <div class="det-sec-title">💬 Avis clients</div>
           <div style="display:flex;align-items:center;gap:16px;margin-bottom:18px;padding:14px;background:var(--gray-50);border-radius:var(--r-md);">
-            <div style="text-align:center;"><div style="font-size:44px;font-weight:800;color:var(--blue)">${h.rating}</div><div style="font-size:13px;color:var(--gray-500)">/10</div></div>
+            <div style="text-align:center;"><div style="font-size:44px;font-weight:800;color:var(--blue)">${h.rating}★</div></div>
             <div><div style="font-size:17px;font-weight:700;">${h.ratingLabel}</div><div style="font-size:13px;color:var(--gray-500)">${h.reviews.toLocaleString()} avis vérifiés</div></div>
           </div>
           <div class="reviews">
@@ -1997,6 +2151,19 @@ function buildDetail(){
     </div>
   </div>`;
   return d;
+}
+
+function renderStars(rating){
+  const full = Math.floor(rating);
+  const half = rating % 1 >= 0.5 ? 1 : 0;
+  const empty = 5 - full - half;
+  return '<span style="color:#F59E0B;font-size:14px;letter-spacing:1px;">'
+    + '★'.repeat(full)
+    + (half ? '½' : '')
+    + '<span style="color:#D1D5DB;">'+'★'.repeat(empty)+'</span>'
+    + '</span> '
+    + '<span style="font-size:12px;font-weight:700;color:var(--gray-700);">'
+    + rating.toFixed(1)+'</span>';
 }
 
 function amenIcon(f){const m={'Wi-Fi gratuit':'📶','Piscine':'🏊','Spa':'💆','Restaurant':'🍽️','Parking':'🅿️','Cuisine équipée':'🍳','AC':'❄️','Terrasse':'🌿','Bar':'🍸','Petit-déjeuner inclus':'☕','Vue mer':'🌊','Onsen':'♨️','Salle de gym':'💪','Bar panoramique':'🌃','Concierge 24h':'🛎️','Bain japonais':'🛁','Jardin zen':'🎋','Yukata inclus':'👘','Dîner traditionnel':'🥢','Petit-déjeuner':'☕','Transfer aéroport':'🚗','Piscine privée':'🏊','Salle de sport':'💪'};return m[f]||'✓';}
@@ -2398,12 +2565,10 @@ function annStep0(ad){return `<div class="ann-card">
     <div class="type-icon">${t.icon}</div><div class="type-name">${t.name}</div>
   </div>`).join('')}</div>
   <div class="ann-sec" style="margin-top:20px;">Informations générales</div>
-  <div class="ann-full a-field"><label>Nom de l'hébergement *</label>
-    <input id="af-name" type="text" placeholder="Ex : Appartement lumineux vue mer à Nice" value="${ad.name}" oninput="annSet('name',this.value)"></div>
   <div class="ann-row">
-    <div class="a-field"><label>Catégorie (étoiles)</label>
-      <select oninput="annSet('stars',+this.value)">${[1,2,3,4,5].map(n=>`<option value="${n}" ${ad.stars==n?'selected':''}>${n} étoile${n>1?'s':''}</option>`).join('')}</select></div>
-    <div class="a-field"><label>Surface (m²)</label>
+    <div class="a-field" style="flex:2;"><label>Nom de l'hébergement *</label>
+      <input id="af-name" type="text" placeholder="Ex : Appartement lumineux vue mer à Nice" value="${ad.name}" oninput="annSet('name',this.value)"></div>
+    <div class="a-field" style="flex:1;"><label>Surface (m²)</label>
       <input type="number" min="10" placeholder="65" value="${ad.size}" oninput="annSet('size',this.value)"></div>
   </div>
   <div class="ann-row-3">
@@ -2433,13 +2598,11 @@ function annStep1(ad){
 
   <div class="ann-full a-field"><label>Adresse (numéro et rue) *</label>
     <input id="af-address" type="text" placeholder="Ex : 24 avenue des Lilas" value="${ad.address}" oninput="annSet('address',this.value)"></div>
-  <div class="ann-row">
-    <div class="a-field"><label>Ville *</label><input id="af-city" type="text" placeholder="Paris" value="${ad.city}" oninput="annSet('city',this.value)"></div>
-    <div class="a-field"><label>Code postal</label><input id="af-zip" type="text" placeholder="75001" value="${ad.zip}" oninput="annSet('zip',this.value)"></div>
+  <div style="display:grid;grid-template-columns:2fr 1fr 2fr;gap:14px;margin-bottom:14px;">
+    <div class="a-field"><label>Ville *</label><input id="af-city" type="text" placeholder="Paris" value="${ad.city}" oninput="annSet(\'city\',this.value)"></div>
+    <div class="a-field"><label>Code postal</label><input id="af-zip" type="text" placeholder="75001" value="${ad.zip}" oninput="annSet(\'zip\',this.value)"></div>
+    <div class="a-field"><label>Pays</label><select oninput="annSet(\'country\',this.value)">${opts}</select></div>
   </div>
-  <div class="ann-row">
-    <div class="a-field"><label>Pays</label><select oninput="annSet('country',this.value)">${opts}</select></div>
-    <div class="a-field"><label>Étage</label><input type="text" placeholder="3ème, RDC…" value="${ad.floor}" oninput="annSet('floor',this.value)"></div>
   </div>
   <div style="margin-top:12px;">
     <button onclick="geocodeAddress()" style="background:var(--blue);color:#fff;padding:9px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">🔍 Localiser sur la carte</button>
@@ -2675,21 +2838,61 @@ function annStep4(ad){
   ${amenObjs.length>0?`<div style="margin-bottom:16px;"><div style="font-size:12px;color:var(--gray-500);font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;">Équipements</div>
     <div class="amen-tags">${amenObjs.map(a=>`<span class="amen-tag">${a.icon} ${a.name}</span>`).join('')}</div></div>`:''}
   <div class="ann-sec">Vos coordonnées</div>
-  <div class="ann-row">
-    <div class="a-field"><label>Prénom *</label><input id="af-first" type="text" placeholder="Jean" value="${ad.firstname}" oninput="annSet('firstname',this.value)"></div>
-    <div class="a-field"><label>Nom *</label><input id="af-last" type="text" placeholder="Dupont" value="${ad.lastname}" oninput="annSet('lastname',this.value)"></div>
-  </div>
-  <div class="ann-row">
-    <div class="a-field"><label>E-mail *</label><input id="af-email" type="email" placeholder="jean@exemple.com" value="${ad.email||auth.currentUser?.email||''}" oninput="annSet('email',this.value)"></div>
-    <div class="a-field"><label>Téléphone</label><input type="tel" placeholder="+33 6 12 34 56 78" value="${ad.phone}" oninput="annSet('phone',this.value)"></div>
-  </div>
+  ${buildAnnCoords(auth.currentUser, ad)}
   <div style="background:var(--gray-50);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:var(--gray-500);margin-top:8px;line-height:1.7;">
     En publiant, vous acceptez les <a style="color:var(--blue-l);">Conditions d'utilisation</a> et la <a style="color:var(--blue-l);">Charte des propriétaires</a> Casago.
   </div>
   ${annNavBtns()}
 </div>`;}
 
+function buildAnnCoords(cu, ad){
+  if(cu){
+    const avatarHtml = cu.photo
+      ? '<img src="'+cu.photo+'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
+      : '<div style="width:48px;height:48px;border-radius:50%;background:var(--yellow);color:var(--gray-900);font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+cu.firstName[0]+cu.lastName[0]+'</div>';
+    return '<div style="background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:var(--r-lg);padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:8px;">'
+      +avatarHtml
+      +'<div style="flex:1;">'
+        +'<div style="font-size:16px;font-weight:800;color:var(--gray-900);">'+cu.firstName+' '+cu.lastName+'</div>'
+        +'<div style="font-size:13px;color:var(--gray-500);margin-top:2px;">📧 '+cu.email+'</div>'
+        +(cu.phone?'<div style="font-size:13px;color:var(--gray-500);">📞 '+cu.phone+'</div>':'')
+      +'</div>'
+      +'<a onclick="navigate(\'profil\')" style="font-size:12px;color:var(--blue-l);font-weight:600;cursor:pointer;white-space:nowrap;">✏️ Modifier</a>'
+    +'</div>'
+    +'<div style="font-size:12px;color:var(--green);font-weight:600;">✅ Coordonnées récupérées depuis votre profil</div>';
+  }
+  return '<div class="ann-row">'
+    +'<div class="a-field"><label>Prénom *</label><input id="af-first" type="text" placeholder="Jean" value="'+(ad.firstname||'')+'" oninput="annSet(\'firstname\',this.value)"></div>'
+    +'<div class="a-field"><label>Nom *</label><input id="af-last" type="text" placeholder="Dupont" value="'+(ad.lastname||'')+'" oninput="annSet(\'lastname\',this.value)"></div>'
+    +'</div>'
+    +'<div class="ann-row">'
+    +'<div class="a-field"><label>E-mail *</label><input id="af-email" type="email" placeholder="jean@exemple.com" value="'+(ad.email||'')+'" oninput="annSet(\'email\',this.value)"></div>'
+    +'<div class="a-field"><label>Téléphone</label><input type="tel" placeholder="+33 6 12 34 56 78" value="'+(ad.phone||'')+'" oninput="annSet(\'phone\',this.value)"></div>'
+    +'</div>';
+}
+
 function annSet(key,val){appState.annonceData[key]=val;}
+
+function excAutoFill(){
+  const cu = auth.currentUser;
+  if(!cu) return;
+  const fd = appState.excursionFormData;
+  if(!fd.firstname && cu.firstName) fd.firstname = cu.firstName;
+  if(!fd.lastname  && cu.lastName)  fd.lastname  = cu.lastName;
+  if(!fd.email     && cu.email)     fd.email     = cu.email;
+  if(!fd.phone     && cu.phone)     fd.phone     = cu.phone;
+}
+
+function annAutoFill(){
+  // Pre-fill coordonnées from connected user
+  const cu = auth.currentUser;
+  if(!cu) return;
+  const ad = appState.annonceData;
+  if(!ad.firstname && cu.firstName) ad.firstname = cu.firstName;
+  if(!ad.lastname  && cu.lastName)  ad.lastname  = cu.lastName;
+  if(!ad.email     && cu.email)     ad.email     = cu.email;
+  if(!ad.phone     && cu.phone)     ad.phone     = cu.phone;
+}
 
 function annRefresh(){
   const el=document.getElementById('ann-step');
@@ -3694,7 +3897,7 @@ function buildExcursions(){
       <div style="background:#fff;border-radius:var(--r-lg);padding:10px 14px;display:flex;gap:10px;align-items:center;max-width:620px;border:3px solid var(--yellow);box-shadow:0 8px 32px rgba(0,0,0,.25);">
         <span style="font-size:18px;">🔍</span>
         <input type="text" id="exc-search" placeholder="Ville, activité, mot-clé…" value="${search}"
-          oninput="appState.excursionSearch=this.value;refreshExcursions()"
+          onkeydown="if(event.key==='Enter'){appState.excursionSearch=this.value;refreshExcursions();}"
           style="border:none;font-size:15px;flex:1;color:var(--gray-900);outline:none;background:transparent;">
         <button onclick="appState.excursionSearch=document.getElementById('exc-search').value;refreshExcursions()"
           style="background:var(--yellow);color:var(--gray-900);padding:8px 20px;border-radius:var(--r-md);font-size:14px;font-weight:800;border:none;cursor:pointer;white-space:nowrap;">Rechercher</button>
@@ -4206,23 +4409,8 @@ function excFormStep2(fd){
       </div>
     </div>
 
-    <div style="font-size:15px;font-weight:700;margin-bottom:12px;">Vos coordonnées</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-      <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">Prénom *</label>
-        <input type="text" value="${fd.firstname}" oninput="excSet('firstname',this.value)"
-          style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-      <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">Nom *</label>
-        <input type="text" value="${fd.lastname}" oninput="excSet('lastname',this.value)"
-          style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">E-mail *</label>
-        <input type="email" value="${fd.email}" oninput="excSet('email',this.value)"
-          style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-      <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">Téléphone</label>
-        <input type="tel" value="${fd.phone||''}" oninput="excSet('phone',this.value)" placeholder="+33 6..."
-          style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-    </div>
+    <div style="font-size:15px;font-weight:700;margin-bottom:12px;">👤 Vos coordonnées</div>
+    ${buildAnnCoords(auth.currentUser, fd)}
     ${excNavBtns()}
   </div>`;
 }
@@ -6144,7 +6332,7 @@ function buildAdminHosts(KPIS,fmtEur,fmt,fmtPct,trend,kpiCard,secHeader){
           </div></td>
           <td style="padding:10px 14px;">${h.city}, ${h.country}</td>
           <td style="padding:10px 14px;font-weight:600;">${h.properties.length}</td>
-          <td style="padding:10px 14px;"><span style="color:#e6a800;font-weight:700;">★ ${h.rating}</span></td>
+          <td style="padding:10px 14px;"><span style="color:#e6a800;font-weight:700;">${h.rating}★</span></td>
           <td style="padding:10px 14px;font-weight:600;">${h.totalStays}</td>
           <td style="padding:10px 14px;">${h.responseTime}</td>
           <td style="padding:10px 14px;">${h.superhost?'<span style="background:#fff0f2;color:#FF385C;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;">🏆 OUI</span>':'—'}</td>
