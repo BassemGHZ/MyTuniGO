@@ -881,6 +881,8 @@ function render() {
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
   else if(pg==='admin') app.appendChild(buildAdminDashboard());
   else if(pg==='about')     app.appendChild(buildAboutPage());
+  else if(pg==='cgu')       app.appendChild(buildCGUPage());
+  else if(pg==='privacy')   app.appendChild(buildPrivacyPage());
   else if(pg==='fidelite')  app.appendChild(buildFidelitePage());
   app.appendChild(buildFooter());
   // Init maps after DOM is ready
@@ -1335,7 +1337,7 @@ function buildRegisterForm(){
   <div class="f-field"><label>Confirmer</label><input type="password" id="rf-confirm" placeholder="Répétez le mot de passe"></div>
   <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:14px;">
     <input type="checkbox" id="rf-terms" style="margin-top:3px;width:15px;height:15px;accent-color:var(--blue);flex-shrink:0;">
-    <label for="rf-terms" style="font-size:13px;color:var(--gray-600);cursor:pointer;">J'accepte les <a style="color:var(--blue-l);">Conditions d'utilisation</a></label>
+    <label for="rf-terms" style="font-size:13px;color:var(--gray-600);cursor:pointer;">J'accepte les <a onclick="closeModal();navigate('cgu')" style="color:var(--blue-l);cursor:pointer;text-decoration:underline;font-weight:600;">Conditions d'utilisation</a></label>
   </div>
   <button class="btn-submit" onclick="handleRegister()">Créer mon compte gratuitement</button>
   <div class="m-footer">Déjà un compte ? <a onclick="modalMode='login';renderModal()">Se connecter</a></div>`;
@@ -2840,7 +2842,7 @@ function annStep4(ad){
   <div class="ann-sec">Vos coordonnées</div>
   ${buildAnnCoords(auth.currentUser, ad)}
   <div style="background:var(--gray-50);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:var(--gray-500);margin-top:8px;line-height:1.7;">
-    En publiant, vous acceptez les <a style="color:var(--blue-l);">Conditions d'utilisation</a> et la <a style="color:var(--blue-l);">Charte des propriétaires</a> Casago.
+    En publiant, vous acceptez les <a onclick="navigate('cgu')" style="color:var(--blue-l);cursor:pointer;text-decoration:underline;font-weight:600;">Conditions d'utilisation</a> et la <a onclick="navigate('cgu')" style="color:var(--blue-l);cursor:pointer;text-decoration:underline;font-weight:600;">Charte des propriétaires</a> Casago.
   </div>
   ${annNavBtns()}
 </div>`;}
@@ -6742,6 +6744,96 @@ function syncAllIcal(){
   });
 }
 
+
+/* ===================== PAGE CGU ===================== */
+function buildCGUPage(){
+  var d = document.createElement('div');
+  d.style.cssText = 'background:#fff;min-height:100vh;';
+  var hero = document.createElement('div');
+  hero.style.cssText = 'background:linear-gradient(135deg,var(--blue),#2C4470);color:#fff;padding:56px 20px 40px;text-align:center;';
+  hero.innerHTML = '<div style="max-width:800px;margin:0 auto;"><div style="font-size:40px;margin-bottom:12px;">📋</div>'
+    +'<h1 style="font-size:32px;font-weight:900;margin-bottom:8px;">Conditions Générales d\'Utilisation</h1>'
+    +'<p style="opacity:.8;font-size:15px;">Version 1.0 — Mai 2026 · casago.fr</p></div>';
+  d.appendChild(hero);
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'max-width:860px;margin:0 auto;padding:48px 24px 80px;';
+
+  var articles = [
+    {num:'1',title:'Définitions',body:'<b>Casago</b> : la société éditrice de la plateforme casago.fr.<br><b>Plateforme</b> : le site web casago.fr.<br><b>Utilisateur</b> : toute personne utilisant la Plateforme.<br><b>Voyageur</b> : utilisateur cherchant à réserver un hébergement.<br><b>Hôte</b> : utilisateur proposant un hébergement à la location.<br><b>Annonce</b> : description publiée par un Hôte.<br><b>Réservation</b> : accord conclu entre un Voyageur et un Hôte.'},
+    {num:'2',title:'Objet et champ d\'application',body:'Les présentes CGU régissent l\'accès et l\'utilisation de Casago, conformément au droit français, au Règlement DSA (UE) 2022/2065, au Règlement P2B (UE) 2019/1150 et à la loi LCEN n°2004-575. Casago agit en qualité d\'hébergeur et d\'intermédiaire.'},
+    {num:'3',title:'Inscription et compte utilisateur',body:'<b>3.1</b> Réservée aux personnes majeures (18 ans+). Informations exactes et à jour obligatoires.<br><b>3.2 Vérification e-mail</b> : code OTP à 6 chiffres, valable 15 minutes.<br><b>3.3 Sécurité</b> : l\'Utilisateur est seul responsable de la confidentialité de ses identifiants.'},
+    {num:'4',title:'Services proposés',body:'Mise en relation Hôtes/Voyageurs pour location saisonnière. Services : publication d\'annonces, réservation, messagerie, calendrier, fidélité.<br><br>Conformément à l\'article L.324-1 du Code du tourisme, les locations courte durée peuvent nécessiter une déclaration en mairie. L\'Hôte en est seul responsable.'},
+    {num:'5',title:'Obligations des Hôtes',body:'L\'Hôte s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Être propriétaire ou disposer des droits nécessaires</li><li>Respecter la législation (déclaration mairie, taxe de séjour, fiscalité)</li><li>Fournir des informations exactes et des photos représentatives</li><li>Souscrire une assurance couvrant les risques locatifs</li><li>Respecter le RGPD pour les données des Voyageurs</li></ul>'},
+    {num:'6',title:'Obligations des Voyageurs',body:'Le Voyageur s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Utiliser le logement conformément à sa destination</li><li>Respecter le nombre maximum d\'occupants</li><li>Restituer le logement dans son état initial</li><li>Informer l\'Hôte en cas de dommages</li><li>Ne pas sous-louer sans accord écrit de l\'Hôte</li></ul>'},
+    {num:'7',title:'Paiement et commission',body:'<b>Version lancement :</b> Casago ne prélève aucune commission (0%). Le paiement s\'effectue sur place entre Voyageur et Hôte. Aucun prélèvement en ligne effectué par Casago.<br><br>Ce taux pourra évoluer avec un préavis de <b>30 jours</b> par email.'},
+    {num:'8',title:'Annulations',body:'<b>Flexible</b> : remboursement intégral jusqu\'à 24h avant.<br><b>Modérée</b> : 50% si annulation moins de 7 jours avant.<br><b>Stricte</b> : non remboursable sauf force majeure.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
+    {num:'9',title:'Responsabilité',body:'Casago est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de Casago est limitée aux sommes effectivement perçues.'},
+    {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à Casago une licence non-exclusive et gratuite d\'utilisation.'},
+    {num:'11',title:'Protection des données (RGPD)',body:'Conformément au RGPD (UE) 2016/679 et à la loi Informatique et Libertés :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Responsable</b> : Casago SAS — contact@casago.fr</li><li><b>Données</b> : nom, prénom, email, téléphone, navigation</li><li><b>Durée</b> : 3 ans après la dernière activité</li><li><b>Droits</b> : accès, rectification, suppression, portabilité — contact@casago.fr</li><li><b>Réclamation</b> : CNIL — cnil.fr</li></ul>'},
+    {num:'12',title:'Cookies',body:'Cookies strictement nécessaires au fonctionnement. Cookies analytiques avec votre consentement. Conformément à la délibération CNIL n°2020-091, vous pouvez retirer votre consentement à tout moment.'},
+    {num:'13',title:'Modifications des CGU',body:'Toute modification substantielle sera notifiée par email avec un préavis de 30 jours, conformément au Règlement P2B (UE) 2019/1150.'},
+    {num:'14',title:'Droit applicable et juridiction',body:'Droit français applicable. Médiation consommateurs selon articles L.616-1 et R.616-1 du Code de la consommation. En cas de litige non résolu amiablement sous 60 jours : tribunaux de Paris compétents. Plateforme ODR : ec.europa.eu/consumers/odr'},
+    {num:'15',title:'Mentions légales',body:'<b>Éditeur</b> : Casago SAS · <b>Contact</b> : contact@casago.fr · <b>Site</b> : casago.fr · <b>Hébergement</b> : GitHub Pages<br>Conformément à la loi LCEN n°2004-575 du 21 juin 2004.'},
+  ];
+
+  articles.forEach(function(art){
+    var sec = document.createElement('div');
+    sec.style.cssText = 'margin-bottom:32px;border-bottom:1px solid var(--gray-200);padding-bottom:28px;';
+    sec.innerHTML = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">'
+      +'<div style="width:32px;height:32px;border-radius:50%;background:var(--blue);color:#fff;font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+art.num+'</div>'
+      +'<h2 style="font-size:18px;font-weight:800;color:var(--blue);">Article '+art.num+' — '+art.title+'</h2>'
+      +'</div><div style="font-size:15px;color:var(--gray-700);line-height:1.8;">'+art.body+'</div>';
+    wrap.appendChild(sec);
+  });
+
+  var sig = document.createElement('div');
+  sig.style.cssText = 'background:var(--blue);color:#fff;border-radius:var(--r-xl);padding:24px 28px;text-align:center;margin-top:40px;';
+  sig.innerHTML = '<div style="font-size:16px;font-weight:800;margin-bottom:6px;">Casago SAS — casago.fr</div>'
+    +'<div style="font-size:13px;opacity:.8;">contact@casago.fr · Version 1.0 · Mai 2026 · Tous droits réservés</div>';
+  wrap.appendChild(sig);
+  d.appendChild(wrap);
+  return d;
+}
+
+/* ===================== PAGE POLITIQUE CONFIDENTIALITÉ ===================== */
+function buildPrivacyPage(){
+  var d = document.createElement('div');
+  d.style.cssText = 'background:#fff;min-height:100vh;';
+  var hero = document.createElement('div');
+  hero.style.cssText = 'background:linear-gradient(135deg,#166534,#0a5c3e);color:#fff;padding:56px 20px 40px;text-align:center;';
+  hero.innerHTML = '<div style="max-width:800px;margin:0 auto;"><div style="font-size:40px;margin-bottom:12px;">🔒</div>'
+    +'<h1 style="font-size:32px;font-weight:900;margin-bottom:8px;">Politique de Confidentialité</h1>'
+    +'<p style="opacity:.8;font-size:15px;">Conforme au RGPD (UE) 2016/679 — Mai 2026</p></div>';
+  d.appendChild(hero);
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'max-width:860px;margin:0 auto;padding:48px 24px 80px;';
+  var sections = [
+    {title:'Qui collecte vos données ?',body:'Casago SAS, responsable de traitement. DPO : contact@casago.fr'},
+    {title:'Quelles données ?',body:'Identité (nom, prénom), coordonnées (email, téléphone), navigation (IP, pages), historique des réservations et annonces.'},
+    {title:'Pourquoi ?',body:'<ul style="margin:8px 0 0 20px;line-height:2;"><li>Gestion des comptes et authentification</li><li>Traitement des réservations</li><li>Envoi de notifications et confirmations</li><li>Amélioration des services</li><li>Obligations légales</li></ul>'},
+    {title:'Base légale (RGPD art. 6)',body:'Exécution du contrat (réservations) · Consentement (cookies analytiques) · Obligation légale (conservation fiscale) · Intérêt légitime (sécurité).'},
+    {title:'Durée de conservation',body:'Données de compte : 3 ans après la dernière activité. Réservations : 5 ans (obligations comptables). Navigation : 13 mois maximum.'},
+    {title:'Vos droits',body:'Articles 15 à 22 du RGPD :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Accès</b> : copie de vos données</li><li><b>Rectification</b> : corriger vos données</li><li><b>Suppression</b> : effacement</li><li><b>Portabilité</b> : format structuré</li><li><b>Opposition</b> : s\'opposer à certains traitements</li></ul>Exercice : contact@casago.fr — réponse sous 30 jours.'},
+    {title:'Réclamation',body:'Auprès de la <b>CNIL</b> : cnil.fr · 3 Place de Fontenoy, 75007 Paris.'},
+    {title:'Transferts hors UE',body:'Casago ne transfère pas vos données hors de l\'Union Européenne sans garanties appropriées.'},
+    {title:'Modifications',body:'Toute modification significative sera notifiée par email avec un préavis de 30 jours.'},
+  ];
+  sections.forEach(function(sec){
+    var div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:28px;border-bottom:1px solid var(--gray-200);padding-bottom:24px;';
+    div.innerHTML = '<h2 style="font-size:17px;font-weight:800;color:#166534;margin-bottom:10px;">'+sec.title+'</h2>'
+      +'<div style="font-size:15px;color:var(--gray-700);line-height:1.8;">'+sec.body+'</div>';
+    wrap.appendChild(div);
+  });
+  var sig = document.createElement('div');
+  sig.style.cssText = 'background:#166534;color:#fff;border-radius:var(--r-xl);padding:24px 28px;text-align:center;margin-top:40px;';
+  sig.innerHTML = '<div style="font-size:16px;font-weight:800;margin-bottom:6px;">Casago SAS — contact@casago.fr</div>'
+    +'<div style="font-size:13px;opacity:.8;">RGPD (UE) 2016/679 · LCEN · CNIL · Mai 2026</div>';
+  wrap.appendChild(sig);
+  d.appendChild(wrap);
+  return d;
+}
+
 /* ===================== FOOTER ===================== */
 function buildFooter(){
   const f=document.createElement('footer');
@@ -6776,7 +6868,11 @@ function buildFooter(){
   <a onclick="navigate('fidelite')">Programme fidélité</a>
 </div>
     </div>
-    <div class="footer-bottom"><p>© 2026 Casago. Tous droits réservés.</p><p>Confidentialité · CGU · Cookies · Accessibilité</p></div>
+    <div class="footer-bottom"><p>© 2026 Casago. Tous droits réservés.</p><p>
+  <a onclick="navigate('privacy')" style="cursor:pointer;color:inherit;">Politique de confidentialité</a>
+  · <a onclick="navigate('cgu')" style="cursor:pointer;color:inherit;">CGU</a>
+  · <a onclick="navigate('cgu')" style="cursor:pointer;color:inherit;">Mentions légales</a>
+</p></div>
   </div>`;
   return f;
 }
