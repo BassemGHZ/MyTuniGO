@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Casago — Trouvez votre hébergement idéal</title>
+<title>MyTunigo — Vivez le monde, comme chez vous</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -585,7 +585,7 @@ window._lastWidth = window.innerWidth;
 setTimeout(showDeviceBanner, 500);
 
 /* ===================== COMMISSION ===================== */
-const COMMISSION_RATE = 0.07; // 7% prélevée par Casago sur chaque réservation
+const COMMISSION_RATE = 0.07; // 7% prélevée par MyTunigo sur chaque réservation
 
 // Calculate commission breakdown
 function calcCommission(grossTotal){
@@ -684,18 +684,10 @@ const hostsData = [
 
 // Booking requests (Airbnb-style: host must accept/decline)
 const bookingRequests = [
-  {id:'REQ-001', hotelId:1, guestId:1, guestName:'Thomas Leblanc', guestAvatar:'TL',
-   checkIn:'2026-07-15', checkOut:'2026-07-20', guests:2, rooms:1, total:1040,
-   message:'Bonjour Sophie ! Nous sommes un couple en voyage de noces à Paris. Votre appartement a l\'air magnifique. Pouvez-vous nous confirmer la disponibilité ?',
-   status:'pending', createdAt:'2025-04-25'},
-  {id:'REQ-002', hotelId:1, guestId:2, guestName:'Emma Wilson', guestAvatar:'EW',
-   checkIn:'2026-08-01', checkOut:'2026-08-05', guests:3, rooms:1, total:832,
-   message:'Hi Sophie! We\'re a group of 3 friends visiting Paris for the first time. Your place looks amazing!',
-   status:'accepted', createdAt:'2025-04-20'},
   {id:'REQ-003', hotelId:4, guestId:3, guestName:'Mehdi Benali', guestAvatar:'MB',
    checkIn:'2026-06-10', checkOut:'2026-06-13', guests:2, rooms:1, total:323,
-   message:'Hola Carlos! Vengo con mi novia para el festival de música. ¿Está disponible el apartamento?',
-   status:'declined', createdAt:'2025-04-18'},
+   message:'Bonjour, je souhaite réserver votre appartement pour 3 nuits avec ma compagne. Est-il disponible ?',
+   status:'pending', createdAt:'2025-04-18'},
 ];
 
 // Messages / conversations
@@ -764,7 +756,7 @@ const BADGE_INFO = {
 const auth = {
   users:[
     // ── Profil 1 : Utilisateur simple ──────────────────────────────
-    {id:1, role:'user', activeMode:'voyageur',
+    {id:1, role:'user',
      firstName:"Sophie", lastName:"Moreau",
      email:"sophie@exemple.com", password:"User1234!",
      phone:"+33 6 12 34 56 78", avatar:"SM",
@@ -773,10 +765,10 @@ const auth = {
      bio:"Voyageuse passionnée, j'adore explorer les nouvelles destinations et les hébergements atypiques.",
      verified:true, totalBookings:7, totalSpent:2840, loyaltyPoints:420, loyaltyTier:'Explorateur', photo:null},
 
-    // ── Profil 2 : Hôte ────────────────────────────────────────────
-    {id:2, role:'host', activeMode:'hote',
+    // ── Profil 2 : Utilisateur ──────────────────────────────────────
+    {id:2, role:'user',
      firstName:"Marc", lastName:"Leblanc",
-     email:"marc@exemple.com", password:"Host1234!",
+     email:"marc@exemple.com", password:"User5678!",
      phone:"+33 6 98 76 54 32", avatar:"ML",
      createdAt:"2023-06-01",
      bankData:{iban:"FR76 3000 6000 0112 3456 7890 189",bic:"BNPAFRPPXXX",bankName:"BNP Paribas",accountName:"Marc Leblanc",paypalEmail:"marc@paypal.com",preferredMethod:"virement"},
@@ -785,13 +777,13 @@ const auth = {
      responseRate:94, responseTime:'< 2h', loyaltyPoints:850, loyaltyTier:'Nomade', photo:null},
 
     // ── Profil 3 : Admin ───────────────────────────────────────────
-    {id:3, role:'admin', activeMode:'hote',
-     firstName:"Admin", lastName:"Casago",
-     email:"admin@casago.fr", password:"Admin1234!",
+    {id:3, role:'admin',
+     firstName:"Admin", lastName:"MyTunigo",
+     email:"admin@mytunigo.com", password:"Admin1234!",
      phone:"+33 1 23 45 67 89", avatar:"AD",
      createdAt:"2023-01-01",
      bankData:{},
-     bio:"Compte administrateur de la plateforme Casago.",
+     bio:"Compte administrateur de la plateforme MyTunigo.",
      verified:true, isAdmin:true, photo:null},
   ],
   currentUser:null, dropdownOpen:false
@@ -835,19 +827,19 @@ let appState = {
   calendarView:{year:new Date().getFullYear(),month:new Date().getMonth()+1},
   bookingRequestsFilter:'all',
   myAnnonces:[
-    {id:'ANN-K7L8M9N0',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:2,maxNights:30,hostId:2,hotelId:4,type:'apt',typeLabel:'Appartement',emoji:'🌞',name:'Casa del Sol — Vue Gaudí',city:'Barcelone',country:'Espagne',address:'Passeig de Gràcia 85',price_night:98,stars:4,rooms:2,bathrooms:1,capacity:4,status:'publiée',discount:0,createdAt:'2025-01-15',updatedAt:'2025-04-20',
+    {id:'ANN-K7L8M9N0',ownerId:1,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:2,maxNights:30,hostId:2,hotelId:4,type:'apt',typeLabel:'Appartement',emoji:'🌞',name:'Casa del Sol — Vue Gaudí',city:'Barcelone',country:'Espagne',address:'Passeig de Gràcia 85',price_night:98,stars:4,rooms:2,bathrooms:1,capacity:4,status:'publiée',discount:0,createdAt:'2025-01-15',updatedAt:'2025-04-20',
      stats:{vues:1284,clics:342,reservations:18,revenus:8820,tauxOccupation:62,noteMoyenne:4.7,avis:23,
             vuesMois:[80,95,110,130,145,160,142,155,170,165,180,152],
             revenusMois:[420,490,560,680,720,810,750,820,880,840,920,730]}},
-    {id:'ANN-O1P2Q3R4',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:3,maxNights:30,hotelId:1,type:'house',typeLabel:'Maison',emoji:'🏡',name:'Villa Provençale avec Piscine',city:'Aix-en-Provence',country:'France',address:'Route des Calanques 12',price_night:175,stars:4,rooms:4,bathrooms:2,capacity:8,status:'publiée',discount:0,createdAt:'2024-11-03',updatedAt:'2025-03-10',
+    {id:'ANN-O1P2Q3R4',ownerId:1,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:3,maxNights:30,hotelId:1,type:'house',typeLabel:'Maison',emoji:'🏡',name:'Villa Provençale avec Piscine',city:'Aix-en-Provence',country:'France',address:'Route des Calanques 12',price_night:175,stars:4,rooms:4,bathrooms:2,capacity:8,status:'publiée',discount:0,createdAt:'2024-11-03',updatedAt:'2025-03-10',
      stats:{vues:876,clics:214,reservations:11,revenus:13650,tauxOccupation:45,noteMoyenne:4.9,avis:14,
             vuesMois:[40,55,70,90,110,130,120,115,100,95,85,66],
             revenusMois:[0,875,1050,1400,1750,2100,1925,1750,1575,1225,875,1125]}},
-    {id:'ANN-S5T6U7V8',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:1,maxNights:30,hotelId:3,type:'studio',typeLabel:'Studio',emoji:'🛋️',name:'Studio cosy Montmartre',city:'Paris',country:'France',address:'Rue Lepic 34',price_night:65,stars:3,rooms:1,bathrooms:1,capacity:2,status:'en attente',discount:0,createdAt:'2025-04-18',updatedAt:'2025-04-18',
+    {id:'ANN-S5T6U7V8',ownerId:2,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:1,maxNights:30,hotelId:3,type:'studio',typeLabel:'Studio',emoji:'🛋️',name:'Studio cosy Montmartre',city:'Paris',country:'France',address:'Rue Lepic 34',price_night:65,stars:3,rooms:1,bathrooms:1,capacity:2,status:'en attente',discount:0,createdAt:'2025-04-18',updatedAt:'2025-04-18',
      stats:{vues:124,clics:31,reservations:0,revenus:0,tauxOccupation:0,noteMoyenne:0,avis:0,
             vuesMois:[0,0,0,0,0,0,0,0,0,0,0,124],
             revenusMois:[0,0,0,0,0,0,0,0,0,0,0,0]}},
-    {id:'ANN-W9X0Y1Z2',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:4,maxNights:30,hotelId:null,type:'villa',typeLabel:'Villa',emoji:'🌴',name:'Villa Sunset Marrakech',city:'Marrakech',country:'Maroc',address:'Palmeraie, Route de Fès',price_night:220,stars:5,rooms:5,bathrooms:3,capacity:10,status:'suspendue',discount:0,createdAt:'2024-06-01',updatedAt:'2024-12-15',
+    {id:'ANN-W9X0Y1Z2',ownerId:2,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:4,maxNights:30,hotelId:null,type:'villa',typeLabel:'Villa',emoji:'🌴',name:'Villa Sunset Marrakech',city:'Marrakech',country:'Maroc',address:'Palmeraie, Route de Fès',price_night:220,stars:5,rooms:5,bathrooms:3,capacity:10,status:'suspendue',discount:0,createdAt:'2024-06-01',updatedAt:'2024-12-15',
      stats:{vues:2341,clics:587,reservations:29,revenus:41800,tauxOccupation:71,noteMoyenne:4.8,avis:41,
             vuesMois:[180,195,220,240,260,280,270,265,250,245,230,206],
             revenusMois:[2800,3200,3600,4000,4200,4600,4400,4200,3800,3600,3200,6200]}},
@@ -907,7 +899,7 @@ function buildHeader(){
   const h = document.createElement('div');
   h.className = 'header';
   h.innerHTML = `<div class="header-inner">
-    <div class="logo" onclick="navigate('home')">Casa<span>go</span></div>
+    <div class="logo" onclick="navigate('home')">My<span>Tunigo</span></div>
     <nav class="nav">
       <button class="nav-btn ${appState.page==='home'?'active':''}" onclick="navigate('home')">🏠 Hébergements</button>
       <button class="nav-btn ${appState.page==='excursions'||appState.page==='excursion-detail'||appState.page==='excursion-form'?'active':''}" onclick="navigate('excursions')">✈️ Excursions</button>
@@ -946,14 +938,12 @@ function toggleDropdown(){
   const dd = document.createElement('div');
   dd.className = 'user-dropdown'; dd.id = 'user-dropdown';
   const isAdmin = u.role==='admin' || u.isAdmin;
-  const mode = u.activeMode || (u.role==='host' ? 'hote' : 'voyageur');
-  const isHote = mode === 'hote';
 
   dd.innerHTML = `
-    <!-- En-tête profil -->
     <div class="ud-header">
       <div style="display:flex;align-items:center;gap:10px;">
-        ${u.photo ? '<img src="'+u.photo+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
+        ${u.photo
+          ? '<img src="'+u.photo+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
           : '<div style="width:40px;height:40px;border-radius:50%;background:var(--yellow);color:var(--gray-900);font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">'+u.firstName[0]+u.lastName[0]+'</div>'}
         <div>
           <div class="ud-name">${u.firstName} ${u.lastName}</div>
@@ -962,43 +952,15 @@ function toggleDropdown(){
       </div>
     </div>
 
-    <!-- Sélecteur de mode (si pas admin) -->
-    ${!isAdmin ? `
-    <div style="padding:10px 14px;border-bottom:1px solid var(--gray-200);">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500);margin-bottom:8px;">Mode de navigation</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-        <button onclick="switchMode('voyageur')" style="padding:8px 6px;border-radius:var(--r-md);border:2px solid ${!isHote?'var(--blue)':'var(--gray-200)'};background:${!isHote?'#e8f4ff':'#fff'};color:${!isHote?'var(--blue)':'var(--gray-600)'};font-size:13px;font-weight:${!isHote?'800':'500'};cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .15s;">
-          <span style="font-size:18px;">✈️</span>
-          <span>Voyageur</span>
-        </button>
-        <button onclick="switchMode('hote')" style="padding:8px 6px;border-radius:var(--r-md);border:2px solid ${isHote?'var(--green)':'var(--gray-200)'};background:${isHote?'#e8f9f0':'#fff'};color:${isHote?'var(--green)':'var(--gray-600)'};font-size:13px;font-weight:${isHote?'800':'500'};cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .15s;">
-          <span style="font-size:18px;">🏠</span>
-          <span>Hôte</span>
-        </button>
-      </div>
-    </div>` : ''}
-
-    <!-- Menu Voyageur -->
-    ${!isHote || isAdmin ? `
     <div class="ud-item" onclick="navigate('home');closeDropdown()">🔍 Explorer les logements</div>
     <div class="ud-item" onclick="navigate('reservations');closeDropdown()">📅 Mes réservations</div>
     <div class="ud-item" onclick="navigate('favoris');closeDropdown()">❤️ Mes favoris</div>
     <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages</div>
-    ` : ''}
-
-    <!-- Menu Hôte -->
-    ${isHote ? `
-    <div style="padding:6px 14px 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500);">Espace hôte</div>
+    <div style="padding:4px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);border-top:1px solid var(--gray-100);margin-top:4px;padding-top:10px;">Espace hôte</div>
     <div class="ud-item" onclick="navigate('booking-requests');closeDropdown()">📨 Réservations du jour</div>
-    <div class="ud-item" onclick="navigate('host-calendar',{selectedAnnonceId:'ANN-K7L8M9N0'});closeDropdown()">📅 Calendrier</div>
     <div class="ud-item" onclick="navigate('mesannonces');closeDropdown()">🏘️ Mes annonces</div>
     <div class="ud-item" onclick="checkAuthAndGo('annonce');closeDropdown()">📋 Déposer une annonce</div>
-    <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages</div>
-    ` : ''}
-
-    <!-- Admin -->
-    ${isAdmin ? `<div class="ud-item" style="background:linear-gradient(135deg,#003580,#0071c2);color:#fff;font-weight:700;border-radius:var(--r-sm);margin:4px 8px;" onclick="navigate('admin');closeDropdown()">⚙️ Administration</div>` : ''}
-
+    ${isAdmin ? '<div class="ud-item" style="background:linear-gradient(135deg,#003580,#0071c2);color:#fff;font-weight:700;border-radius:var(--r-sm);margin:4px 8px;" id="dd-admin-btn">⚙️ Administration</div>' : ''}
     <div style="border-top:1px solid var(--gray-200);margin-top:4px;">
       <div class="ud-item" onclick="navigate('profil');closeDropdown()">👤 Mon profil</div>
       <div class="ud-item danger" id="logout-btn">🚪 Se déconnecter</div>
@@ -1012,8 +974,6 @@ function toggleDropdown(){
 function openMobileDrawer(){
   if(document.getElementById('mobile-drawer')) return;
   const u = auth.currentUser;
-  const mode = u?.activeMode || (u?.role==='host'?'hote':'voyageur');
-  const isHote = mode==='hote';
   const isAdmin = u?.role==='admin' || u?.isAdmin;
 
   // Overlay
@@ -1036,23 +996,15 @@ function openMobileDrawer(){
     : '<div class="drawer-avatar">'+initials+'</div>';
 
   // Voyageur items
-  const voyageurItems = [
+  const items = [
     {icon:'🔍', label:'Explorer les logements', page:'results'},
     {icon:'📅', label:'Mes réservations',        page:'reservations'},
     {icon:'❤️', label:'Mes favoris',             page:'favoris'},
     {icon:'💬', label:'Messages',                page:'messages'},
-  ];
-
-  // Hôte items
-  const hoteItems = [
-    {icon:'📨', label:'Réservations du jour',   page:'booking-requests'},
-    {icon:'📅', label:'Calendrier',              page:'host-calendar'},
+    {icon:'📨', label:'Réservations du jour',    page:'booking-requests'},
     {icon:'🏘️', label:'Mes annonces',           page:'mesannonces'},
     {icon:'📋', label:'Déposer une annonce',     page:'annonce', auth:true},
-    {icon:'💬', label:'Messages',               page:'messages'},
   ];
-
-  const items = isHote ? hoteItems : voyageurItems;
 
   drawer.innerHTML =
     // Header
@@ -1064,18 +1016,7 @@ function openMobileDrawer(){
       +'</div>'
     +'</div>'
 
-    // Mode switcher (if logged in and not admin)
-    +(u && !isAdmin ? '<div class="drawer-mode">'
-      +'<div class="drawer-mode-label">Mode de navigation</div>'
-      +'<div class="drawer-mode-btns">'
-        +'<button id="dm-voy" class="drawer-mode-btn'+(isHote?'':' active-v')+'">'
-          +'<span style="font-size:22px;">✈️</span><span>Voyageur</span>'
-        +'</button>'
-        +'<button id="dm-hote" class="drawer-mode-btn'+(isHote?' active-h':'')+'">'
-          +'<span style="font-size:22px;">🏠</span><span>Hôte</span>'
-        +'</button>'
-      +'</div>'
-    +'</div>' : '')
+''
 
     // Nav items
     +(u ? items.map(function(item){
@@ -1138,27 +1079,9 @@ function drawerLogout(){
   logout();
 }
 
-function switchModeDrawer(mode){
-  if(!auth.currentUser) return;
-  auth.currentUser.activeMode = mode;
-  const idx = auth.users.findIndex(u=>u.id===auth.currentUser.id);
-  if(idx>=0) auth.users[idx].activeMode = mode;
-  closeMobileDrawer();
-  showToast(mode==='hote'?'🏠 Mode Hôte activé':'✈️ Mode Voyageur activé','var(--blue)');
-  setTimeout(openMobileDrawer, 200);
-}
 
-function switchMode(mode){
-  if(!auth.currentUser) return;
-  auth.currentUser.activeMode = mode;
-  const idx = auth.users.findIndex(u=>u.id===auth.currentUser.id);
-  if(idx>=0) auth.users[idx].activeMode = mode;
-  closeDropdown();
-  renderAuthArea();
-  showToast(mode==='hote' ? '🏠 Mode Hôte activé' : '✈️ Mode Voyageur activé', 'var(--blue)');
-  // Redirect to relevant page
-  navigate(mode==='hote' ? 'mesannonces' : 'home');
-}
+
+
 
 /* ── Price range drag ── */
 let _prDragging = null;
@@ -1299,13 +1222,13 @@ function buildLoginForm(){
         <div onclick="autoFill('marc@exemple.com','Host1234!')"
           style="cursor:pointer;padding:8px 12px;border-radius:8px;background:#fff;border:1px solid #c8f0dd;display:flex;justify-content:space-between;align-items:center;transition:background .15s;"
           onmouseover="this.style.background='#e8f9f0'" onmouseout="this.style.background='#fff'">
-          <span style="font-size:13px;">🏠 <strong>Marc Leblanc</strong> — Hôte</span>
-          <code style="font-size:11px;color:#6b7280;background:#f0f4f8;padding:2px 6px;border-radius:4px;">Host1234!</code>
+          <span style="font-size:13px;">✈️ <strong>Marc Leblanc</strong> — Voyageur</span>
+          <code style="font-size:11px;color:#6b7280;background:#f0f4f8;padding:2px 6px;border-radius:4px;">User5678!</code>
         </div>
-        <div onclick="autoFill('admin@casago.fr','Admin1234!')"
+        <div onclick="autoFill('admin@mytunigo.com','Admin1234!')"
           style="cursor:pointer;padding:8px 12px;border-radius:8px;background:#fff;border:1px solid #c8d4f0;display:flex;justify-content:space-between;align-items:center;transition:background .15s;"
           onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background='#fff'">
-          <span style="font-size:13px;">⚙️ <strong>Admin Casago</strong> — Admin</span>
+          <span style="font-size:13px;">⚙️ <strong>Admin MyTunigo</strong> — Admin</span>
           <code style="font-size:11px;color:#6b7280;background:#f0f4f8;padding:2px 6px;border-radius:4px;">Admin1234!</code>
         </div>
       </div>
@@ -1448,11 +1371,11 @@ function showEmailVerificationScreen(email, code){
     <div style="background:#f0f7ff;border:1.5px dashed #7aabda;border-radius:var(--r-lg);padding:16px;margin-bottom:20px;">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4a7cad;margin-bottom:10px;">📬 Aperçu e-mail — Démo uniquement</div>
       <div style="background:#fff;border-radius:var(--r-md);padding:14px;font-size:13px;">
-        <div style="color:var(--gray-500);margin-bottom:4px;"><strong>De :</strong> noreply@casago.fr</div>
-        <div style="color:var(--gray-500);margin-bottom:12px;"><strong>Objet :</strong> Votre code de vérification Casago</div>
+        <div style="color:var(--gray-500);margin-bottom:4px;"><strong>De :</strong> noreply@mytunigo.com</div>
+        <div style="color:var(--gray-500);margin-bottom:12px;"><strong>Objet :</strong> Votre code de vérification MyTunigo</div>
         <div style="color:var(--gray-700);line-height:1.7;">
           Bonjour <strong>${emailVerification.pending?.firstName}</strong>,<br>
-          Votre code de vérification Casago est :<br>
+          Votre code de vérification MyTunigo est :<br>
           <div style="font-size:32px;font-weight:900;letter-spacing:8px;text-align:center;color:var(--blue);background:var(--gray-50);padding:14px;border-radius:var(--r-md);margin:12px 0;font-family:monospace;">${code}</div>
           Ce code expire dans <strong>15 minutes</strong>.<br>
           <span style="font-size:12px;color:var(--gray-500);">Si vous n'avez pas créé de compte, ignorez cet e-mail.</span>
@@ -1716,7 +1639,7 @@ function buildHome(){
 
   <div class="stats-banner">
     <div class="stats-inner">
-      <h2 style="color:#fff;font-size:26px;font-weight:800;margin-bottom:8px;">Voyagez malin avec Casago</h2>
+      <h2 style="color:#fff;font-size:26px;font-weight:800;margin-bottom:8px;">Voyagez malin avec MyTunigo</h2>
       <p style="color:rgba(255,255,255,.8);font-size:16px;">Rejoignez 50 millions de voyageurs qui nous font confiance</p>
       <div class="stats-grid">
         <div class="stat-item"><div class="stat-num">50M+</div><div class="stat-lbl">Voyageurs</div></div>
@@ -2502,7 +2425,7 @@ function buildSuccess(){
           ${b.paymentMethod?`<div class="sum-row"><span>💳 Paiement</span><span>${b.paymentMethod}</span></div>`:''}
           <hr style="border:none;border-top:1px solid var(--gray-200);margin:8px 0;">
           <div class="sum-row"><span>💰 Montant total payé</span><span style="font-weight:700;">${b.total}€</span></div>
-          <div class="sum-row"><span style="color:var(--gray-500);">Commission Casago (7%)</span><span style="color:var(--red);">-${b.commission||Math.round(b.total*0.07)}€</span></div>
+          <div class="sum-row"><span style="color:var(--gray-500);">Commission MyTunigo (7%)</span><span style="color:var(--red);">-${b.commission||Math.round(b.total*0.07)}€</span></div>
           <div class="sum-row" style="font-weight:800;font-size:15px;"><span style="color:var(--green);">💶 Versement hôte</span><span style="color:var(--green);">${b.netToHost||Math.round(b.total*0.93)}€</span></div>
           ${b.paymentMethod?`<div class="sum-row"><span>💳 Paiement</span><span>${b.paymentMethod}</span></div>`:''}
           <div class="sum-row"><span>Hébergement</span><span>${b.hotel.name}</span></div>
@@ -2842,7 +2765,7 @@ function annStep4(ad){
   <div class="ann-sec">Vos coordonnées</div>
   ${buildAnnCoords(auth.currentUser, ad)}
   <div style="background:var(--gray-50);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:var(--gray-500);margin-top:8px;line-height:1.7;">
-    En publiant, vous acceptez les <a onclick="navigate('cgu')" style="color:var(--blue-l);cursor:pointer;text-decoration:underline;font-weight:600;">Conditions d'utilisation</a> et la <a onclick="navigate('cgu')" style="color:var(--blue-l);cursor:pointer;text-decoration:underline;font-weight:600;">Charte des propriétaires</a> Casago.
+    En publiant, vous acceptez les <a onclick="navigate('cgu')" style="color:var(--blue-l);cursor:pointer;text-decoration:underline;font-weight:600;">Conditions d'utilisation</a> et la <a onclick="navigate('cgu')" style="color:var(--blue-l);cursor:pointer;text-decoration:underline;font-weight:600;">Charte des propriétaires</a> MyTunigo.
   </div>
   ${annNavBtns()}
 </div>`;}
@@ -4450,7 +4373,7 @@ function excFormStep3(fd){
     </div>`:''}
 
     <div style="background:var(--gray-50);border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:var(--gray-500);line-height:1.7;margin-bottom:6px;">
-      En publiant, vous acceptez les <a style="color:var(--blue-l);">Conditions des prestataires</a> Casago. Votre excursion sera visible après validation sous 24h.
+      En publiant, vous acceptez les <a style="color:var(--blue-l);">Conditions des prestataires</a> MyTunigo. Votre excursion sera visible après validation sous 24h.
     </div>
     ${excNavBtns()}
   </div>`;
@@ -5212,11 +5135,23 @@ function sendMessage(convId){
 function buildBookingRequests(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
   const filter = appState.bookingRequestsFilter||'all';
-  const list = bookingRequests.filter(r=>filter==='all'||r.status===filter);
+  // Only show requests for hotels owned by current user
+  const userAnnonceHotelIds = (auth.currentUser
+    ? appState.myAnnonces.filter(a=>a.ownerId===auth.currentUser.id||!a.ownerId).map(a=>a.hotelId)
+    : []);
+  const list = bookingRequests.filter(r=>{
+    const matchFilter = filter==='all' || r.status===filter;
+    const matchOwner  = userAnnonceHotelIds.length===0 || userAnnonceHotelIds.includes(r.hotelId);
+    return matchFilter && matchOwner;
+  });
   const statusColor={pending:'#e6a800',accepted:'var(--green)',declined:'var(--red)'};
   const statusBg={pending:'#fff8e0',accepted:'#e8f9f0',declined:'#fff0f0'};
   const statusLabel={pending:'En attente',accepted:'Acceptée',declined:'Refusée'};
-  const pending = bookingRequests.filter(r=>r.status==='pending').length;
+  const userHotelIds2 = (auth.currentUser
+    ? appState.myAnnonces.filter(a=>a.ownerId===auth.currentUser.id||!a.ownerId).map(a=>a.hotelId)
+    : []);
+  const pending = bookingRequests.filter(r=>r.status==='pending'
+    && (userHotelIds2.length===0||userHotelIds2.includes(r.hotelId))).length;
 
   const d = document.createElement('div');
   d.innerHTML=`
@@ -5258,6 +5193,24 @@ function buildBookingRequests(){
                 <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[req.status]};color:${statusColor[req.status]};">${statusLabel[req.status].toUpperCase()}</span>
               </div>
               <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">🏠 ${h.name} ${h.emoji}</div>
+              ${(()=>{
+                const avail = isDateRangeAvailable(req.hotelId, req.checkIn, req.checkOut);
+                const nights2 = Math.round((new Date(req.checkOut)-new Date(req.checkIn))/86400000);
+                const ann2 = appState.myAnnonces.find(a=>a.hotelId===req.hotelId);
+                const cal2 = ann2 ? calendarData[ann2.id] : null;
+                const minN2 = (cal2&&cal2.minNights)||(h&&h.minNights)||1;
+                const nightsOk = nights2 >= minN2;
+                if(avail && nightsOk){
+                  return '<div style="display:inline-flex;align-items:center;gap:6px;background:#e8f9f0;border:1px solid #6bcf9e;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;color:#166534;margin-bottom:10px;">'
+                    +'<span>✅</span> Dates disponibles</div>';
+                } else if(!avail){
+                  return '<div style="display:inline-flex;align-items:center;gap:6px;background:#fff0f0;border:1px solid #ffcccc;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;color:var(--red);margin-bottom:10px;">'
+                    +'<span>⛔</span> Dates non disponibles — conflit dans le calendrier</div>';
+                } else {
+                  return '<div style="display:inline-flex;align-items:center;gap:6px;background:#fff8ee;border:1px solid #f0c080;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;color:#a06000;margin-bottom:10px;">'
+                    +'<span>⚠️</span> Séjour minimum : '+minN2+' nuits (demande : '+nights2+' nuit'+(nights2>1?'s':'')+')</div>';
+                }
+              })()}
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;">
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Arrivée</div><div style="font-size:13px;font-weight:600;">${ci}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Départ</div><div style="font-size:13px;font-weight:600;">${co}</div></div>
@@ -6434,19 +6387,11 @@ function buildMobileNav(){
   const unreadMsgs = (typeof conversations!=='undefined') ? conversations.filter(c=>c.unread>0&&(c.guestId===u?.id||c.hostId===u?.id)).length : 0;
   const pendingReq = (typeof bookingRequests!=='undefined') ? bookingRequests.filter(r=>r.status==='pending').length : 0;
 
-  const mode = u?.activeMode || (u?.role==='host' ? 'hote' : 'voyageur');
-  const isHoteMode = mode === 'hote';
-  const items = isHoteMode ? [
-    {icon:'📨', label:'Réservations', page:'booking-requests'},
-    {icon:'📅', label:'Calendrier',   page:'host-calendar'},
-    {icon:'🏘️', label:'Annonces',    page:'mesannonces'},
-    {icon:'💬', label:'Messages',    page:'messages', badge:unreadMsgs},
-    {icon:u?'👤':'🔑', label:u?'Profil':'Connexion', page:u?'profil':'login'},
-  ] : [
-    {icon:'🏠', label:'Accueil',  page:'home'},
-    {icon:'🔍', label:'Explorer', page:'results'},
-    {icon:'💬', label:'Messages', page:'messages',  badge:unreadMsgs},
-    {icon:'📋', label:'Voyages',  page:'reservations'},
+  const items = [
+    {icon:'🏠', label:'Accueil',   page:'home'},
+    {icon:'🔍', label:'Explorer',  page:'results'},
+    {icon:'💬', label:'Messages',  page:'messages', badge:unreadMsgs},
+    {icon:'🏘️', label:'Annonces', page:'mesannonces'},
     {icon:u?'👤':'🔑', label:u?'Profil':'Connexion', page:u?'profil':'login'},
   ];
 
@@ -6510,18 +6455,18 @@ function buildAboutPage(){
   hero.style.cssText = 'background:linear-gradient(135deg,var(--blue) 0%,#2C4470 100%);color:#fff;padding:72px 20px;text-align:center;';
   hero.innerHTML = '<div style="max-width:700px;margin:0 auto;">'
     +'<div style="font-size:48px;margin-bottom:16px;">🏡</div>'
-    +'<h1 style="font-size:42px;font-weight:900;margin-bottom:16px;">À propos de Casago</h1>'
+    +'<h1 style="font-size:42px;font-weight:900;margin-bottom:16px;">À propos de MyTunigo</h1>'
     +'<p style="font-size:18px;opacity:.85;line-height:1.7;">Vivez le monde, comme chez vous.</p>'
     +'</div>';
   d.appendChild(hero);
 
   const content = infoPage('', '', [
     { title:'Notre mission',
-      content:'Casago est une plateforme de location de vacances entre particuliers qui connecte les voyageurs avec des hôtes authentiques en Europe et au Maghreb. Notre mission : rendre le voyage accessible, simple et sans frais cachés.'
+      content:'MyTunigo est une plateforme de location de vacances entre particuliers qui connecte les voyageurs avec des hôtes authentiques en Europe et au Maghreb. Notre mission : rendre le voyage accessible, simple et sans frais cachés.'
     },
     { title:'Notre histoire',
-      content:'Née d\'un constat simple — les grandes plateformes prélèvent des commissions excessives qui pénalisent à la fois les hôtes et les voyageurs — Casago a été fondée avec une vision claire : créer une marketplace équitable, transparente et humaine.<br><br>'
-        +'Aujourd\'hui, Casago propose des centaines de logements vérifiés dans plus de 20 pays, avec un modèle économique pensé pour les hôtes : <strong>0% de commission pendant la période de lancement</strong>.'
+      content:'Née d\'un constat simple — les grandes plateformes prélèvent des commissions excessives qui pénalisent à la fois les hôtes et les voyageurs — MyTunigo a été fondée avec une vision claire : créer une marketplace équitable, transparente et humaine.<br><br>'
+        +'Aujourd\'hui, MyTunigo propose des centaines de logements vérifiés dans plus de 20 pays, avec un modèle économique pensé pour les hôtes : <strong>0% de commission pendant la période de lancement</strong>.'
     },
     { title:'Nos valeurs',
       content:'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px;margin-top:16px;">'
@@ -6551,7 +6496,7 @@ function buildAboutPage(){
         +'</div>'
     },
     { title:'Nous contacter',
-      content:'📧 <strong>contact@casago.fr</strong><br>🌐 <strong>casago.fr</strong><br>Siège social : Paris, France'
+      content:'📧 <strong>contact@mytunigo.com</strong><br>🌐 <strong>mytunigo.com</strong><br>Siège social : Paris, France'
     },
   ]);
   d.appendChild(content);
@@ -6567,7 +6512,7 @@ function buildFidelitePage(){
   hero.style.cssText = 'background:linear-gradient(135deg,#B45309,#D97706);color:#fff;padding:72px 20px;text-align:center;';
   hero.innerHTML = '<div style="max-width:700px;margin:0 auto;">'
     +'<div style="font-size:48px;margin-bottom:16px;">⭐</div>'
-    +'<h1 style="font-size:42px;font-weight:900;margin-bottom:16px;">Programme Fidélité Casago</h1>'
+    +'<h1 style="font-size:42px;font-weight:900;margin-bottom:16px;">Programme Fidélité MyTunigo</h1>'
     +'<p style="font-size:18px;opacity:.9;line-height:1.7;">Chaque séjour vous rapproche d\'avantages exclusifs.</p>'
     +'</div>';
   d.appendChild(hero);
@@ -6576,7 +6521,7 @@ function buildFidelitePage(){
     {name:'Découvreur',  emoji:'🌱', color:'#6B7280', bg:'F9FAFB', min:'0 séjour',  avantages:['Accès à toutes les annonces','Support standard','Avis certifié']},
     {name:'Explorateur', emoji:'🌍', color:'#0071c2', bg:'EBF5FF', min:'3 séjours', avantages:['Badge Explorateur sur votre profil','Support prioritaire','Accès early-bird aux nouvelles annonces']},
     {name:'Nomade',      emoji:'✈️', color:'#166534', bg:'E8F9F0', min:'8 séjours', avantages:['Réduction 5% sur toutes vos réservations','Check-in tardif prioritaire','Conseiller voyage dédié']},
-    {name:'Ambassador',  emoji:'🏆', color:'#B45309', bg:'FFF8EE', min:'20 séjours',avantages:['Réduction 10% permanente','Accès logements exclusifs','Invitations événements Casago']},
+    {name:'Ambassador',  emoji:'🏆', color:'#B45309', bg:'FFF8EE', min:'20 séjours',avantages:['Réduction 10% permanente','Accès logements exclusifs','Invitations événements MyTunigo']},
   ];
 
   const content = infoPage('', '', [
@@ -6608,10 +6553,10 @@ function buildFidelitePage(){
           +'</div>'
           // Description
           +'<p style="font-size:14px;color:#374151;line-height:1.7;margin-bottom:14px;">'
-          +({'Découvreur':'Bienvenue dans la communauté Casago ! Vous accédez à notre catalogue complet de logements en Europe et au Maghreb. Chaque nuit réservée vous rapproche du niveau suivant.',
-             'Explorateur':'Vous avez effectué vos premiers voyages avec Casago. Votre badge Explorateur est affiché sur votre profil, et vous bénéficiez d\'un support prioritaire avec des réponses en moins de 2h.',
+          +({'Découvreur':'Bienvenue dans la communauté MyTunigo ! Vous accédez à notre catalogue complet de logements en Europe et au Maghreb. Chaque nuit réservée vous rapproche du niveau suivant.',
+             'Explorateur':'Vous avez effectué vos premiers voyages avec MyTunigo. Votre badge Explorateur est affiché sur votre profil, et vous bénéficiez d\'un support prioritaire avec des réponses en moins de 2h.',
              'Nomade':'Vous êtes un voyageur confirmé. Bénéficiez d\'une réduction de 5% sur toutes vos réservations, d\'un check-in tardif en priorité, et d\'un conseiller voyage personnel dédié.',
-             'Ambassador':'Vous faites partie de l\'élite Casago. Réduction permanente de 10%, accès à des logements exclusifs non publiés, et invitations aux événements et soirées Casago partout en Europe.'}[t.name]||'')
+             'Ambassador':'Vous faites partie de l\'élite MyTunigo. Réduction permanente de 10%, accès à des logements exclusifs non publiés, et invitations aux événements et soirées MyTunigo partout en Europe.'}[t.name]||'')
           +'</p>'
           // Avantages
           +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">'
@@ -6638,7 +6583,7 @@ function buildFidelitePage(){
         +'</div>'
     },
     { title:'Rejoindre le programme',
-      content:'Le programme fidélité est gratuit et automatique. Créez un compte Casago et chaque réservation vous fait progresser vers le niveau supérieur. <strong><a onclick="openModal(\'register\')" style="color:var(--blue);cursor:pointer;">Créer mon compte →</a></strong>'
+      content:'Le programme fidélité est gratuit et automatique. Créez un compte MyTunigo et chaque réservation vous fait progresser vers le niveau supérieur. <strong><a onclick="openModal(\'register\')" style="color:var(--blue);cursor:pointer;">Créer mon compte →</a></strong>'
     },
   ]);
   d.appendChild(content);
@@ -6650,7 +6595,7 @@ function buildFidelitePage(){
 
 function copyIcalUrl(){
   const annId = appState.selectedAnnonceId || 'ANN-K7L8M9N0';
-  const url = 'https://casago.fr/calendar/ical/'+annId+'.ics';
+  const url = 'https://mytunigo.com/calendar/ical/'+annId+'.ics';
   if(navigator.clipboard){
     navigator.clipboard.writeText(url).then(()=>showToast('📋 URL iCal copiée !','var(--green)'));
   } else {
@@ -6753,27 +6698,27 @@ function buildCGUPage(){
   hero.style.cssText = 'background:linear-gradient(135deg,var(--blue),#2C4470);color:#fff;padding:56px 20px 40px;text-align:center;';
   hero.innerHTML = '<div style="max-width:800px;margin:0 auto;"><div style="font-size:40px;margin-bottom:12px;">📋</div>'
     +'<h1 style="font-size:32px;font-weight:900;margin-bottom:8px;">Conditions Générales d\'Utilisation</h1>'
-    +'<p style="opacity:.8;font-size:15px;">Version 1.0 — Mai 2026 · casago.fr</p></div>';
+    +'<p style="opacity:.8;font-size:15px;">Version 1.0 — Mai 2026 · mytunigo.com</p></div>';
   d.appendChild(hero);
   var wrap = document.createElement('div');
   wrap.style.cssText = 'max-width:860px;margin:0 auto;padding:48px 24px 80px;';
 
   var articles = [
-    {num:'1',title:'Définitions',body:'<b>Casago</b> : la société éditrice de la plateforme casago.fr.<br><b>Plateforme</b> : le site web casago.fr.<br><b>Utilisateur</b> : toute personne utilisant la Plateforme.<br><b>Voyageur</b> : utilisateur cherchant à réserver un hébergement.<br><b>Hôte</b> : utilisateur proposant un hébergement à la location.<br><b>Annonce</b> : description publiée par un Hôte.<br><b>Réservation</b> : accord conclu entre un Voyageur et un Hôte.'},
-    {num:'2',title:'Objet et champ d\'application',body:'Les présentes CGU régissent l\'accès et l\'utilisation de Casago, conformément au droit français, au Règlement DSA (UE) 2022/2065, au Règlement P2B (UE) 2019/1150 et à la loi LCEN n°2004-575. Casago agit en qualité d\'hébergeur et d\'intermédiaire.'},
+    {num:'1',title:'Définitions',body:'<b>MyTunigo</b> : la société éditrice de la plateforme mytunigo.com.<br><b>Plateforme</b> : le site web mytunigo.com.<br><b>Utilisateur</b> : toute personne utilisant la Plateforme.<br><b>Voyageur</b> : utilisateur cherchant à réserver un hébergement.<br><b>Hôte</b> : utilisateur proposant un hébergement à la location.<br><b>Annonce</b> : description publiée par un Hôte.<br><b>Réservation</b> : accord conclu entre un Voyageur et un Hôte.'},
+    {num:'2',title:'Objet et champ d\'application',body:'Les présentes CGU régissent l\'accès et l\'utilisation de MyTunigo, conformément au droit français, au Règlement DSA (UE) 2022/2065, au Règlement P2B (UE) 2019/1150 et à la loi LCEN n°2004-575. MyTunigo agit en qualité d\'hébergeur et d\'intermédiaire.'},
     {num:'3',title:'Inscription et compte utilisateur',body:'<b>3.1</b> Réservée aux personnes majeures (18 ans+). Informations exactes et à jour obligatoires.<br><b>3.2 Vérification e-mail</b> : code OTP à 6 chiffres, valable 15 minutes.<br><b>3.3 Sécurité</b> : l\'Utilisateur est seul responsable de la confidentialité de ses identifiants.'},
     {num:'4',title:'Services proposés',body:'Mise en relation Hôtes/Voyageurs pour location saisonnière. Services : publication d\'annonces, réservation, messagerie, calendrier, fidélité.<br><br>Conformément à l\'article L.324-1 du Code du tourisme, les locations courte durée peuvent nécessiter une déclaration en mairie. L\'Hôte en est seul responsable.'},
     {num:'5',title:'Obligations des Hôtes',body:'L\'Hôte s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Être propriétaire ou disposer des droits nécessaires</li><li>Respecter la législation (déclaration mairie, taxe de séjour, fiscalité)</li><li>Fournir des informations exactes et des photos représentatives</li><li>Souscrire une assurance couvrant les risques locatifs</li><li>Respecter le RGPD pour les données des Voyageurs</li></ul>'},
     {num:'6',title:'Obligations des Voyageurs',body:'Le Voyageur s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Utiliser le logement conformément à sa destination</li><li>Respecter le nombre maximum d\'occupants</li><li>Restituer le logement dans son état initial</li><li>Informer l\'Hôte en cas de dommages</li><li>Ne pas sous-louer sans accord écrit de l\'Hôte</li></ul>'},
-    {num:'7',title:'Paiement et commission',body:'<b>Version lancement :</b> Casago ne prélève aucune commission (0%). Le paiement s\'effectue sur place entre Voyageur et Hôte. Aucun prélèvement en ligne effectué par Casago.<br><br>Ce taux pourra évoluer avec un préavis de <b>30 jours</b> par email.'},
+    {num:'7',title:'Paiement et commission',body:'<b>Version lancement :</b> MyTunigo ne prélève aucune commission (0%). Le paiement s\'effectue sur place entre Voyageur et Hôte. Aucun prélèvement en ligne effectué par MyTunigo.<br><br>Ce taux pourra évoluer avec un préavis de <b>30 jours</b> par email.'},
     {num:'8',title:'Annulations',body:'<b>Flexible</b> : remboursement intégral jusqu\'à 24h avant.<br><b>Modérée</b> : 50% si annulation moins de 7 jours avant.<br><b>Stricte</b> : non remboursable sauf force majeure.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
-    {num:'9',title:'Responsabilité',body:'Casago est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de Casago est limitée aux sommes effectivement perçues.'},
-    {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à Casago une licence non-exclusive et gratuite d\'utilisation.'},
-    {num:'11',title:'Protection des données (RGPD)',body:'Conformément au RGPD (UE) 2016/679 et à la loi Informatique et Libertés :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Responsable</b> : Casago SAS — contact@casago.fr</li><li><b>Données</b> : nom, prénom, email, téléphone, navigation</li><li><b>Durée</b> : 3 ans après la dernière activité</li><li><b>Droits</b> : accès, rectification, suppression, portabilité — contact@casago.fr</li><li><b>Réclamation</b> : CNIL — cnil.fr</li></ul>'},
+    {num:'9',title:'Responsabilité',body:'MyTunigo est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de MyTunigo est limitée aux sommes effectivement perçues.'},
+    {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à MyTunigo une licence non-exclusive et gratuite d\'utilisation.'},
+    {num:'11',title:'Protection des données (RGPD)',body:'Conformément au RGPD (UE) 2016/679 et à la loi Informatique et Libertés :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Responsable</b> : MyTunigo SAS — contact@mytunigo.com</li><li><b>Données</b> : nom, prénom, email, téléphone, navigation</li><li><b>Durée</b> : 3 ans après la dernière activité</li><li><b>Droits</b> : accès, rectification, suppression, portabilité — contact@mytunigo.com</li><li><b>Réclamation</b> : CNIL — cnil.fr</li></ul>'},
     {num:'12',title:'Cookies',body:'Cookies strictement nécessaires au fonctionnement. Cookies analytiques avec votre consentement. Conformément à la délibération CNIL n°2020-091, vous pouvez retirer votre consentement à tout moment.'},
     {num:'13',title:'Modifications des CGU',body:'Toute modification substantielle sera notifiée par email avec un préavis de 30 jours, conformément au Règlement P2B (UE) 2019/1150.'},
     {num:'14',title:'Droit applicable et juridiction',body:'Droit français applicable. Médiation consommateurs selon articles L.616-1 et R.616-1 du Code de la consommation. En cas de litige non résolu amiablement sous 60 jours : tribunaux de Paris compétents. Plateforme ODR : ec.europa.eu/consumers/odr'},
-    {num:'15',title:'Mentions légales',body:'<b>Éditeur</b> : Casago SAS · <b>Contact</b> : contact@casago.fr · <b>Site</b> : casago.fr · <b>Hébergement</b> : GitHub Pages<br>Conformément à la loi LCEN n°2004-575 du 21 juin 2004.'},
+    {num:'15',title:'Mentions légales',body:'<b>Éditeur</b> : MyTunigo SAS · <b>Contact</b> : contact@mytunigo.com · <b>Site</b> : mytunigo.com · <b>Hébergement</b> : GitHub Pages<br>Conformément à la loi LCEN n°2004-575 du 21 juin 2004.'},
   ];
 
   articles.forEach(function(art){
@@ -6788,8 +6733,8 @@ function buildCGUPage(){
 
   var sig = document.createElement('div');
   sig.style.cssText = 'background:var(--blue);color:#fff;border-radius:var(--r-xl);padding:24px 28px;text-align:center;margin-top:40px;';
-  sig.innerHTML = '<div style="font-size:16px;font-weight:800;margin-bottom:6px;">Casago SAS — casago.fr</div>'
-    +'<div style="font-size:13px;opacity:.8;">contact@casago.fr · Version 1.0 · Mai 2026 · Tous droits réservés</div>';
+  sig.innerHTML = '<div style="font-size:16px;font-weight:800;margin-bottom:6px;">MyTunigo SAS — mytunigo.com</div>'
+    +'<div style="font-size:13px;opacity:.8;">contact@mytunigo.com · Version 1.0 · Mai 2026 · Tous droits réservés</div>';
   wrap.appendChild(sig);
   d.appendChild(wrap);
   return d;
@@ -6808,14 +6753,14 @@ function buildPrivacyPage(){
   var wrap = document.createElement('div');
   wrap.style.cssText = 'max-width:860px;margin:0 auto;padding:48px 24px 80px;';
   var sections = [
-    {title:'Qui collecte vos données ?',body:'Casago SAS, responsable de traitement. DPO : contact@casago.fr'},
+    {title:'Qui collecte vos données ?',body:'MyTunigo SAS, responsable de traitement. DPO : contact@mytunigo.com'},
     {title:'Quelles données ?',body:'Identité (nom, prénom), coordonnées (email, téléphone), navigation (IP, pages), historique des réservations et annonces.'},
     {title:'Pourquoi ?',body:'<ul style="margin:8px 0 0 20px;line-height:2;"><li>Gestion des comptes et authentification</li><li>Traitement des réservations</li><li>Envoi de notifications et confirmations</li><li>Amélioration des services</li><li>Obligations légales</li></ul>'},
     {title:'Base légale (RGPD art. 6)',body:'Exécution du contrat (réservations) · Consentement (cookies analytiques) · Obligation légale (conservation fiscale) · Intérêt légitime (sécurité).'},
     {title:'Durée de conservation',body:'Données de compte : 3 ans après la dernière activité. Réservations : 5 ans (obligations comptables). Navigation : 13 mois maximum.'},
-    {title:'Vos droits',body:'Articles 15 à 22 du RGPD :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Accès</b> : copie de vos données</li><li><b>Rectification</b> : corriger vos données</li><li><b>Suppression</b> : effacement</li><li><b>Portabilité</b> : format structuré</li><li><b>Opposition</b> : s\'opposer à certains traitements</li></ul>Exercice : contact@casago.fr — réponse sous 30 jours.'},
+    {title:'Vos droits',body:'Articles 15 à 22 du RGPD :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Accès</b> : copie de vos données</li><li><b>Rectification</b> : corriger vos données</li><li><b>Suppression</b> : effacement</li><li><b>Portabilité</b> : format structuré</li><li><b>Opposition</b> : s\'opposer à certains traitements</li></ul>Exercice : contact@mytunigo.com — réponse sous 30 jours.'},
     {title:'Réclamation',body:'Auprès de la <b>CNIL</b> : cnil.fr · 3 Place de Fontenoy, 75007 Paris.'},
-    {title:'Transferts hors UE',body:'Casago ne transfère pas vos données hors de l\'Union Européenne sans garanties appropriées.'},
+    {title:'Transferts hors UE',body:'MyTunigo ne transfère pas vos données hors de l\'Union Européenne sans garanties appropriées.'},
     {title:'Modifications',body:'Toute modification significative sera notifiée par email avec un préavis de 30 jours.'},
   ];
   sections.forEach(function(sec){
@@ -6827,7 +6772,7 @@ function buildPrivacyPage(){
   });
   var sig = document.createElement('div');
   sig.style.cssText = 'background:#166534;color:#fff;border-radius:var(--r-xl);padding:24px 28px;text-align:center;margin-top:40px;';
-  sig.innerHTML = '<div style="font-size:16px;font-weight:800;margin-bottom:6px;">Casago SAS — contact@casago.fr</div>'
+  sig.innerHTML = '<div style="font-size:16px;font-weight:800;margin-bottom:6px;">MyTunigo SAS — contact@mytunigo.com</div>'
     +'<div style="font-size:13px;opacity:.8;">RGPD (UE) 2016/679 · LCEN · CNIL · Mai 2026</div>';
   wrap.appendChild(sig);
   d.appendChild(wrap);
@@ -6840,7 +6785,7 @@ function buildFooter(){
   f.className='footer';
   f.innerHTML=`<div class="footer-inner">
     <div class="footer-grid">
-      <div class="footer-col"><div class="footer-logo">Casa<span>go</span></div><p style="font-size:13px;color:var(--gray-500)">Votre compagnon de voyage de confiance </p></div>
+      <div class="footer-col"><div class="footer-logo">My<span>Tunigo</span></div><p style="font-size:13px;color:var(--gray-500)">Votre compagnon de voyage de confiance </p></div>
       <div class="footer-col">
         <h4>Logements</h4>
         <a onclick="navigate('results')">Appartements</a>
@@ -6858,17 +6803,17 @@ function buildFooter(){
       </div>
       <div class="footer-col">
         <h4>Support</h4>
-        <a href="mailto:contact@casago.fr">Nous contacter</a>
+        <a href="mailto:contact@mytunigo.com">Nous contacter</a>
         <a onclick="checkAuthAndGo('annonce')">Déposer une annonce</a>
         <a onclick="navigate('about')">À propos</a>
         <a onclick="navigate('fidelite')">Programme fidélité</a>
       </div>
-      <div class="footer-col"><h4>Casago</h4>
+      <div class="footer-col"><h4>MyTunigo</h4>
   <a onclick="navigate('about')">À propos</a>
   <a onclick="navigate('fidelite')">Programme fidélité</a>
 </div>
     </div>
-    <div class="footer-bottom"><p>© 2026 Casago. Tous droits réservés.</p><p>
+    <div class="footer-bottom"><p>© 2026 MyTunigo. Tous droits réservés.</p><p>
   <a onclick="navigate('privacy')" style="cursor:pointer;color:inherit;">Politique de confidentialité</a>
   · <a onclick="navigate('cgu')" style="cursor:pointer;color:inherit;">CGU</a>
   · <a onclick="navigate('cgu')" style="cursor:pointer;color:inherit;">Mentions légales</a>
@@ -7042,7 +6987,7 @@ async function geocodeAddress(){
 
   try {
     const url = 'https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(query)+'&limit=1';
-    const res = await fetch(url, {headers:{'Accept-Language':'fr','User-Agent':'Casago/1.0'}});
+    const res = await fetch(url, {headers:{'Accept-Language':'fr','User-Agent':'MyTunigo/1.0'}});
     const data = await res.json();
     if(data && data.length>0){
       const lat=parseFloat(data[0].lat), lng=parseFloat(data[0].lon);
