@@ -818,6 +818,9 @@ let appState = {
   paymentData:{method:'card',cardNumber:'',cardName:'',expiry:'',cvv:'',paypalEmail:''},
   pendingBooking:null,
   myExcursions:[],
+  mesAnnoncesTab:'logements',
+  excCalYear:null, excCalMonth:null,
+  excBookingDate:null, excBookCalYear:null, excBookCalMonth:null,
   profilEditing:false,
   selectedAnnonceId:null,
   // Airbnb mode state
@@ -885,6 +888,17 @@ function render() {
   }
   if(pg==='annonce' && appState.annoncePage===1) setTimeout(initAnnMap, 200);
 }
+
+document.addEventListener('click', function(e){
+  const el = e.target.closest('[data-excdate]');
+  if(el) excSelectDate(el.dataset.excdate);
+  const el2 = e.target.closest('[data-excformdate]');
+  if(el2) excFormToggleDate(el2.dataset.excformdate);
+  const el3 = e.target.closest('[data-excformcalnav]');
+  if(el3){ excFormCalNav(parseInt(el3.dataset.excformcalnav)); e.stopPropagation(); }
+  const el4 = e.target.closest('[data-excbokcalnav]');
+  if(el4){ excBookCalNav(parseInt(el4.dataset.excbokcalnav), el4.dataset.excid); e.stopPropagation(); }
+});
 
 function navigate(page, extra){
   if(extra) Object.assign(appState, extra);
@@ -3217,6 +3231,7 @@ function buildMesAnnonces(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button onclick="navigate('results')" style="background:#e8f9f0;color:var(--green);padding:10px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #6bcf9e;cursor:pointer;">✈️ Vue voyageur</button>
         <button onclick="checkAuthAndGo('annonce')" style="background:var(--blue);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
+        <button onclick="checkAuthAndGo('excursion-form')" style="background:var(--orange);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle excursion</button>
       </div>
     </div>
 
@@ -3234,7 +3249,69 @@ function buildMesAnnonces(){
       </div>`).join('')}
     </div>
 
+    <!-- Onglets -->
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:24px;">
+      <button onclick="appState.mesAnnoncesTab='logements';navigate('mesannonces')"
+        style="padding:10px 22px;border:none;background:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:${(appState.mesAnnoncesTab||'logements')==='logements'?'3px solid var(--blue)':'3px solid transparent'};color:${(appState.mesAnnoncesTab||'logements')==='logements'?'var(--blue)':'var(--gray-500)'};margin-bottom:-2px;">
+        🏘️ Logements (${list.length})
+      </button>
+      <button onclick="appState.mesAnnoncesTab='excursions';navigate('mesannonces')"
+        style="padding:10px 22px;border:none;background:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:${(appState.mesAnnoncesTab||'logements')==='excursions'?'3px solid var(--orange)':'3px solid transparent'};color:${(appState.mesAnnoncesTab||'logements')==='excursions'?'var(--orange)':'var(--gray-500)'};margin-bottom:-2px;">
+        ✈️ Excursions (${(appState.myExcursions||[]).length})
+      </button>
+    </div>
+
+    <!-- Excursions tab -->
+    ${(appState.mesAnnoncesTab||'logements')==='excursions'?`
+    ${(appState.myExcursions||[]).length===0?`
+      <div style="text-align:center;padding:70px 20px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
+        <div style="font-size:56px;margin-bottom:16px;">✈️</div>
+        <h3 style="font-size:20px;font-weight:800;color:var(--gray-700);margin-bottom:8px;">Aucune excursion publiée</h3>
+        <p style="color:var(--gray-500);margin-bottom:20px;">Proposez vos premières excursions aux voyageurs.</p>
+        <button onclick="checkAuthAndGo('excursion-form')" style="background:var(--orange);color:#fff;padding:12px 28px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">🗺️ Déposer une excursion</button>
+      </div>`
+    :(appState.myExcursions||[]).map(e=>`
+      <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;display:flex;flex-wrap:wrap;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
+        <div style="width:110px;min-height:110px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0;">${e.emoji||'✈️'}</div>
+        <div style="flex:1;padding:16px 18px;min-width:200px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:16px;font-weight:800;color:var(--gray-900);margin-bottom:4px;">${e.title}</div>
+              <div style="font-size:13px;color:var(--gray-500);margin-bottom:8px;">📍 ${e.city||'—'}, ${e.country||'—'} · ⏱ ${e.duration||'—'} · ${e.price||0}€ / ${e.priceType||'personne'}</div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <span style="background:${{publiée:'#e8f9f0','en attente':'#fff8e0',brouillon:'#f1f3f5'}[e.status]||'#f1f3f5'};color:${{publiée:'#0d9e6e','en attente':'#e6a800',brouillon:'#6c757d'}[e.status]||'#6c757d'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${e.status||'en attente'}</span>
+                <span style="font-size:12px;color:var(--gray-400);">${(e.availability||[]).length} date${(e.availability||[]).length>1?'s':''} disponible${(e.availability||[]).length>1?'s':''}</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              <button onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})"
+                style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                📊 Statistiques
+              </button>
+              <button onclick="navigate('excursion-form');appState.mesAnnoncesTab='excursions'"
+                style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                📅 Calendrier
+              </button>
+              <button onclick="excPromoFlash('${e.id}')"
+                style="background:#fff8ee;color:#d97706;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f59e0b;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                ⚡ Promotion flash
+              </button>
+              <button onclick="excToggleStatus('${e.id}')"
+                style="background:#f0fdf4;color:#16a34a;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #86efac;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                ▶ ${e.status==='suspendue'?'Republier':'Suspendre'}
+              </button>
+              <button onclick="excDelete('${e.id}')"
+                style="background:#fff0f0;color:var(--red);padding:8px 12px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #fca5a5;cursor:pointer;">
+                🗑
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`).join('')}
+    `:''}
+
     <!-- Annonces list -->
+    ${(appState.mesAnnoncesTab||'logements')==='logements'?`
     ${list.length===0?`
     <div style="text-align:center;padding:70px 20px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
       <div style="font-size:56px;margin-bottom:16px;">🏡</div>
@@ -3298,7 +3375,7 @@ function buildMesAnnonces(){
       ${a.status==='suspendue'?`<div style="background:#fff0f0;padding:10px 20px;font-size:13px;color:var(--red);border-top:1px solid #ffcccc;">⛔ Cette annonce est suspendue. Republier pour la rendre visible aux voyageurs.</div>`:''}
     </div>`).join('')}
 
-  </div>`;
+    `:''}  </div>`;
   return d;
 }
 
@@ -3943,7 +4020,8 @@ function refreshExcursions(){
 
 /* ===================== EXCURSION DETAIL ===================== */
 function buildExcursionDetail(){
-  const e = excursions.find(x=>x.id===appState.selectedExcursionId);
+  const _allExc = [...excursions, ...(appState.myExcursions||[])];
+  const e = _allExc.find(x=>x.id===appState.selectedExcursionId);
   if(!e){navigate('excursions');return document.createElement('div');}
   const diffColor={facile:'#0d9e6e',intermédiaire:'#e67e22',difficile:'#c0392b'};
   const isFav = appState.favorites.includes('exc-'+e.id);
@@ -4059,8 +4137,19 @@ function buildExcursionDetail(){
             <span style="font-size:13px;color:var(--gray-500);">${e.reviews} avis vérifiés</span>
           </div>
           <div style="margin-bottom:12px;">
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Date souhaitée</label>
-            <input type="date" id="exc-date" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:6px;">📅 Choisissez une date</label>
+            ${(e.availability&&e.availability.length>0)?`
+              <div id="exc-book-cal" style="border:1.5px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:8px;">
+                ${buildExcBookingCalendar(e)}
+              </div>
+              <div id="exc-date-display" style="text-align:center;font-size:13px;font-weight:700;color:${appState.excBookingDate?'var(--blue)':'var(--gray-400)'};">
+                ${appState.excBookingDate?'📅 '+appState.excBookingDate:'← Sélectionnez une date disponible'}
+              </div>
+              <input type="hidden" id="exc-date" value="${appState.excBookingDate||''}">
+            `:`
+              <input type="date" id="exc-date" min="${new Date().toISOString().split('T')[0]}"
+                style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            `}
           </div>
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">👥 Nombre de participants</label>
@@ -4099,15 +4188,137 @@ function updateExcTotal(price){
     <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${total}€</span></div>`;
 }
 
+function buildExcBookingCalendar(e){
+  const today=new Date();
+  const year =appState.excBookCalYear  || today.getFullYear();
+  const month=appState.excBookCalMonth !== null && appState.excBookCalMonth !== undefined ? appState.excBookCalMonth : today.getMonth();
+  appState.excBookCalYear=year; appState.excBookCalMonth=month;
+  const MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const avail=e.availability||[];
+  const firstDay=new Date(year,month,1).getDay();
+  const offset=firstDay===0?6:firstDay-1;
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const todayStr=today.toISOString().split('T')[0];
+  const selectedDate=appState.excBookingDate||'';
+
+  let cells='';
+  for(let i=0;i<offset;i++) cells+='<div></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const isAvail=avail.includes(ds);
+    const isPast=ds<todayStr;
+    const isSel=ds===selectedDate;
+    cells+='<div data-excdate="'+ds+'" style="'
+      +'text-align:center;padding:8px 2px;border-radius:8px;'
+      +'cursor:'+(isAvail&&!isPast?'pointer':'default')+';'
+      +'font-size:13px;font-weight:'+(isAvail?'700':'400')+';'
+      +'background:'+(isSel?'var(--blue)':isAvail&&!isPast?'#e8f4ff':'transparent')+';'
+      +'color:'+(isSel?'#fff':isAvail&&!isPast?'var(--blue)':isPast?'var(--gray-300)':'var(--gray-400)')+';'
+      +'border:2px solid '+(isSel?'var(--blue)':isAvail&&!isPast?'#b3d4f0':'transparent')+';'
+      +'opacity:'+(isPast?'.35':'1')+';transition:all .12s;'
+      +'">'
+      +(isAvail&&!isPast&&!isSel?'<div style="width:5px;height:5px;border-radius:50%;background:var(--blue);margin:0 auto 1px;"></div>':'')
+      +d+'</div>';
+  }
+
+  return '<div style="padding:12px;">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+      +'<button data-excbokcalnav="-1" data-excid="'+e.id+'" style="background:none;border:1.5px solid var(--gray-200);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">‹</button>'
+      +'<span style="font-size:14px;font-weight:700;color:var(--gray-900);">'+MONTHS[month]+' '+year+'</span>'
+      +'<button data-excbokcalnav="1" data-excid="'+e.id+'"  style="background:none;border:1.5px solid var(--gray-200);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">›</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;margin-bottom:2px;">'
+      +['Lu','Ma','Me','Je','Ve','Sa','Di'].map(d=>'<div style="text-align:center;font-size:10px;font-weight:700;color:var(--gray-400);padding:3px 0;">'+d+'</div>').join('')
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;">'+cells+'</div>'
+    +(avail.length>0?'<div style="font-size:11px;color:var(--gray-400);margin-top:8px;text-align:center;">🔵 Dates disponibles</div>':'')
+    +'</div>';
+}
+
+function excBookCalNav(dir, excId){
+  let m=(appState.excBookCalMonth||0)+dir;
+  let y=appState.excBookCalYear||new Date().getFullYear();
+  if(m>11){m=0;y++;} if(m<0){m=11;y--;}
+  appState.excBookCalMonth=m; appState.excBookCalYear=y;
+  navigate('excursion-detail',{selectedExcursionId:excId});
+}
+
+function excSelectDate(ds){
+  const today=new Date().toISOString().split('T')[0];
+  if(ds<today)return;
+  appState.excBookingDate=ds;
+  // Update hidden input and display
+  const inp=document.getElementById('exc-date');
+  if(inp)inp.value=ds;
+  const disp=document.getElementById('exc-date-display');
+  if(disp){disp.textContent='📅 '+ds;disp.style.color='var(--blue)';}
+  // Re-render the calendar portion only
+  const allExc=[...excursions,...(appState.myExcursions||[])];
+  const e=allExc.find(x=>x.id===appState.selectedExcursionId);
+  if(e&&e.availability&&e.availability.length>0){
+    const calWrap=document.querySelector('#exc-book-cal');
+    if(calWrap)calWrap.innerHTML=buildExcBookingCalendar(e);
+    else navigate('excursion-detail',{selectedExcursionId:appState.selectedExcursionId});
+  }
+}
+
 function bookExcursion(excId){
   if(!auth.currentUser){openModal('login');showToast('Connectez-vous pour réserver','var(--blue)');return;}
-  const date = document.getElementById('exc-date')?.value;
-  if(!date){showToast('⚠️ Choisissez une date','var(--red)');return;}
-  const pax = parseInt(document.getElementById('exc-pax')?.value||1);
-  const exc = excursions.find(x=>x.id===excId);
-  const total = exc.price * pax;
-  appState.pendingBooking = {type:'excursion',excId,title:exc.title,date,pax,total,emoji:exc.emoji,city:exc.city,country:exc.country};
+
+  // Get date — from hidden input, visible input, or appState
+  const dateEl = document.getElementById('exc-date');
+  const date = (dateEl && dateEl.value) || appState.excBookingDate || '';
+  if(!date){showToast('⚠️ Choisissez une date disponible','var(--red)');return;}
+
+  // Get participants
+  const paxEl = document.getElementById('exc-pax');
+  const pax = parseInt((paxEl && paxEl.value) || 1);
+
+  // Find excursion in all arrays
+  const allExc = [...excursions, ...(appState.myExcursions||[])];
+  const exc = allExc.find(x=>x.id===excId);
+  if(!exc){showToast('Excursion introuvable','var(--red)');return;}
+
+  const total = (exc.price||0) * pax;
+  appState.pendingBooking = {
+    type:'excursion', excId,
+    title: exc.title||'Excursion',
+    date, pax, total,
+    emoji: exc.emoji||'✈️',
+    city: exc.city||'', country: exc.country||''
+  };
   navigate('payment');
+}
+
+function excToggleStatus(id){
+  const e = appState.myExcursions.find(x=>x.id===id);
+  if(!e) return;
+  e.status = e.status==='suspendue' ? 'publiée' : 'suspendue';
+  showToast(e.status==='publiée' ? '✅ Excursion republiée' : '⏸️ Excursion suspendue', 'var(--blue)');
+  navigate('mesannonces');
+}
+
+function excDelete(id){
+  if(!confirm('Supprimer cette excursion ?')) return;
+  appState.myExcursions = appState.myExcursions.filter(x=>x.id!==id);
+  showToast('🗑️ Excursion supprimée', 'var(--red)');
+  navigate('mesannonces');
+}
+
+function excPromoFlash(id){
+  const e = appState.myExcursions.find(x=>x.id===id);
+  if(!e) return;
+  const pct = prompt('Réduction flash (%) :', e.discount||'20');
+  if(pct===null || pct==='' || isNaN(+pct)) return;
+  const p = Math.max(0, Math.min(99, +pct));
+  // Always calculate from the BASE price, never from the discounted price
+  const base = e.basePrice || e.oldPrice || e.price;
+  e.basePrice = base;  // lock the original price forever
+  e.oldPrice  = base;
+  e.discount  = p;
+  e.price     = p > 0 ? Math.round(base * (1 - p/100)) : base;
+  showToast('⚡ Promotion flash de '+p+'% appliquée sur le prix de base ('+base+'€) !', 'var(--orange)');
+  navigate('mesannonces');
 }
 
 function toggleExcFavorite(excId){
@@ -4278,10 +4489,24 @@ function excFormStep1(fd){
       <textarea placeholder="Décrivez heure par heure le déroulé de l'excursion…" oninput="excSet('schedule',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:100px;line-height:1.6;">${fd.schedule||''}</textarea></div>
 
-    <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Point de rendez-vous</label>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Point de rendez-vous</label>
       <input type="text" placeholder="Ex : Devant la grande porte de la médina, Place Jemaa el-Fna" value="${fd.meetingPoint||''}"
         oninput="excSet('meetingPoint',this.value)"
-        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
+        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE DÉBUT</label>
+          <input type="time" value="${fd.meetingTime||''}" oninput="excSet('meetingTime',this.value)"
+            style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE FIN (optionnel)</label>
+          <input type="time" value="${fd.meetingTimeEnd||''}" oninput="excSet('meetingTimeEnd',this.value)"
+            style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;">
+        </div>
+      </div>
+    </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Quoi apporter</label>
       <input type="text" placeholder="Ex : Chaussures de marche, crème solaire, gourde d'eau" value="${fd.whatToBring||''}"
@@ -4333,6 +4558,16 @@ function excFormStep2(fd){
         <div style="position:absolute;top:2px;${fd.instantBook?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;transition:all .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
       </div>
     </div>
+
+    <!-- Calendrier des dates disponibles -->
+    <div style="font-size:15px;font-weight:700;margin-bottom:6px;margin-top:4px;">📅 Dates disponibles</div>
+    <div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">Cliquez sur les jours où vous proposez cette excursion. Naviguez d'un mois à l'autre.</div>
+    <div style="border:1.5px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:10px;">
+      ${buildExcFormCalendar(fd)}
+    </div>
+    ${(fd.availability||[]).length>0
+      ?'<div style="font-size:12px;color:var(--green);font-weight:600;margin-bottom:16px;">✅ '+(fd.availability||[]).length+' date'+((fd.availability||[]).length>1?'s':'')+' sélectionnée'+((fd.availability||[]).length>1?'s':'')+'</div>'
+      :'<div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">Aucune date sélectionnée — cliquez sur les jours disponibles ci-dessus</div>'}
 
     <div style="font-size:15px;font-weight:700;margin-bottom:12px;">👤 Vos coordonnées</div>
     ${buildAnnCoords(auth.currentUser, fd)}
@@ -4407,6 +4642,76 @@ function excFormGo(dir){
   navigate('excursion-form');
 }
 
+/* ── Calendrier formulaire excursion ── */
+function buildExcFormCalendar(fd){
+  const today = new Date();
+  const year  = appState.excCalYear  || today.getFullYear();
+  const month = appState.excCalMonth !== null && appState.excCalMonth !== undefined ? appState.excCalMonth : today.getMonth();
+  appState.excCalYear=year; appState.excCalMonth=month;
+  const MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const firstDay=new Date(year,month,1).getDay();
+  const offset=firstDay===0?6:firstDay-1;
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const selected=fd.availability||[];
+  const todayStr=today.toISOString().split('T')[0];
+
+  let cells='';
+  for(let i=0;i<offset;i++) cells+='<div></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const isPast=ds<todayStr;
+    const isSel=selected.includes(ds);
+    const isToday=ds===todayStr;
+    cells+='<div data-excformdate="'+ds+'" style="'
+      +'text-align:center;padding:8px 2px;border-radius:8px;cursor:'+(isPast?'default':'pointer')+';'
+      +'font-size:13px;font-weight:'+(isSel?'800':'500')+';'
+      +'background:'+(isSel?'var(--blue)':isToday?'#fff8ee':'transparent')+';'
+      +'color:'+(isSel?'#fff':isPast?'var(--gray-300)':'var(--gray-800)')+';'
+      +'border:2px solid '+(isToday&&!isSel?'var(--orange)':isSel?'var(--blue)':'transparent')+';'
+      +'opacity:'+(isPast?'.4':'1')+';transition:all .12s;'
+      +'">'+(isSel?'<div style="font-size:9px;color:rgba(255,255,255,.8);margin-bottom:-2px;">✓</div>':'')+d+'</div>';
+  }
+
+  return '<div style="padding:16px;">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'
+      +'<button data-excformcalnav="-1" style="background:none;border:1.5px solid var(--gray-200);border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">‹</button>'
+      +'<span style="font-size:15px;font-weight:700;color:var(--gray-900);">'+MONTHS[month]+' '+year+'</span>'
+      +'<button data-excformcalnav="1"  style="background:none;border:1.5px solid var(--gray-200);border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">›</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px;">'
+      +['Lu','Ma','Me','Je','Ve','Sa','Di'].map(d=>'<div style="text-align:center;font-size:11px;font-weight:700;color:var(--gray-400);padding:4px 0;">'+d+'</div>').join('')
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">'+cells+'</div>'
+    +'</div>';
+}
+
+function excFormCalNav(dir){
+  let m=(appState.excCalMonth??new Date().getMonth())+dir;
+  let y=appState.excCalYear??new Date().getFullYear();
+  if(m>11){m=0;y++;} if(m<0){m=11;y--;}
+  appState.excCalMonth=m; appState.excCalYear=y;
+  excRefresh();
+}
+
+function excFormToggleDate(ds){
+  const today=new Date().toISOString().split('T')[0];
+  if(ds<today)return;
+  const fd=appState.excursionFormData;
+  if(!fd.availability)fd.availability=[];
+  const idx=fd.availability.indexOf(ds);
+  if(idx>=0)fd.availability.splice(idx,1);
+  else fd.availability.push(ds);
+  fd.availability.sort();
+  excRefresh();
+}
+
+function excFormRemoveDate(ds){
+  const fd=appState.excursionFormData;
+  if(!fd.availability)return;
+  fd.availability=fd.availability.filter(d=>d!==ds);
+  excRefresh();
+}
+
 function excFormPublish(){
   if(!excFormValidate()) return;
   const fd = appState.excursionFormData;
@@ -4421,6 +4726,7 @@ function excFormPublish(){
     createdAt:new Date().toISOString().split('T')[0],
   };
   appState.myExcursions.push(newExc);
+  appState.lastPublishedExcId = newExc.id;
   appState.excursionFormPublished = true;
   navigate('excursion-form');
 }
@@ -4443,6 +4749,8 @@ function buildExcursionFormSuccess(){
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="appState.excursionFormPublished=false;appState.excursionFormPage=0;appState.excursionFormData={};navigate('excursion-form')"
             style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle excursion</button>
+          <button onclick="navigate('excursion-detail',{selectedExcursionId:appState.lastPublishedExcId})"
+            style="flex:1;padding:12px;background:var(--green);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;">👁️ Visualiser mon excursion</button>
           <button onclick="navigate('excursions')"
             style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;">✈️ Voir les excursions</button>
         </div>
