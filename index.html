@@ -26,6 +26,12 @@
   .header{background:var(--blue);color:#fff;position:sticky;top:0;z-index:100;box-shadow:var(--shadow-md);}
   .header-inner{max-width:1200px;margin:0 auto;padding:0 20px;display:flex;align-items:center;gap:16px;height:60px;}
   @media(max-width:768px){
+    .exc-detail-main, .exc-detail-main *{word-break:break-word;overflow-wrap:anywhere;}
+    .exc-detail-grid{grid-template-columns:1fr !important;display:flex !important;flex-direction:column !important;}
+    .exc-detail-sidebar{order:2;}
+    .exc-detail-main{order:1;}
+    .exc-detail-sidebar > div{position:static !important;}
+    .exc-price-grid{grid-template-columns:1fr !important;}
     .header-inner{padding:0 14px;height:56px;}
     .nav{display:none!important;}
   }
@@ -524,6 +530,8 @@
     .g-main{height:200px;}
     .g-thumb{height:130px;}
   }
+
+    .exc-detail-main p, .exc-detail-main span, .exc-detail-main div{overflow-wrap:anywhere;word-break:break-word;}
 </style>
 </head>
 <body>
@@ -4071,8 +4079,8 @@ function buildExcursionDetail(){
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 340px;gap:28px;align-items:start;">
-      <div>
+    <div class="exc-detail-grid" style="display:grid;grid-template-columns:1fr 340px;gap:28px;align-items:start;">
+      <div class="exc-detail-main">
         <!-- Infos clés -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
           <div style="font-size:17px;font-weight:700;margin-bottom:16px;">📋 Informations clés</div>
@@ -4096,7 +4104,7 @@ function buildExcursionDetail(){
         <!-- Description -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
           <div style="font-size:17px;font-weight:700;margin-bottom:12px;">📖 Description</div>
-          <p style="font-size:15px;color:var(--gray-700);line-height:1.75;">${e.description}</p>
+          <p style="font-size:15px;color:var(--gray-700);line-height:1.75;word-break:break-word;overflow-wrap:anywhere;">${e.description}</p>
         </div>
 
         <!-- Points forts -->
@@ -4106,7 +4114,7 @@ function buildExcursionDetail(){
             ${e.highlights.map(h=>`
               <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f9ff;border-radius:var(--r-md);border:1px solid #d0e8ff;">
                 <span style="color:var(--blue);font-size:16px;">✓</span>
-                <span style="font-size:13px;font-weight:600;color:var(--gray-800);">${h}</span>
+                <span style="font-size:13px;font-weight:600;color:var(--gray-800);word-break:break-word;overflow-wrap:anywhere;">${h}</span>
               </div>`).join('')}
           </div>
         </div>
@@ -4138,7 +4146,7 @@ function buildExcursionDetail(){
       </div>
 
       <!-- Bloc réservation -->
-      <div>
+      <div class="exc-detail-sidebar">
         <div style="background:#fff;border:2px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;position:sticky;top:76px;">
           <div style="font-size:26px;font-weight:800;margin-bottom:4px;">${e.price}€ <span style="font-size:14px;font-weight:400;color:var(--gray-500);">/ ${e.priceType}</span></div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
@@ -4535,7 +4543,7 @@ function excFormStep2(fd){
   return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:26px;">
     <div style="font-size:16px;font-weight:700;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid var(--gray-200);">💶 Tarifs & disponibilités</div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+    <div class="exc-price-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
       <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--r-md);padding:16px;">
         <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Prix *</label>
         <div style="display:flex;align-items:center;gap:6px;">
