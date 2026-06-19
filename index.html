@@ -532,6 +532,15 @@
   }
 
     .exc-detail-main p, .exc-detail-main span, .exc-detail-main div{overflow-wrap:anywhere;word-break:break-word;}
+  /* Retour à la ligne forcé pour tout texte saisi par l'utilisateur, partout dans l'app */
+  h1, h2, h3, h4, h5, h6, p, span, div, label, td, th, li, a, button {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  input, textarea, select {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 </style>
 </head>
 <body>
@@ -2523,7 +2532,8 @@ function annStep0(ad){return `<div class="ann-card">
   <div class="ann-sec" style="margin-top:20px;">Informations générales</div>
   <div class="ann-row">
     <div class="a-field" style="flex:2;"><label>Nom de l'hébergement *</label>
-      <input id="af-name" type="text" placeholder="Ex : Appartement lumineux vue mer à Nice" value="${ad.name}" oninput="annSet('name',this.value)"></div>
+      <input id="af-name" type="text" maxlength="70" placeholder="Ex : Appartement lumineux vue mer à Nice" value="${ad.name}" oninput="annSet('name',this.value)">
+      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(ad.name||'').length}/70</div></div>
     <div class="a-field" style="flex:1;"><label>Surface (m²)</label>
       <input type="number" min="10" placeholder="65" value="${ad.size}" oninput="annSet('size',this.value)"></div>
   </div>
@@ -2555,7 +2565,7 @@ function annStep1(ad){
   <div class="ann-full a-field"><label>Adresse (numéro et rue) *</label>
     <input id="af-address" type="text" placeholder="Ex : 24 avenue des Lilas" value="${ad.address}" oninput="annSet('address',this.value)"></div>
   <div style="display:grid;grid-template-columns:2fr 1fr 2fr;gap:14px;margin-bottom:14px;">
-    <div class="a-field"><label>Ville *</label><input id="af-city" type="text" placeholder="Paris" value="${ad.city}" oninput="annSet(\'city\',this.value)"></div>
+    <div class="a-field"><label>Ville *</label><input id="af-city" type="text" maxlength="30" placeholder="Paris" value="${ad.city}" oninput="annSet(\'city\',this.value)"></div>
     <div class="a-field"><label>Code postal</label><input id="af-zip" type="text" placeholder="75001" value="${ad.zip}" oninput="annSet(\'zip\',this.value)"></div>
     <div class="a-field"><label>Pays</label><select oninput="annSet(\'country\',this.value)">${opts}</select></div>
   </div>
@@ -4428,13 +4438,14 @@ function excFormStep0(fd){
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Titre de l'excursion *</label>
-      <input id="ef-title" type="text" placeholder="Ex : Visite privée de la médina au coucher du soleil" value="${fd.title}"
+      <input id="ef-title" type="text" maxlength="70" placeholder="Ex : Visite privée de la médina au coucher du soleil" value="${fd.title}"
         oninput="excSet('title',this.value)"
-        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
+        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.title||'').length}/70</div></div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Ville *</label>
-        <input id="ef-city" type="text" placeholder="Ex : Marrakech" value="${fd.city}" oninput="excSet('city',this.value)"
+        <input id="ef-city" type="text" maxlength="30" placeholder="Ex : Marrakech" value="${fd.city}" oninput="excSet('city',this.value)"
           style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Pays *</label>
         <select oninput="excSet('country',this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
@@ -4443,10 +4454,10 @@ function excFormStep0(fd){
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Description *</label>
-      <textarea id="ef-desc" placeholder="Décrivez votre excursion : ce que les participants vont vivre, découvrir, ressentir…"
+      <textarea id="ef-desc" maxlength="250" placeholder="Décrivez votre excursion : ce que les participants vont vivre, découvrir, ressentir…"
         oninput="excSet('description',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:100px;line-height:1.6;">${fd.description}</textarea>
-      <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">Minimum 100 caractères recommandés.</div></div>
+      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.description||'').length}/250</div></div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée</label>
@@ -4497,18 +4508,19 @@ function excFormStep1(fd){
 
     <div style="margin-bottom:16px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Points forts (4 maximum)</label>
       ${(fd.highlights||['','','','']).map((h,i)=>`
-        <input type="text" placeholder="Point fort ${i+1} (ex : Vue panoramique exceptionnelle)" value="${h}"
+        <input type="text" maxlength="100" placeholder="Point fort ${i+1} (ex : Vue panoramique exceptionnelle)" value="${h}"
           oninput="excSetHighlight(${i},this.value)"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">`).join('')}
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Programme détaillé</label>
-      <textarea placeholder="Décrivez heure par heure le déroulé de l'excursion…" oninput="excSet('schedule',this.value)"
-        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:100px;line-height:1.6;">${fd.schedule||''}</textarea></div>
+      <textarea maxlength="200" placeholder="Décrivez heure par heure le déroulé de l'excursion…" oninput="excSet('schedule',this.value)"
+        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:100px;line-height:1.6;">${fd.schedule||''}</textarea>
+      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.schedule||'').length}/200</div></div>
 
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Point de rendez-vous</label>
-      <input type="text" placeholder="Ex : Devant la grande porte de la médina, Place Jemaa el-Fna" value="${fd.meetingPoint||''}"
+      <input type="text" maxlength="70" placeholder="Ex : Devant la grande porte de la médina, Place Jemaa el-Fna" value="${fd.meetingPoint||''}"
         oninput="excSet('meetingPoint',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -4526,12 +4538,12 @@ function excFormStep1(fd){
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Quoi apporter</label>
-      <input type="text" placeholder="Ex : Chaussures de marche, crème solaire, gourde d'eau" value="${fd.whatToBring||''}"
+      <input type="text" maxlength="70" placeholder="Ex : Chaussures de marche, crème solaire, gourde d'eau" value="${fd.whatToBring||''}"
         oninput="excSet('whatToBring',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
 
     <div style="margin-bottom:6px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Non inclus dans le prix</label>
-      <input type="text" placeholder="Ex : Boissons, pourboires, billets de musée supplémentaires" value="${fd.notIncluded||''}"
+      <input type="text" maxlength="70" placeholder="Ex : Boissons, pourboires, billets de musée supplémentaires" value="${fd.notIncluded||''}"
         oninput="excSet('notIncluded',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
 
