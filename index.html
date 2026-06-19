@@ -932,9 +932,16 @@ function renderAuthArea(){
   if(!area) return;
   if(auth.currentUser){
     const u = auth.currentUser;
-    area.innerHTML = `<div class="user-menu" id="user-menu">
+    area.innerHTML = `<div class="user-menu" id="user-menu"
+        style="display:flex;align-items:center;gap:9px;cursor:pointer;padding:6px 16px 6px 6px;
+               border-radius:30px;border:1.5px solid rgba(255,255,255,.3);transition:all .2s;"
+        onmouseover="this.style.background='rgba(255,255,255,.15)';this.style.borderColor='rgba(255,255,255,.55)'"
+        onmouseout="this.style.background='';this.style.borderColor='rgba(255,255,255,.3)'">
       <div class="user-avatar" id="ua-btn">${u.firstName[0]}${u.lastName[0]}</div>
-      <div class="user-name" id="un-btn">Bonjour, ${u.firstName} !</div>
+      <div class="user-name" id="un-btn" style="display:flex;align-items:center;gap:7px;">
+        Bonjour, ${u.firstName} !
+        <span style="font-size:10px;opacity:.75;">▼</span>
+      </div>
     </div>`;
     document.getElementById('ua-btn').onclick = toggleDropdown;
     document.getElementById('un-btn').onclick = toggleDropdown;
@@ -967,6 +974,7 @@ function toggleDropdown(){
     </div>
 
     <div class="ud-item" onclick="navigate('home');closeDropdown()">🔍 Explorer les logements</div>
+    <div class="ud-item" onclick="navigate('excursions');closeDropdown()">✈️ Explorer les excursions</div>
     <div class="ud-item" onclick="navigate('reservations');closeDropdown()">📅 Mes réservations</div>
     <div class="ud-item" onclick="navigate('favoris');closeDropdown()">❤️ Mes favoris</div>
     <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages</div>
@@ -974,6 +982,7 @@ function toggleDropdown(){
     <div class="ud-item" onclick="navigate('booking-requests');closeDropdown()">📨 Réservations du jour</div>
     <div class="ud-item" onclick="navigate('mesannonces');closeDropdown()">🏘️ Mes annonces</div>
     <div class="ud-item" onclick="checkAuthAndGo('annonce');closeDropdown()">📋 Déposer une annonce</div>
+    <div class="ud-item" onclick="checkAuthAndGo('excursion-form');closeDropdown()">🗺️ Déposer une excursion</div>
     ${isAdmin ? '<div class="ud-item" style="background:linear-gradient(135deg,#003580,#0071c2);color:#fff;font-weight:700;border-radius:var(--r-sm);margin:4px 8px;" id="dd-admin-btn">⚙️ Administration</div>' : ''}
     <div style="border-top:1px solid var(--gray-200);margin-top:4px;">
       <div class="ud-item" onclick="navigate('profil');closeDropdown()">👤 Mon profil</div>
