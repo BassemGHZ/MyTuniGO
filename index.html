@@ -1166,8 +1166,8 @@ function priceDragMove(e){
   let pct = (clientX - rect.left) / rect.width;
   pct = Math.max(0, Math.min(1, pct));
   const val = Math.round(pct * 410 / 5) * 5;
-  if(_prDragging === 'min') priceMin(val);
-  else priceMax(val);
+  if(_prDragging === 'min') priceMin(val, true);   // skipRefresh during drag
+  else priceMax(val, true);
 }
 
 function priceDragEnd(){
@@ -1176,6 +1176,7 @@ function priceDragEnd(){
   document.removeEventListener('mouseup',   priceDragEnd);
   document.removeEventListener('touchmove', priceDragMove);
   document.removeEventListener('touchend',  priceDragEnd);
+  refreshResults();  // update results only once, when drag ends
 }
 
 function priceTrackClick(e){
@@ -1809,7 +1810,7 @@ function toggleResultsMap(){
 
 function initResultsMaps(){
   const filtered = getFiltered();
-  const coords = filtered.filter(h=>h.lat&&h.lng).map(h=>({id:h.id,lat:h.lat,lng:h.lng,name:h.name,price:h.price_night,emoji:h.emoji}));
+  const coords = filtered.filter(h=>h.lat&&h.lng).map(h=>({id:h.id,lat:h.lat,lng:h.lng,name:h.name,price:h.price||h.price_night,emoji:h.emoji}));
   const center = coords.length>0 ? [coords[0].lat, coords[0].lng] : [36.8065, 10.1815]; // Tunis par défaut
 
   // Mini map
@@ -1834,11 +1835,11 @@ function initResultsMaps(){
       coords.forEach(c=>{
         const icon = L.divIcon({
           className:'',
-          html:'<div style="background:var(--blue);color:#fff;padding:4px 8px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25);">'+c.price+'€</div>',
+          html:'<div style="background:var(--blue);color:#fff;padding:4px 8px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25);">'+(c.price||'?')+'€</div>',
           iconAnchor:[20,12]
         });
         L.marker([c.lat,c.lng],{icon}).addTo(fmap)
-          .bindPopup('<strong>'+c.emoji+' '+c.name+'</strong><br>'+c.price+'€ / nuit<br><a href="#" onclick="navigate(\'detail\',{selectedHotelId:'+c.id+'});return false;">Voir le logement →</a>');
+          .bindPopup('<strong>'+c.emoji+' '+c.name+'</strong><br>'+(c.price||'?')+'€ / nuit<br><a href="#" onclick="navigate(\'detail\',{selectedHotelId:'+c.id+'});return false;">Voir le logement →</a>');
       });
       if(coords.length>1){const b=L.latLngBounds(coords.map(c=>[c.lat,c.lng]));fmap.fitBounds(b.pad(0.15));}
       _resultsFullMap = fmap;
@@ -1868,7 +1869,7 @@ function buildResults(){
       <!-- Compteur résultats -->
       <div style="display:flex;flex-direction:column;justify-content:center;gap:6px;">
         <div style="font-size:20px;font-weight:900;color:var(--gray-900);">
-          ${filtered.length} hébergement${filtered.length>1?'s':''} trouvé${filtered.length>1?'s':''}
+          <span id="map-result-count">${filtered.filter(h=>h.lat&&h.lng).length}</span> hébergement${filtered.filter(h=>h.lat&&h.lng).length>1?'s':''} avec coordonnées GPS
         </div>
         <div style="font-size:14px;color:var(--gray-500);">
           ${appState.searchDest ? '📍 '+appState.searchDest : 'Toutes destinations'}
@@ -2043,22 +2044,22 @@ function resultCardHTML(h){
 
 
 
-function priceMin(v){
+function priceMin(v, skipRefresh){
   v = Math.max(0, Math.min(+v, (appState.filters.maxPrice||410) - 5));
   appState.filters.minPrice = v;
   const f = document.getElementById('pr-min');
   if(f) f.value = v;
   priceDrawThumbs();
-  refreshResults();
+  if(!skipRefresh) refreshResults();
 }
 
-function priceMax(v){
+function priceMax(v, skipRefresh){
   v = Math.min(410, Math.max(+v, (appState.filters.minPrice||0) + 5));
   appState.filters.maxPrice = v;
   const f = document.getElementById('pr-max');
   if(f) f.value = v;
   priceDrawThumbs();
-  refreshResults();
+  if(!skipRefresh) refreshResults();
 }
 
 
@@ -2111,7 +2112,38 @@ function resetFilters(){
   setTimeout(priceDrawThumbs, 80);
   navigate('results');
 }
-function refreshResults(){const old=document.querySelector('.results-layout');if(!old)return;const n=buildResults();old.parentNode.replaceChild(n.querySelector('.results-layout'),old);setTimeout(priceDrawThumbs,50);}
+function refreshResults(){
+  const old=document.querySelector('.results-layout');
+  if(!old)return;
+  const n=buildResults();
+  old.parentNode.replaceChild(n.querySelector('.results-layout'),old);
+  setTimeout(priceDrawThumbs,50);
+  // Update the map area counter (outside .results-layout)
+  const filtered = getFiltered();
+  const mapCount = document.getElementById('map-result-count');
+  if(mapCount) mapCount.textContent = filtered.filter(h=>h.lat&&h.lng).length;
+  // If in map view, refresh the map markers with filtered results
+  if(appState.resultsView==='map'){
+    refreshFullMap();
+  } else {
+    refreshMiniMap();
+  }
+}
+
+function refreshMiniMap(){
+  const miniEl = document.getElementById('results-mini-map-inner');
+  if(!miniEl) return;
+  if(_resultsMiniMap){ _resultsMiniMap.remove(); _resultsMiniMap = null; miniEl._leaflet_id = null; }
+  setTimeout(initResultsMaps, 50);
+}
+
+function refreshFullMap(){
+  const fullEl = document.getElementById('results-full-map');
+  if(!fullEl) return;
+  // Remove existing map and reinit with filtered data
+  if(_resultsFullMap){ _resultsFullMap.remove(); _resultsFullMap = null; delete fullEl._leaflet_id; }
+  setTimeout(initResultsMaps, 50);
+}
 
 /* ===================== DETAIL ===================== */
 function buildDetail(){
