@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MyTunigo — Vivez le monde, comme chez vous</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root {
@@ -2706,7 +2707,7 @@ function annStep0(ad){return `<div class="ann-card">
 </div>`;}
 
 function annStep1(ad){
-  const countries = ['--- Europe ---','France','Belgique','Suisse','Espagne','Italie','Portugal','Allemagne','Royaume-Uni','Pays-Bas','--- Afrique ---','Algérie','Maroc','Tunisie','Sénégal',"Côte d'Ivoire",'Cameroun','Mali','Burkina Faso','Niger','Congo (RDC)','Kenya','Ghana','Nigeria','Madagascar','Tanzanie','--- Autre ---','Autre'];
+  const countries = ['Tunisie','--- Europe ---','France','Belgique','Suisse','Espagne','Italie','Portugal','Allemagne','Royaume-Uni','Pays-Bas','--- Afrique ---','Algérie','Maroc','Sénégal',"Côte d'Ivoire",'Cameroun','Mali','Burkina Faso','Niger','Congo (RDC)','Kenya','Ghana','Nigeria','Madagascar','Tanzanie','--- Autre ---','Autre'];
   const opts = countries.map(c=>c.startsWith('---')
     ? '<option disabled style="color:#aaa;font-style:italic">'+c+'</option>'
     : '<option '+(ad.country===c?'selected':'')+'>'+c+'</option>').join('');
@@ -3826,7 +3827,7 @@ function buildProfil(){
             <input id="pf-birth" type="date" value="${u.birthdate||''}" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
           <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Pays</label>
             <select id="pf-country" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-              ${['France','Belgique','Suisse','Maroc','Sénégal','Tunisie','Côte d\'Ivoire','Autre'].map(c=>`<option ${(u.country||'France')===c?'selected':''}>${c}</option>`).join('')}
+              ${['Tunisie','France','Belgique','Suisse','Maroc','Sénégal','Côte d\'Ivoire','Autre'].map(c=>`<option ${(u.country||'France')===c?'selected':''}>${c}</option>`).join('')}
             </select></div>
           <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Bio</label>
             <textarea id="pf-bio" placeholder="Parlez-vous en quelques mots…" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:70px;">${u.bio||''}</textarea></div>
@@ -4611,7 +4612,7 @@ function excFormStep0(fd){
           style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Pays *</label>
         <select oninput="excSet('country',this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-          ${['--- Europe ---','France','Belgique','Suisse','Espagne','Italie','Portugal','Allemagne','Royaume-Uni','Pays-Bas','--- Afrique ---','Algérie','Angola','Bénin','Botswana','Burkina Faso','Burundi','Cabo Verde','Cameroun','Centrafrique','Comores','Congo (Brazzaville)','Congo (RDC)','Côte d\'Ivoire','Djibouti','Égypte','Érythrée','Eswatini','Éthiopie','Gabon','Gambie','Ghana','Guinée','Guinée-Bissau','Guinée équatoriale','Kenya','Lesotho','Liberia','Libye','Madagascar','Malawi','Mali','Maroc','Maurice','Mauritanie','Mozambique','Namibie','Niger','Nigeria','Ouganda','Rwanda','São Tomé-et-Príncipe','Sénégal','Sierra Leone','Somalie','Soudan','Soudan du Sud','Tanzanie','Tchad','Togo','Tunisie','Zambie','Zimbabwe','--- Asie & Océanie ---','Japon','Chine','Inde','Thaïlande','Indonésie','Vietnam','Corée du Sud','Émirats Arabes Unis','Turquie','Australie','--- Amériques ---','États-Unis','Canada','Mexique','Brésil','Argentine','Colombie','Pérou','--- Autre ---','Autre'].map(c=>c.startsWith('---')?`<option disabled style='color:#aaa;font-style:italic'>${c}</option>`:`<option ${fd.country===c?'selected':''}>${c}</option>`).join('')}
+          ${['Tunisie','--- Europe ---','France','Belgique','Suisse','Espagne','Italie','Portugal','Allemagne','Royaume-Uni','Pays-Bas','--- Afrique ---','Algérie','Angola','Bénin','Botswana','Burkina Faso','Burundi','Cabo Verde','Cameroun','Centrafrique','Comores','Congo (Brazzaville)','Congo (RDC)','Côte d\'Ivoire','Djibouti','Égypte','Érythrée','Eswatini','Éthiopie','Gabon','Gambie','Ghana','Guinée','Guinée-Bissau','Guinée équatoriale','Kenya','Lesotho','Liberia','Libye','Madagascar','Malawi','Mali','Maroc','Maurice','Mauritanie','Mozambique','Namibie','Niger','Nigeria','Ouganda','Rwanda','São Tomé-et-Príncipe','Sénégal','Sierra Leone','Somalie','Soudan','Soudan du Sud','Tanzanie','Tchad','Togo','Zambie','Zimbabwe','--- Asie & Océanie ---','Japon','Chine','Inde','Thaïlande','Indonésie','Vietnam','Corée du Sud','Émirats Arabes Unis','Turquie','Australie','--- Amériques ---','États-Unis','Canada','Mexique','Brésil','Argentine','Colombie','Pérou','--- Autre ---','Autre'].map(c=>c.startsWith('---')?`<option disabled style='color:#aaa;font-style:italic'>${c}</option>`:`<option ${fd.country===c?'selected':''}>${c}</option>`).join('')}
         </select></div>
     </div>
 
