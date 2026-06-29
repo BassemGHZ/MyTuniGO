@@ -1357,15 +1357,13 @@ function handleLogin(){
 }
 
 /* ── Email verification state ── */
-const emailVerification = {
-  pending: null,  // {email, code, firstName, lastName, password, expiresAt}
-};
+/* ── Supabase client ── */
+const _sb = window.supabase.createClient(
+  'https://fxbetakueqkzipsqvtck.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+);
 
-function generateCode(){
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-function handleRegister(){
+async function handleRegister(){
   const first   = document.getElementById('rf-first')?.value?.trim();
   const last    = document.getElementById('rf-last')?.value?.trim();
   const email   = document.getElementById('rf-email')?.value?.trim();
@@ -1378,192 +1376,52 @@ function handleRegister(){
   if(pw.length<8){showModalAlert('Mot de passe trop court (min. 8 caractères).');return;}
   if(pw!==confirm){showModalAlert('Les mots de passe ne correspondent pas.');return;}
   if(!terms){showModalAlert("Acceptez les conditions d'utilisation.");return;}
-  if(auth.users.find(u=>u.email.toLowerCase()===email.toLowerCase())){
-    showModalAlert('Un compte existe déjà avec cet e-mail.');return;
-  }
 
   const btn = document.querySelector('.btn-submit');
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Envoi en cours…';}
 
-  // Generate 6-digit code and store pending registration
-  const code = generateCode();
-  emailVerification.pending = {
-    firstName: first, lastName: last, email, password: pw,
-    code, expiresAt: Date.now() + 15 * 60 * 1000  // 15 min
-  };
+  const { error } = await _sb.auth.signUp({
+    email,
+    password: pw,
+    options: {
+      data: { first_name: first, last_name: last }
+    }
+  });
 
-  // Simulate email send (1s delay)
-  setTimeout(()=>{
-    if(btn){btn.disabled=false;btn.textContent='Créer mon compte gratuitement';}
-    // Show verification screen
-    showEmailVerificationScreen(email, code);
-  }, 1200);
+  if(btn){btn.disabled=false;btn.textContent='Créer mon compte gratuitement';}
+
+  if(error){
+    if(error.message.includes('already registered') || error.message.includes('already been registered')){
+      showModalAlert('Un compte existe déjà avec cet e-mail.');
+    } else {
+      showModalAlert('Erreur : ' + error.message);
+    }
+    return;
+  }
+
+  // Success → show confirmation screen (no code shown, real email sent)
+  showEmailVerificationScreen(email);
 }
 
-function showEmailVerificationScreen(email, code){
+function showEmailVerificationScreen(email){
   const modalBody = document.querySelector('.modal-body');
   if(!modalBody) return;
 
-  // Simulate: in production this code is sent by email
-  // For demo: show code in a "simulated email" panel
   modalBody.innerHTML = `
-    <div style="text-align:center;padding:8px 0 20px;">
-      <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;">📧</div>
-      <h2 style="font-size:20px;font-weight:800;color:var(--blue);margin-bottom:8px;">Vérifiez votre e-mail</h2>
-      <p style="font-size:14px;color:var(--gray-600);line-height:1.6;margin-bottom:20px;">
-        Un code de vérification à 6 chiffres a été envoyé à<br>
-        <strong style="color:var(--blue);">${email}</strong>
+    <div style="text-align:center;padding:20px 0 30px;">
+      <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px;">📧</div>
+      <h2 style="font-size:22px;font-weight:800;color:var(--blue);margin-bottom:12px;">Vérifiez votre e-mail</h2>
+      <p style="font-size:14px;color:var(--gray-600);line-height:1.7;margin-bottom:24px;">
+        Un lien de confirmation a été envoyé à<br>
+        <strong style="color:var(--blue);">${email}</strong><br><br>
+        Cliquez sur le lien dans l'e-mail pour activer votre compte.<br>
+        <span style="font-size:12px;color:var(--gray-500);">Vérifiez aussi vos spams si vous ne le voyez pas.</span>
       </p>
-    </div>
-
-    <!-- Simulated email preview (demo only) -->
-    <div style="background:#f0f7ff;border:1.5px dashed #7aabda;border-radius:var(--r-lg);padding:16px;margin-bottom:20px;">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4a7cad;margin-bottom:10px;">📬 Aperçu e-mail — Démo uniquement</div>
-      <div style="background:#fff;border-radius:var(--r-md);padding:14px;font-size:13px;">
-        <div style="color:var(--gray-500);margin-bottom:4px;"><strong>De :</strong> noreply@mytunigo.com</div>
-        <div style="color:var(--gray-500);margin-bottom:12px;"><strong>Objet :</strong> Votre code de vérification MyTunigo</div>
-        <div style="color:var(--gray-700);line-height:1.7;">
-          Bonjour <strong>${emailVerification.pending?.firstName}</strong>,<br>
-          Votre code de vérification MyTunigo est :<br>
-          <div style="font-size:32px;font-weight:900;letter-spacing:8px;text-align:center;color:var(--blue);background:var(--gray-50);padding:14px;border-radius:var(--r-md);margin:12px 0;font-family:monospace;">${code}</div>
-          Ce code expire dans <strong>15 minutes</strong>.<br>
-          <span style="font-size:12px;color:var(--gray-500);">Si vous n'avez pas créé de compte, ignorez cet e-mail.</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Code input -->
-    <div style="margin-bottom:20px;">
-      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Entrez votre code de vérification</label>
-      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:10px;">
-        ${[0,1,2,3,4,5].map(i=>`<input type="text" maxlength="1" id="otp-${i}"
-          style="width:48px;height:56px;text-align:center;font-size:24px;font-weight:800;border:2px solid var(--gray-300);border-radius:var(--r-md);font-family:monospace;color:var(--blue);outline:none;transition:border-color .15s;"
-          oninput="otpInput(this,${i})" onkeydown="otpBack(event,${i})" onpaste="otpPaste(event)">`).join('')}
-      </div>
-      <div id="otp-error" style="color:var(--red);font-size:13px;text-align:center;display:none;margin-bottom:8px;"></div>
-    </div>
-
-    <button onclick="verifyEmailCode()" id="btn-verify"
-      style="width:100%;background:var(--blue);color:#fff;padding:13px;border-radius:var(--r-md);font-size:16px;font-weight:700;border:none;cursor:pointer;">
-      ✅ Vérifier et créer mon compte
-    </button>
-
-    <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--gray-500);">
-      Pas reçu ? <a onclick="resendVerificationCode()" style="color:var(--blue-l);cursor:pointer;font-weight:600;">Renvoyer le code</a>
-      · <a onclick="modalMode='register';renderModal()" style="color:var(--gray-500);cursor:pointer;">← Modifier l'e-mail</a>
-    </div>
-    <div id="resend-msg" style="display:none;text-align:center;font-size:13px;color:var(--green);margin-top:8px;font-weight:600;">
-      ✅ Nouveau code envoyé !
+      <button onclick="closeModal()"
+        style="background:var(--blue);color:#fff;padding:12px 32px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">
+        OK, j'ai compris
+      </button>
     </div>`;
-
-  // Auto-focus first field
-  setTimeout(()=>document.getElementById('otp-0')?.focus(), 100);
-}
-
-function otpInput(el, idx){
-  // Keep only digits
-  el.value = el.value.replace(/\D/g,'').slice(-1);
-  el.style.borderColor = el.value ? 'var(--blue)' : 'var(--gray-300)';
-  // Move to next field
-  if(el.value && idx < 5) document.getElementById('otp-'+(idx+1))?.focus();
-  // Auto-verify when all filled
-  const full = [0,1,2,3,4,5].map(i=>document.getElementById('otp-'+i)?.value||'').join('');
-  if(full.length === 6) setTimeout(verifyEmailCode, 300);
-}
-
-function otpBack(e, idx){
-  if(e.key === 'Backspace' && !e.target.value && idx > 0){
-    document.getElementById('otp-'+(idx-1))?.focus();
-  }
-}
-
-function otpPaste(e){
-  e.preventDefault();
-  const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g,'').slice(0,6);
-  paste.split('').forEach((c,i)=>{
-    const el = document.getElementById('otp-'+i);
-    if(el){ el.value=c; el.style.borderColor='var(--blue)'; }
-  });
-  if(paste.length===6) setTimeout(verifyEmailCode, 300);
-}
-
-function verifyEmailCode(){
-  const entered = [0,1,2,3,4,5].map(i=>document.getElementById('otp-'+i)?.value||'').join('');
-  const errEl   = document.getElementById('otp-error');
-  const btnEl   = document.getElementById('btn-verify');
-  const pending = emailVerification.pending;
-
-  if(entered.length < 6){
-    if(errEl){errEl.textContent='Entrez les 6 chiffres du code.';errEl.style.display='block';}
-    return;
-  }
-  if(!pending){
-    if(errEl){errEl.textContent='Session expirée. Recommencez.';errEl.style.display='block';}
-    return;
-  }
-  if(Date.now() > pending.expiresAt){
-    if(errEl){errEl.textContent='Code expiré (15 min). Cliquez sur Renvoyer.';errEl.style.display='block';}
-    return;
-  }
-
-  if(btnEl){btnEl.disabled=true;btnEl.innerHTML='<span class="spinner-sm"></span> Vérification…';}
-
-  setTimeout(()=>{
-    if(entered === pending.code){
-      // ✅ Code correct → create account
-      const newUser = {
-        id: Date.now(),
-        role: 'user',
-        firstName: pending.firstName,
-        lastName:  pending.lastName,
-        email:     pending.email,
-        password:  pending.password,
-        emailVerified: true,
-        createdAt: new Date().toISOString().split('T')[0],
-        bankData: {preferredMethod:'virement'}
-      };
-      auth.users.push(newUser);
-      auth.currentUser = newUser;
-      emailVerification.pending = null;
-      closeModal();
-      renderAuthArea();
-      showToast(`Compte vérifié ! Bienvenue, ${newUser.firstName} ✅`,'var(--green)');
-    } else {
-      // ❌ Wrong code
-      if(btnEl){btnEl.disabled=false;btnEl.textContent='✅ Vérifier et créer mon compte';}
-      if(errEl){errEl.textContent='Code incorrect. Vérifiez votre e-mail.';errEl.style.display='block';}
-      // Shake animation on inputs
-      [0,1,2,3,4,5].forEach(i=>{
-        const el=document.getElementById('otp-'+i);
-        if(el){el.style.borderColor='var(--red)';el.value='';}
-      });
-      document.getElementById('otp-0')?.focus();
-    }
-  }, 800);
-}
-
-function resendVerificationCode(){
-  if(!emailVerification.pending) return;
-  const newCode = generateCode();
-  emailVerification.pending.code = newCode;
-  emailVerification.pending.expiresAt = Date.now() + 15 * 60 * 1000;
-  // Update the displayed code in the demo panel
-  const demoCode = document.querySelector('[style*="letter-spacing:8px"]');
-  if(demoCode) demoCode.textContent = newCode;
-  // Clear inputs
-  [0,1,2,3,4,5].forEach(i=>{
-    const el=document.getElementById('otp-'+i);
-    if(el){el.value='';el.style.borderColor='var(--gray-300)';}
-  });
-  document.getElementById('otp-0')?.focus();
-  const msg = document.getElementById('resend-msg');
-  if(msg){msg.style.display='block';setTimeout(()=>msg.style.display='none',3000);}
-}
-
-function demoLogin(){
-  document.getElementById('lf-email').value='jean@exemple.com';
-  document.getElementById('lf-password').value='Test1234!';
-  handleLogin();
 }
 
 /* ===================== TOAST ===================== */
