@@ -1258,32 +1258,7 @@ function autoFill(email, pw){
 
 function buildLoginForm(){
   return `
-    <!-- Comptes de test -->
-    <div style="background:#f0f7ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:12px;margin-bottom:14px;">
-      <div style="font-size:12px;font-weight:700;color:#003580;margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px;">🧪 Connexion rapide — comptes de test</div>
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        <div onclick="autoFill('sophie@exemple.com','User1234!')"
-          style="cursor:pointer;padding:8px 12px;border-radius:8px;background:#fff;border:1px solid #d0e8ff;display:flex;justify-content:space-between;align-items:center;transition:background .15s;"
-          onmouseover="this.style.background='#e8f4ff'" onmouseout="this.style.background='#fff'">
-          <span style="font-size:13px;">✈️ <strong>Sophie Moreau</strong> — Voyageuse</span>
-          <code style="font-size:11px;color:#6b7280;background:#f0f4f8;padding:2px 6px;border-radius:4px;">User1234!</code>
-        </div>
-        <div onclick="autoFill('marc@exemple.com','Host1234!')"
-          style="cursor:pointer;padding:8px 12px;border-radius:8px;background:#fff;border:1px solid #c8f0dd;display:flex;justify-content:space-between;align-items:center;transition:background .15s;"
-          onmouseover="this.style.background='#e8f9f0'" onmouseout="this.style.background='#fff'">
-          <span style="font-size:13px;">✈️ <strong>Marc Leblanc</strong> — Voyageur</span>
-          <code style="font-size:11px;color:#6b7280;background:#f0f4f8;padding:2px 6px;border-radius:4px;">User5678!</code>
-        </div>
-        <div onclick="autoFill('admin@mytunigo.com','Admin1234!')"
-          style="cursor:pointer;padding:8px 12px;border-radius:8px;background:#fff;border:1px solid #c8d4f0;display:flex;justify-content:space-between;align-items:center;transition:background .15s;"
-          onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background='#fff'">
-          <span style="font-size:13px;">⚙️ <strong>Admin MyTunigo</strong> — Admin</span>
-          <code style="font-size:11px;color:#6b7280;background:#f0f4f8;padding:2px 6px;border-radius:4px;">Admin1234!</code>
-        </div>
-      </div>
-      <div style="font-size:11px;color:#9ca3af;margin-top:8px;">👆 Cliquez pour pré-remplir les champs</div>
-    </div>
-    <div class="divider-or"><span>ou saisissez manuellement</span></div>
+
     <div class="f-field"><label>E-mail</label><input type="email" id="lf-email" placeholder="votre@email.com"></div>
     <div class="f-field"><label>Mot de passe</label>
       <div class="pw-wrap"><input type="password" id="lf-password" placeholder="••••••••">
@@ -1374,9 +1349,20 @@ async function handleLogin(){
 }
 
 async function showForgotPassword(){
-  const modalBody = document.querySelector('.modal-body');
-  if(!modalBody) return;
-  modalBody.innerHTML = `
+  // Replace entire modal content cleanly
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if(e.target === overlay) closeModal(); };
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `<div class="modal-header">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h2>🔑 Mot de passe oublié</h2>
+    <p>Réinitialisez votre mot de passe</p>
+  </div>
+  <div class="modal-body">` + `
     <div style="text-align:center;padding:8px 0 16px;">
       <div style="font-size:36px;margin-bottom:12px;">🔑</div>
       <h2 style="font-size:20px;font-weight:800;color:var(--blue);margin-bottom:8px;">Mot de passe oublié</h2>
@@ -1395,7 +1381,10 @@ async function showForgotPassword(){
     </button>
     <div style="text-align:center;margin-top:14px;font-size:13px;">
       <a onclick="modalMode='login';renderModal()" style="color:var(--blue-l);cursor:pointer;">← Retour à la connexion</a>
-    </div>`;
+    </div>
+  </div>`;
+  overlay.appendChild(modal);
+  root.appendChild(overlay);
   setTimeout(()=>document.getElementById('fp-email')?.focus(), 100);
 }
 
@@ -7539,13 +7528,18 @@ async function geocodeAddress(){
 // ── Supabase password reset handler moved to init ──
 
 function showResetPasswordModal(){
-  // Render the modal shell first, then inject content
-  openModal('login');
-  const modalBody = document.querySelector('.modal-body');
-  if(!modalBody) return;
-  const mh = document.querySelector('.modal-header h2');
-  if(mh) mh.textContent = 'Nouveau mot de passe';
-  modalBody.innerHTML = `
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `<div class="modal-header">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h2>🔐 Nouveau mot de passe</h2>
+    <p>Choisissez un nouveau mot de passe</p>
+  </div>
+  <div class="modal-body">` + `
     <div style="text-align:center;padding:8px 0 16px;">
       <div style="font-size:36px;margin-bottom:12px;">🔐</div>
       <p style="font-size:14px;color:var(--gray-600);margin-bottom:20px;line-height:1.6;">
@@ -7570,7 +7564,10 @@ function showResetPasswordModal(){
     <button id="rp-btn" onclick="submitNewPassword()"
       style="width:100%;background:var(--blue);color:#fff;padding:13px;border-radius:var(--r-md);font-size:16px;font-weight:700;border:none;cursor:pointer;">
       Enregistrer le mot de passe
-    </button>`;
+    </button>
+  </div>`;
+  overlay.appendChild(modal);
+  root.appendChild(overlay);
 }
 
 async function submitNewPassword(){
