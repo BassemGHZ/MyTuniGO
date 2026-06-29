@@ -1289,7 +1289,7 @@ function buildLoginForm(){
       <div class="pw-wrap"><input type="password" id="lf-password" placeholder="••••••••">
       <button class="pw-toggle" onclick="togglePw('lf-password',this)">👁️</button></div>
     </div>
-    <div style="text-align:right;margin-bottom:14px;"><a style="font-size:13px;color:var(--blue-l);cursor:pointer;">Mot de passe oublié ?</a></div>
+    <div style="text-align:right;margin-bottom:14px;"><a style="font-size:13px;color:var(--blue-l);cursor:pointer;" onclick="showForgotPassword()">Mot de passe oublié ?</a></div>
     <button class="btn-submit" onclick="handleLogin()">Se connecter</button>
     <div class="m-footer">Pas de compte ? <a onclick="modalMode='register';renderModal()">S'inscrire gratuitement</a></div>`;
 }
@@ -1335,25 +1335,94 @@ function showModalAlert(msg, type='err'){
   el.innerHTML=`<div class="m-alert ${type}">${type==='err'?'⚠️':'✅'} ${msg}</div>`;
 }
 
-function handleLogin(){
-  const email=document.getElementById('lf-email')?.value?.trim();
-  const pw=document.getElementById('lf-password')?.value;
+async function handleLogin(){
+  const email = document.getElementById('lf-email')?.value?.trim();
+  const pw    = document.getElementById('lf-password')?.value;
   if(!email||!pw){showModalAlert('Veuillez remplir tous les champs.');return;}
-  const btn=document.querySelector('.btn-submit');
+  const btn = document.querySelector('.btn-submit');
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span>';}
-  setTimeout(()=>{
-    const user=auth.users.find(u=>u.email.toLowerCase()===email.toLowerCase()&&u.password===pw);
-    if(user){
-      auth.currentUser=user;
-      closeModal();
-      renderAuthArea();
-      showToast('Bienvenue, '+user.firstName+' ! 🎉','var(--green)');
-      const pending=appState._pendingPage;
-      appState._pendingPage=null;
-      navigate(pending||'home');
+
+  const { data, error } = await _sb.auth.signInWithPassword({ email, password: pw });
+
+  if(error){
+    if(btn){btn.disabled=false;btn.textContent='Se connecter';}
+    if(error.message.includes('Email not confirmed')){
+      showModalAlert('Veuillez confirmer votre e-mail avant de vous connecter.');
+    } else {
+      showModalAlert('E-mail ou mot de passe incorrect.');
     }
-    else{if(btn){btn.disabled=false;btn.textContent='Se connecter';}showModalAlert('E-mail ou mot de passe incorrect.');}
-  },900);
+    return;
+  }
+
+  const meta = data.user?.user_metadata || {};
+  auth.currentUser = {
+    id: data.user.id,
+    role: 'user',
+    firstName: meta.first_name || email.split('@')[0],
+    lastName:  meta.last_name  || '',
+    email:     data.user.email,
+    emailVerified: true,
+    createdAt: data.user.created_at?.split('T')[0] || '',
+    bankData: { preferredMethod: 'virement' }
+  };
+  closeModal();
+  renderAuthArea();
+  showToast('Bienvenue, ' + auth.currentUser.firstName + ' ! 🎉', 'var(--green)');
+  const pending = appState._pendingPage;
+  appState._pendingPage = null;
+  navigate(pending || 'home');
+}
+
+async function showForgotPassword(){
+  const modalBody = document.querySelector('.modal-body');
+  if(!modalBody) return;
+  modalBody.innerHTML = `
+    <div style="text-align:center;padding:8px 0 16px;">
+      <div style="font-size:36px;margin-bottom:12px;">🔑</div>
+      <h2 style="font-size:20px;font-weight:800;color:var(--blue);margin-bottom:8px;">Mot de passe oublié</h2>
+      <p style="font-size:14px;color:var(--gray-600);margin-bottom:20px;line-height:1.6;">
+        Entrez votre e-mail, nous vous enverrons un lien pour réinitialiser votre mot de passe.
+      </p>
+    </div>
+    <div class="f-field" style="margin-bottom:16px;">
+      <label>E-mail</label>
+      <input type="email" id="fp-email" placeholder="votre@email.com">
+    </div>
+    <div id="fp-msg" style="display:none;padding:10px 14px;border-radius:var(--r-md);font-size:13px;margin-bottom:14px;"></div>
+    <button id="fp-btn" onclick="sendResetEmail()"
+      style="width:100%;background:var(--blue);color:#fff;padding:13px;border-radius:var(--r-md);font-size:16px;font-weight:700;border:none;cursor:pointer;">
+      Envoyer le lien
+    </button>
+    <div style="text-align:center;margin-top:14px;font-size:13px;">
+      <a onclick="modalMode='login';renderModal()" style="color:var(--blue-l);cursor:pointer;">← Retour à la connexion</a>
+    </div>`;
+  setTimeout(()=>document.getElementById('fp-email')?.focus(), 100);
+}
+
+async function sendResetEmail(){
+  const email = document.getElementById('fp-email')?.value?.trim();
+  const msgEl = document.getElementById('fp-msg');
+  const btn   = document.getElementById('fp-btn');
+  if(!email){
+    msgEl.textContent='Veuillez entrer votre e-mail.';
+    msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
+    return;
+  }
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Envoi…';}
+
+  const { error } = await _sb.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://mytunigo.com'
+  });
+
+  if(btn){btn.disabled=false;btn.textContent='Envoyer le lien';}
+  if(error){
+    msgEl.textContent='Erreur : ' + error.message;
+    msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';
+  } else {
+    msgEl.innerHTML='✅ Lien envoyé ! Vérifiez votre boîte mail (et vos spams).';
+    msgEl.style.background='#f0fff8';msgEl.style.color='var(--green)';
+  }
+  msgEl.style.display='block';
 }
 
 /* ── Email verification state ── */
@@ -7252,6 +7321,24 @@ function buildFooter(){
 }
 
 /* ===================== INIT ===================== */
+
+// ── Supabase password reset: enregistré AVANT render ──
+_sb.auth.onAuthStateChange((event, session) => {
+  if(event === 'PASSWORD_RECOVERY'){
+    setTimeout(showResetPasswordModal, 300);
+  }
+});
+
+// Vérification immédiate du hash URL (cas où Supabase redirige avec #access_token)
+(function checkResetHash(){
+  const hash = window.location.hash;
+  if(hash.includes('type=recovery') || hash.includes('access_token')){
+    _sb.auth.getSession().then(({ data: { session } }) => {
+      if(session){ setTimeout(showResetPasswordModal, 400); }
+    });
+  }
+})();
+
 render();
 
 
@@ -7448,6 +7535,76 @@ async function geocodeAddress(){
 }
 
 // Map init calls are handled directly in render() and annRefresh()
+
+// ── Supabase password reset handler moved to init ──
+
+function showResetPasswordModal(){
+  // Render the modal shell first, then inject content
+  openModal('login');
+  const modalBody = document.querySelector('.modal-body');
+  if(!modalBody) return;
+  const mh = document.querySelector('.modal-header h2');
+  if(mh) mh.textContent = 'Nouveau mot de passe';
+  modalBody.innerHTML = `
+    <div style="text-align:center;padding:8px 0 16px;">
+      <div style="font-size:36px;margin-bottom:12px;">🔐</div>
+      <p style="font-size:14px;color:var(--gray-600);margin-bottom:20px;line-height:1.6;">
+        Choisissez un nouveau mot de passe pour votre compte.
+      </p>
+    </div>
+    <div class="f-field" style="margin-bottom:12px;">
+      <label>Nouveau mot de passe</label>
+      <div class="pw-wrap">
+        <input type="password" id="rp-password" placeholder="Min. 8 caractères">
+        <button class="pw-toggle" onclick="togglePw(\'rp-password\',this)">👁️</button>
+      </div>
+    </div>
+    <div class="f-field" style="margin-bottom:16px;">
+      <label>Confirmer</label>
+      <div class="pw-wrap">
+        <input type="password" id="rp-confirm" placeholder="Répétez le mot de passe">
+        <button class="pw-toggle" onclick="togglePw(\'rp-confirm\',this)">👁️</button>
+      </div>
+    </div>
+    <div id="rp-msg" style="display:none;padding:10px 14px;border-radius:var(--r-md);font-size:13px;margin-bottom:14px;"></div>
+    <button id="rp-btn" onclick="submitNewPassword()"
+      style="width:100%;background:var(--blue);color:#fff;padding:13px;border-radius:var(--r-md);font-size:16px;font-weight:700;border:none;cursor:pointer;">
+      Enregistrer le mot de passe
+    </button>`;
+}
+
+async function submitNewPassword(){
+  const pw      = document.getElementById('rp-password')?.value;
+  const confirm = document.getElementById('rp-confirm')?.value;
+  const msgEl   = document.getElementById('rp-msg');
+  const btn     = document.getElementById('rp-btn');
+
+  if(!pw || pw.length < 8){
+    msgEl.textContent='Mot de passe trop court (min. 8 caractères).';
+    msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
+    return;
+  }
+  if(pw !== confirm){
+    msgEl.textContent='Les mots de passe ne correspondent pas.';
+    msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
+    return;
+  }
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Enregistrement…';}
+
+  const { error } = await _sb.auth.updateUser({ password: pw });
+
+  if(error){
+    if(btn){btn.disabled=false;btn.textContent='Enregistrer le mot de passe';}
+    msgEl.textContent='Erreur : ' + error.message;
+    msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
+  } else {
+    msgEl.innerHTML='✅ Mot de passe mis à jour ! Vous pouvez vous connecter.';
+    msgEl.style.background='#f0fff8';msgEl.style.color='var(--green)';msgEl.style.display='block';
+    if(btn){btn.style.display='none';}
+    history.replaceState(null, '', window.location.pathname);
+    setTimeout(()=>{ closeModal(); modalMode='login'; renderModal(); openModal(); }, 2500);
+  }
+}
 
 </script>
 </body>
