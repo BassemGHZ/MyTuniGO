@@ -3044,8 +3044,8 @@ async function annPublish(){
   const btn = document.querySelector('.btn-publish');
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
 
-  // 1. Sauvegarde dans Supabase
-  const { data: annData, error: annError } = await _sb.from('annonces').insert([{
+  // 1 & 2. Edge Function : insert Supabase + email admin
+  const payload = {
     ref,
     user_id: auth.currentUser?.id || null,
     type: ad.type,
@@ -3078,52 +3078,26 @@ async function annPublish(){
     contact_phone: ad.phone || '',
     status: 'en attente',
     created_at: new Date().toISOString()
-  }]).select().single();
+  };
 
-  if(annError){
-    if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'annonce';}
-    showToast('Erreur lors de la publication : '+annError.message,'var(--red)');
-    return;
-  }
-
-  // 2. Email notification admin via Resend
+  let annData = null;
   try {
-    await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer re_BSAJnaeM_8mdfaQjea7TSpsrGGukGHXyv'
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
       },
-      body: JSON.stringify({
-        from: 'MyTunigo <noreply@mytunigo.com>',
-        to: ['ghezal.bassem@gmail.com'],
-        subject: '🏠 Nouvelle annonce à valider — ' + ad.name,
-        html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:8px;">
-          <div style="background:#003580;padding:20px;border-radius:8px 8px 0 0;text-align:center;">
-            <h1 style="color:#fff;margin:0;font-size:22px;">MyTunigo</h1>
-            <p style="color:#b3d4f0;margin:4px 0 0;font-size:14px;">Nouvelle annonce à vérifier</p>
-          </div>
-          <div style="padding:24px;">
-            <h2 style="color:#003580;margin-top:0;">📋 Référence : ${ref}</h2>
-            <table style="width:100%;border-collapse:collapse;">
-              <tr><td style="padding:8px 12px;background:#f5f7fa;font-weight:600;border-radius:4px;width:40%;">Type</td><td style="padding:8px 12px;">${typeObj.name||ad.type}</td></tr>
-              <tr><td style="padding:8px 12px;font-weight:600;">Nom</td><td style="padding:8px 12px;">${ad.name}</td></tr>
-              <tr><td style="padding:8px 12px;background:#f5f7fa;font-weight:600;">Ville</td><td style="padding:8px 12px;">${ad.city}, ${ad.country||'Tunisie'}</td></tr>
-              <tr><td style="padding:8px 12px;font-weight:600;">Prix/nuit</td><td style="padding:8px 12px;">${ad.price_night||0} €</td></tr>
-              <tr><td style="padding:8px 12px;background:#f5f7fa;font-weight:600;">Contact</td><td style="padding:8px 12px;">${ad.firstname||''} ${ad.lastname||''}<br>${ad.email||''} · ${ad.phone||''}</td></tr>
-              <tr><td style="padding:8px 12px;font-weight:600;">Description</td><td style="padding:8px 12px;font-size:13px;color:#4b5563;">${(ad.desc||'').substring(0,300)}${(ad.desc||'').length>300?'…':''}</td></tr>
-            </table>
-            <div style="margin-top:24px;text-align:center;">
-              <a href="https://supabase.com/dashboard/project/fxbetakueqkzipsqvtck/editor"
-                style="display:inline-block;background:#003580;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">
-                Voir dans Supabase →
-              </a>
-            </div>
-          </div>
-        </div>`
-      })
+      body: JSON.stringify(payload)
     });
-  } catch(e){ console.warn('Email admin non envoyé:', e); }
+    const result = await res.json();
+    if(!res.ok) throw new Error(result.error || 'Edge Function error');
+    annData = result;
+  } catch(e) {
+    if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'annonce';}
+    showToast('Erreur lors de la publication : '+e.message,'var(--red)');
+    return;
+  }
 
   // 3. Mise à jour état local + navigation
   const newAnn = {
