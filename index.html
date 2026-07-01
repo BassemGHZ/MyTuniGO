@@ -3034,32 +3034,121 @@ function annGo(dir){
   navigate('annonce');
 }
 
-function annPublish(){
+async function annPublish(){
   if(!annValidate()) return;
-  const ad=appState.annonceData;
-  const typeObj=TYPES_ANN.find(t=>t.id===ad.type)||{typeLabel:'Hébergement',emoji:'🏨'};
-  const EMOJIS_MAP={hotel:'🏨',apt:'🏢',house:'🏠',villa:'🌴',studio:'🛋️',chalet:'🏔️'};
-  const newAnn={
-    id:'ANN-'+Math.random().toString(36).substr(2,8).toUpperCase(),
-    type:ad.type, typeLabel:typeObj.name||ad.type,
-    emoji:EMOJIS_MAP[ad.type]||'🏠',
-    name:ad.name, city:ad.city, country:ad.country,
-    address:ad.address, price_night:ad.price_night||0,
-    stars:ad.stars||3, status:'en attente',
-    createdAt:new Date().toISOString().split('T')[0],
-    updatedAt:new Date().toISOString().split('T')[0],
+  const ad = appState.annonceData;
+  const typeObj = TYPES_ANN.find(t=>t.id===ad.type)||{name:'Hébergement'};
+  const EMOJIS_MAP = {hotel:'🏨',apt:'🏢',house:'🏠',villa:'🌴',studio:'🛋️',chalet:'🏔️'};
+  const ref = 'ANN-'+Math.random().toString(36).substr(2,8).toUpperCase();
+
+  const btn = document.querySelector('.btn-publish');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
+
+  // 1. Sauvegarde dans Supabase
+  const { data: annData, error: annError } = await _sb.from('annonces').insert([{
+    ref,
+    user_id: auth.currentUser?.id || null,
+    type: ad.type,
+    type_label: typeObj.name || ad.type,
+    emoji: EMOJIS_MAP[ad.type] || '🏠',
+    name: ad.name,
+    description: ad.desc || '',
+    city: ad.city,
+    country: ad.country || 'Tunisie',
+    address: ad.address || '',
+    zip: ad.zip || '',
+    lat: ad.lat ? parseFloat(ad.lat) : null,
+    lng: ad.lng ? parseFloat(ad.lng) : null,
+    price_night: ad.price_night || 0,
+    price_week: ad.price_week || 0,
+    price_month: ad.price_month || 0,
+    stars: ad.stars || 3,
+    rooms: ad.rooms || 1,
+    bathrooms: ad.bathrooms || 1,
+    capacity: ad.capacity || 2,
+    amenities: ad.amenities || [],
+    checkin: ad.checkin || '15:00',
+    checkout: ad.checkout || '11:00',
+    cancellation: ad.cancellation || 'flexible',
+    min_stay: ad.minNights || 1,
+    max_stay: ad.maxNights || 30,
+    contact_firstname: ad.firstname || '',
+    contact_lastname: ad.lastname || '',
+    contact_email: ad.email || '',
+    contact_phone: ad.phone || '',
+    status: 'en attente',
+    created_at: new Date().toISOString()
+  }]).select().single();
+
+  if(annError){
+    if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'annonce';}
+    showToast('Erreur lors de la publication : '+annError.message,'var(--red)');
+    return;
+  }
+
+  // 2. Email notification admin via Resend
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer re_BSAJnaeM_8mdfaQjea7TSpsrGGukGHXyv'
+      },
+      body: JSON.stringify({
+        from: 'MyTunigo <noreply@mytunigo.com>',
+        to: ['ghezal.bassem@gmail.com'],
+        subject: '🏠 Nouvelle annonce à valider — ' + ad.name,
+        html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:8px;">
+          <div style="background:#003580;padding:20px;border-radius:8px 8px 0 0;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;">MyTunigo</h1>
+            <p style="color:#b3d4f0;margin:4px 0 0;font-size:14px;">Nouvelle annonce à vérifier</p>
+          </div>
+          <div style="padding:24px;">
+            <h2 style="color:#003580;margin-top:0;">📋 Référence : ${ref}</h2>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="padding:8px 12px;background:#f5f7fa;font-weight:600;border-radius:4px;width:40%;">Type</td><td style="padding:8px 12px;">${typeObj.name||ad.type}</td></tr>
+              <tr><td style="padding:8px 12px;font-weight:600;">Nom</td><td style="padding:8px 12px;">${ad.name}</td></tr>
+              <tr><td style="padding:8px 12px;background:#f5f7fa;font-weight:600;">Ville</td><td style="padding:8px 12px;">${ad.city}, ${ad.country||'Tunisie'}</td></tr>
+              <tr><td style="padding:8px 12px;font-weight:600;">Prix/nuit</td><td style="padding:8px 12px;">${ad.price_night||0} €</td></tr>
+              <tr><td style="padding:8px 12px;background:#f5f7fa;font-weight:600;">Contact</td><td style="padding:8px 12px;">${ad.firstname||''} ${ad.lastname||''}<br>${ad.email||''} · ${ad.phone||''}</td></tr>
+              <tr><td style="padding:8px 12px;font-weight:600;">Description</td><td style="padding:8px 12px;font-size:13px;color:#4b5563;">${(ad.desc||'').substring(0,300)}${(ad.desc||'').length>300?'…':''}</td></tr>
+            </table>
+            <div style="margin-top:24px;text-align:center;">
+              <a href="https://supabase.com/dashboard/project/fxbetakueqkzipsqvtck/editor"
+                style="display:inline-block;background:#003580;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">
+                Voir dans Supabase →
+              </a>
+            </div>
+          </div>
+        </div>`
+      })
+    });
+  } catch(e){ console.warn('Email admin non envoyé:', e); }
+
+  // 3. Mise à jour état local + navigation
+  const newAnn = {
+    id: annData?.id || ref, ref,
+    type: ad.type, typeLabel: typeObj.name||ad.type,
+    emoji: EMOJIS_MAP[ad.type]||'🏠',
+    name: ad.name, city: ad.city, country: ad.country,
+    address: ad.address, price_night: ad.price_night||0,
+    stars: ad.stars||3, status: 'en attente',
+    createdAt: new Date().toISOString().split('T')[0],
+    updatedAt: new Date().toISOString().split('T')[0],
+    _ref: ref,
     stats:{vues:0,clics:0,reservations:0,revenus:0,tauxOccupation:0,noteMoyenne:0,avis:0,
            vuesMois:[0,0,0,0,0,0,0,0,0,0,0,0],
            revenusMois:[0,0,0,0,0,0,0,0,0,0,0,0]},
   };
   appState.myAnnonces.unshift(newAnn);
-  appState.annoncePublished=true;
+  appState.annoncePublished = true;
+  appState._lastRef = ref;
   navigate('annonce');
 }
 
 function buildAnnonceSuccess(){
   const ad=appState.annonceData;
-  const ref='ANN-'+Math.random().toString(36).substr(2,8).toUpperCase();
+  const ref = appState._lastRef || 'ANN-'+Math.random().toString(36).substr(2,8).toUpperCase();
   const d=document.createElement('div');
   d.innerHTML=`<div class="annonce-wrap">
     <div class="ann-card">
