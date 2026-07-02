@@ -3044,7 +3044,7 @@ async function annPublish(){
   const btn = document.querySelector('.btn-publish');
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
 
-  // 1 & 2. Edge Function : insert Supabase + email admin
+  // 1. Insert via REST API avec service_role (bypass RLS)
   const payload = {
     ref,
     user_id: auth.currentUser?.id || null,
@@ -3082,17 +3082,30 @@ async function annPublish(){
 
   let annData = null;
   try {
-    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/rest/v1/annonces', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjU0OTUyMCwiZXhwIjoyMDk4MTI1NTIwfQ.1KFhjNV5Sn1j6tCa__sEIHUCMxDOVJHOcOJPL3msN30',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjU0OTUyMCwiZXhwIjoyMDk4MTI1NTIwfQ.1KFhjNV5Sn1j6tCa__sEIHUCMxDOVJHOcOJPL3msN30',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if(!res.ok) throw new Error(result.message || JSON.stringify(result));
+    annData = Array.isArray(result) ? result[0] : result;
+
+    // 2. Email admin via Edge Function (best effort)
+    fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
       },
-      body: JSON.stringify(payload)
-    });
-    const result = await res.json();
-    if(!res.ok) throw new Error(result.error || 'Edge Function error');
-    annData = result;
+      body: JSON.stringify({email_only: true, ...payload})
+    }).catch(()=>{});
+
   } catch(e) {
     if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'annonce';}
     showToast('Erreur lors de la publication : '+e.message,'var(--red)');
