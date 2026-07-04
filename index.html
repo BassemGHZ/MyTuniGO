@@ -3087,15 +3087,21 @@ async function annPublish(){
     if(error) throw new Error(error.message);
     annData = data;
 
-    // Email admin via Edge Function (best effort)
-    fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-      },
-      body: JSON.stringify(payload)
-    }).catch(()=>{});
+    // Email admin via Edge Function
+    try {
+      const efRes = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify(payload)
+      });
+      const efResult = await efRes.json();
+      console.log('Edge Function response:', efRes.status, JSON.stringify(efResult));
+    } catch(efErr) {
+      console.error('Edge Function error:', efErr.message);
+    }
 
   } catch(e) {
     if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'annonce';}
