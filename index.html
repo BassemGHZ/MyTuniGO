@@ -6587,6 +6587,7 @@ function switchAdminTab(tab){
   else if(tab==='annonces') buildAdminAnnonces(content);
 }
 
+let _adminAnnoncesCache = [];
 async function buildAdminAnnonces(content){
   content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">⏳ Chargement des annonces…</div>';
 
@@ -6600,6 +6601,7 @@ async function buildAdminAnnonces(content){
   const pending = (data||[]).filter(a=>a.status==='en attente');
   const others  = (data||[]).filter(a=>a.status!=='en attente');
   const all = [...pending, ...others];
+  _adminAnnoncesCache = all;
 
   if(!all.length){
     content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">Aucune annonce pour le moment.</div>';
@@ -6635,6 +6637,8 @@ async function buildAdminAnnonces(content){
           ${a.description?`<div style="font-size:13px;color:#4b5563;margin-top:8px;font-style:italic;">"${a.description.substring(0,150)}${a.description.length>150?'…':''}"</div>`:''}
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;">
+          <button onclick="openAdminAnnonceDetail('${a.id}')"
+            style="background:#eef2f7;color:#003580;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">👁️ Voir / Modifier</button>
           ${a.status==='en attente'?`
           <button onclick="validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
             style="background:#0d9e6e;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">✅ Valider</button>
@@ -6681,6 +6685,156 @@ async function rejectAnnonce(id, ref, name, email, firstname){
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
   showToast('Annonce rejetée.','var(--red)');
+  buildAdminAnnonces(document.getElementById('admin-content'));
+}
+
+/* ===================== ADMIN ANNONCE DETAIL / EDIT MODAL ===================== */
+let _adminModalEditMode = false;
+
+function openAdminAnnonceDetail(id){
+  _adminModalEditMode = false;
+  renderAdminAnnonceModal(id);
+}
+
+function renderAdminAnnonceModal(id){
+  const a = _adminAnnoncesCache.find(x=>String(x.id)===String(id));
+  if(!a){ showToast('Annonce introuvable, rafraîchissez la liste','var(--red)'); return; }
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
+
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
+  const esc = v => (v===undefined||v===null) ? '' : String(v).replace(/"/g,'&quot;');
+
+  const field = (label, value) => `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">${label}</div>
+      <div style="font-size:14px;color:#111827;">${(value!==undefined&&value!==null&&value!=='')?value:'—'}</div>
+    </div>`;
+
+  const editField = (label, fid, value, type) => `
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">${label}</label>
+      <input type="${type||'text'}" id="${fid}" value="${esc(value)}"
+        style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;box-sizing:border-box;">
+    </div>`;
+
+  const body = _adminModalEditMode ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
+      ${editField("Nom de l'hébergement",'am-name',a.name)}
+      ${editField('Prix / nuit (€)','am-price-night',a.price_night,'number')}
+      ${editField('Ville','am-city',a.city)}
+      ${editField('Pays','am-country',a.country)}
+      ${editField('Adresse','am-address',a.address)}
+      ${editField('Code postal','am-zip',a.zip)}
+      ${editField('Chambres','am-rooms',a.rooms,'number')}
+      ${editField('Salles de bain','am-bathrooms',a.bathrooms,'number')}
+      ${editField('Capacité','am-capacity',a.capacity,'number')}
+      ${editField('Étoiles','am-stars',a.stars,'number')}
+      ${editField('Heure arrivée','am-checkin',a.checkin)}
+      ${editField('Heure départ','am-checkout',a.checkout)}
+      ${editField('Séjour min (nuits)','am-min-stay',a.min_stay,'number')}
+      ${editField('Séjour max (nuits)','am-max-stay',a.max_stay,'number')}
+      ${editField('Prénom contact','am-contact-firstname',a.contact_firstname)}
+      ${editField('Nom contact','am-contact-lastname',a.contact_lastname)}
+      ${editField('Email contact','am-contact-email',a.contact_email)}
+      ${editField('Téléphone contact','am-contact-phone',a.contact_phone)}
+    </div>
+    <div style="margin-top:4px;">
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Description</label>
+      <textarea id="am-desc" rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
+    </div>
+  ` : `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
+      ${field('Référence', a.ref)}
+      ${field('Statut', '<span style="color:'+(statusColor[a.status]||'#6b7280')+';font-weight:700;">'+(a.status||'—')+'</span>')}
+      ${field("Nom de l'hébergement", a.name)}
+      ${field('Type', a.type_label||a.type)}
+      ${field('Prix / nuit', (a.price_night||0)+'€')}
+      ${field('Prix / semaine', a.price_week ? a.price_week+'€' : '—')}
+      ${field('Prix / mois', a.price_month ? a.price_month+'€' : '—')}
+      ${field('Ville', a.city)}
+      ${field('Pays', a.country)}
+      ${field('Adresse', a.address)}
+      ${field('Code postal', a.zip)}
+      ${field('Coordonnées GPS', (a.lat&&a.lng) ? a.lat+', '+a.lng : '—')}
+      ${field('Chambres', a.rooms)}
+      ${field('Salles de bain', a.bathrooms)}
+      ${field('Capacité', a.capacity)}
+      ${field('Étoiles', a.stars)}
+      ${field('Arrivée / Départ', (a.checkin||'—')+' / '+(a.checkout||'—'))}
+      ${field('Séjour min/max', (a.min_stay||1)+' - '+(a.max_stay||30)+' nuits')}
+      ${field('Annulation', a.cancellation)}
+      ${field('Équipements', (a.amenities&&a.amenities.length) ? a.amenities.join(', ') : '—')}
+      ${field('Contact', (a.contact_firstname||'')+' '+(a.contact_lastname||''))}
+      ${field('Email contact', a.contact_email)}
+      ${field('Téléphone contact', a.contact_phone||'—')}
+      ${field('Créée le', a.created_at ? new Date(a.created_at).toLocaleDateString('fr-FR') : '—')}
+    </div>
+    <div style="margin-top:6px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">Description</div>
+      <div style="font-size:14px;color:#111827;line-height:1.6;">${a.description||'—'}</div>
+    </div>
+  `;
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header" style="background:linear-gradient(135deg,#003580,#0071c2);">
+        <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
+        <h2>${a.emoji||'🏠'} ${a.name||'Annonce'}</h2>
+        <p>${_adminModalEditMode ? "Modification de l'annonce" : "Détail de l'annonce"}</p>
+      </div>
+      <div class="modal-body" style="max-height:58vh;overflow-y:auto;">
+        ${body}
+      </div>
+      <div style="display:flex;gap:8px;padding:16px 24px;border-top:1px solid var(--gray-200);flex-wrap:wrap;">
+        ${_adminModalEditMode ? `
+          <button onclick="saveAdminAnnonceEdit('${a.id}')" style="flex:1;min-width:140px;background:#003580;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">💾 Enregistrer</button>
+          <button onclick="_adminModalEditMode=false;renderAdminAnnonceModal('${a.id}')" style="flex:1;min-width:120px;background:var(--gray-100);color:var(--gray-700);padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">Annuler</button>
+        ` : `
+          <button onclick="_adminModalEditMode=true;renderAdminAnnonceModal('${a.id}')" style="flex:1;min-width:120px;background:#eef2f7;color:#003580;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✏️ Modifier</button>
+          ${a.status==='en attente' ? `
+            <button onclick="document.getElementById('modal-root').innerHTML='';validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#0d9e6e;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✅ Valider</button>
+            <button onclick="document.getElementById('modal-root').innerHTML='';rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#cc0000;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">❌ Rejeter</button>
+          ` : ''}
+        `}
+      </div>
+    </div>`;
+  root.appendChild(overlay);
+}
+
+async function saveAdminAnnonceEdit(id){
+  const val = fid => document.getElementById(fid)?.value;
+  const updates = {
+    name: val('am-name'),
+    price_night: parseFloat(val('am-price-night'))||0,
+    city: val('am-city'),
+    country: val('am-country'),
+    address: val('am-address'),
+    zip: val('am-zip'),
+    rooms: parseInt(val('am-rooms'))||1,
+    bathrooms: parseInt(val('am-bathrooms'))||1,
+    capacity: parseInt(val('am-capacity'))||1,
+    stars: parseInt(val('am-stars'))||0,
+    checkin: val('am-checkin'),
+    checkout: val('am-checkout'),
+    min_stay: parseInt(val('am-min-stay'))||1,
+    max_stay: parseInt(val('am-max-stay'))||30,
+    contact_firstname: val('am-contact-firstname'),
+    contact_lastname: val('am-contact-lastname'),
+    contact_email: val('am-contact-email'),
+    contact_phone: val('am-contact-phone'),
+    description: val('am-desc')
+  };
+
+  const { error } = await _sb.from('annonces').update(updates).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  showToast('✅ Annonce mise à jour','var(--green)');
+  _adminModalEditMode = false;
+  document.getElementById('modal-root').innerHTML = '';
   buildAdminAnnonces(document.getElementById('admin-content'));
 }
 
