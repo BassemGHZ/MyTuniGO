@@ -1008,7 +1008,7 @@ function toggleDropdown(){
     <div class="ud-item" onclick="navigate('mesannonces');closeDropdown()">🏘️ Mes annonces</div>
     <div class="ud-item" onclick="checkAuthAndGo('annonce');closeDropdown()">📋 Déposer une annonce</div>
     <div class="ud-item" onclick="checkAuthAndGo('excursion-form');closeDropdown()">🗺️ Déposer une excursion</div>
-    ${isAdmin ? '<div class="ud-item" style="background:linear-gradient(135deg,#003580,#0071c2);color:#fff;font-weight:700;border-radius:var(--r-sm);margin:4px 8px;" id="dd-admin-btn">⚙️ Administration</div>' : ''}
+    ${isAdmin ? '<div class="ud-item" style="background:linear-gradient(135deg,#003580,#0071c2);color:#fff;font-weight:700;border-radius:var(--r-sm);margin:4px 8px;" id="dd-admin-btn" onclick="navigate(\'admin\');closeDropdown()">⚙️ Administration</div>' : ''}
     <div style="border-top:1px solid var(--gray-200);margin-top:4px;">
       <div class="ud-item" onclick="navigate('profil');closeDropdown()">👤 Mon profil</div>
       <div class="ud-item danger" id="logout-btn">🚪 Se déconnecter</div>
