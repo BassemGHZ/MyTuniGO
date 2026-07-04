@@ -6720,6 +6720,13 @@ async function rejectAnnonce(id, ref, name, email, firstname){
 /* ===================== ADMIN ANNONCE DETAIL / EDIT MODAL ===================== */
 let _adminModalEditMode = false;
 
+function formatDateFull(dateStr){
+  const d = new Date(dateStr);
+  if(isNaN(d.getTime())) return '—';
+  const pad = n => String(n).padStart(2,'0');
+  return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+}
+
 function openAdminAnnonceDetail(id){
   _adminModalEditMode = false;
   renderAdminAnnonceModal(id);
@@ -6800,7 +6807,7 @@ function renderAdminAnnonceModal(id){
       ${field('Contact', (a.contact_firstname||'')+' '+(a.contact_lastname||''))}
       ${field('Email contact', a.contact_email)}
       ${field('Téléphone contact', a.contact_phone||'—')}
-      ${field('Créée le', a.created_at ? new Date(a.created_at).toLocaleDateString('fr-FR') : '—')}
+      ${field('Créée le', a.created_at ? formatDateFull(a.created_at) : '—')}
     </div>
     <div style="margin-top:6px;">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">Description</div>
