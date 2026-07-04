@@ -8040,10 +8040,10 @@ _sb.auth.onAuthStateChange((event, session) => {
   }
 });
 
-// Vérification immédiate du hash URL (cas où Supabase redirige avec #access_token)
+// Vérification immédiate du hash URL (cas où Supabase redirige avec #access_token après réinitialisation)
 (function checkResetHash(){
   const hash = window.location.hash;
-  if(hash.includes('type=recovery') || hash.includes('access_token')){
+  if(hash.includes('type=recovery')){
     _sb.auth.getSession().then(({ data: { session } }) => {
       if(session){ setTimeout(showResetPasswordModal, 400); }
     });
