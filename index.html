@@ -4986,7 +4986,25 @@ function excFormRemoveDate(ds){
   excRefresh();
 }
 
-function excFormPublish(){
+async function uploadExcursionPhotos(ref, photos){
+  const urls = [];
+  for(let i=0;i<photos.length;i++){
+    const p = photos[i];
+    try{
+      const blob = await (await fetch(p.dataUrl)).blob();
+      const extMatch = (p.name||'').match(/\.([a-zA-Z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+      const path = ref+'/'+Date.now()+'_'+i+'.'+ext;
+      const { error: upErr } = await _sb.storage.from('excursions-photos').upload(path, blob, { contentType: blob.type||'image/jpeg' });
+      if(upErr){ console.warn('Upload photo excursion échoué:', upErr.message); continue; }
+      const { data: pub } = _sb.storage.from('excursions-photos').getPublicUrl(path);
+      if(pub?.publicUrl) urls.push(pub.publicUrl);
+    } catch(e){ console.warn('Erreur upload photo excursion:', e.message); }
+  }
+  return urls;
+}
+
+async function excFormPublish(){
   if(!excFormValidate()) return;
   const fd = appState.excursionFormData;
   // Final guard: dates are mandatory
@@ -4997,10 +5015,87 @@ function excFormPublish(){
     return;
   }
   const cat = EXCURSION_CATS.find(c=>c.id===fd.category)||{icon:'✈️',label:'Excursion'};
+  const ref = 'EXC-'+Math.random().toString(36).substr(2,8).toUpperCase();
+  const durationStr = (fd.duration||2)+(fd.durationUnit==='j'?' jour':'h');
+
+  const btn = document.querySelector('.btn-publish');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
+
+  // Upload réel des photos vers Supabase Storage
+  let photoUrls = [];
+  const realPhotos = (fd.photos||[]).filter(p=>p.dataUrl);
+  if(realPhotos.length){
+    if(btn){btn.innerHTML='<span class="spinner-sm"></span> Envoi des photos…';}
+    photoUrls = await uploadExcursionPhotos(ref, realPhotos);
+  }
+
+  if(btn){btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
+
+  const payload = {
+    ref,
+    owner_id: auth.currentUser?.id,
+    title: fd.title,
+    category: fd.category,
+    category_label: cat.label,
+    description: fd.description||'',
+    highlights: (fd.highlights||[]).filter(h=>h&&h.trim()),
+    included: fd.included||'',
+    not_included: fd.notIncluded||'',
+    what_to_bring: fd.whatToBring||'',
+    meeting_point: fd.meetingPoint||'',
+    meeting_time: fd.meetingTime||'',
+    meeting_time_end: fd.meetingTimeEnd||'',
+    schedule: fd.schedule||'',
+    city: fd.city||'',
+    country: fd.country||'Tunisie',
+    duration: durationStr,
+    price: fd.price||0,
+    base_price: fd.price||0,
+    price_type: fd.priceType||'personne',
+    max_participants: fd.maxParticipants||10,
+    min_age: fd.minAge||0,
+    difficulty: fd.difficulty||'facile',
+    languages: fd.languages||['Français'],
+    photos: photoUrls,
+    availability: fd.availability||[],
+    status: 'en attente',
+    contact_firstname: fd.firstname||'',
+    contact_lastname: fd.lastname||'',
+    contact_email: fd.email||'',
+    contact_phone: fd.phone||''
+  };
+
+  try {
+    const { error } = await _sb.from('excursions').insert([payload]);
+    if(error) throw new Error(error.message);
+
+    // Email admin via Edge Function
+    try {
+      const efRes = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({...payload, _type: 'excursion', name: fd.title})
+      });
+      const efResult = await efRes.json();
+      console.log('Edge Function response (excursion):', efRes.status, JSON.stringify(efResult));
+    } catch(efErr) {
+      console.error('Edge Function error:', efErr.message);
+    }
+  } catch(e) {
+    if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'excursion';}
+    showToast('Erreur lors de la publication : '+e.message,'var(--red)');
+    return;
+  }
+
+  // Écho local pour "Mes annonces" / visualisation immédiate
   const newExc = {
-    id:'MY-'+Math.random().toString(36).substr(2,8).toUpperCase(),
+    id: ref,
     ...fd, categoryLabel:cat.label, emoji:cat.icon,
-    duration:(fd.duration||2)+(fd.durationUnit==='j'?' jour':'h'),
+    duration: durationStr,
+    photos: photoUrls,
     status:'en attente', rating:0, reviews:0,
     host:fd.firstname+' '+fd.lastname, hostAvatar:(fd.firstname[0]||'?')+(fd.lastname[0]||'?'),
     hostRating:0, hostTrips:0, featured:false, available:true,
@@ -6518,6 +6613,7 @@ function buildAdminDashboard(){
         ['risk','⚠️ Risque'],
         ['tech','⚙️ Technique'],
         ['annonces','📋 Annonces'],
+        ['excursions','✈️ Excursions'],
       ];
       tabs.forEach(([id,label],i)=>{
         const btn = document.createElement('button');
@@ -6614,6 +6710,7 @@ function switchAdminTab(tab){
   else if(tab==='risk') content.innerHTML = buildAdminRisk(KPIS,fmt,fmtPct,trend,kpiCard,secHeader);
   else if(tab==='tech') content.innerHTML = buildAdminTech(KPIS,fmt,fmtPct,trend,kpiCard,secHeader);
   else if(tab==='annonces') buildAdminAnnonces(content);
+  else if(tab==='excursions') buildAdminExcursions(content);
 }
 
 let _adminAnnoncesCache = [];
@@ -6883,6 +6980,258 @@ async function saveAdminAnnonceEdit(id){
   _adminModalEditMode = false;
   document.getElementById('modal-root').innerHTML = '';
   buildAdminAnnonces(document.getElementById('admin-content'));
+}
+
+/* ===================== ADMIN EXCURSIONS ===================== */
+let _adminExcursionsCache = [];
+
+async function buildAdminExcursions(content){
+  content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">⏳ Chargement des excursions…</div>';
+
+  const { data, error } = await _sb.from('excursions').select('*').order('created_at', {ascending: false});
+
+  if(error){
+    content.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';
+    return;
+  }
+
+  const pending = (data||[]).filter(a=>a.status==='en attente');
+  const others  = (data||[]).filter(a=>a.status!=='en attente');
+  const all = [...pending, ...others];
+  _adminExcursionsCache = all;
+
+  if(!all.length){
+    content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">Aucune excursion pour le moment.</div>';
+    return;
+  }
+
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
+  const statusBg={'en attente':'#fff8e0','publiée':'#e8f9f0','rejetée':'#fff0f0','suspendue':'#f5f5f5'};
+
+  content.innerHTML = `
+    <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">✈️ Excursions (${all.length}) — ${pending.length} en attente</h2>
+      <button onclick="buildAdminExcursions(document.getElementById('admin-content'))" style="background:#003580;color:#fff;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">🔄 Actualiser</button>
+    </div>
+    ${all.map(a=>`
+    <div id="exc-card-${a.id}" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:12px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <strong style="font-size:15px;color:#111827;">✈️ ${a.title||'—'}</strong>
+            <span style="background:${statusBg[a.status]||'#f5f5f5'};color:${statusColor[a.status]||'#6b7280'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${a.status||'—'}</span>
+          </div>
+          <div style="font-size:13px;color:#6b7280;line-height:1.7;">
+            📍 ${a.city||'—'}, ${a.country||'—'} &nbsp;·&nbsp; 
+            🏷️ ${a.category_label||a.category||'—'} &nbsp;·&nbsp; 
+            💶 ${a.price||0}€/${a.price_type||'personne'} &nbsp;·&nbsp; 
+            🔖 <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">${a.ref||a.id}</code>
+          </div>
+          <div style="font-size:13px;color:#6b7280;margin-top:4px;">
+            👤 ${a.contact_firstname||''} ${a.contact_lastname||''} — ${a.contact_email||''}
+          </div>
+          ${a.description?`<div style="font-size:13px;color:#4b5563;margin-top:8px;font-style:italic;">"${a.description.substring(0,150)}${a.description.length>150?'…':''}"</div>`:''}
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;">
+          <button onclick="openAdminExcursionDetail('${a.id}')"
+            style="background:#eef2f7;color:#003580;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">👁️ Voir / Modifier</button>
+          ${a.status==='en attente'?`
+          <button onclick="validateExcursion('${a.id}','${a.ref||a.id}','${(a.title||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
+            style="background:#0d9e6e;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">✅ Valider</button>
+          <button onclick="rejectExcursion('${a.id}','${a.ref||a.id}','${(a.title||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
+            style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter</button>
+          `:''}
+          ${a.status==='publiée'?`<button onclick="rejectExcursion('${a.id}','${a.ref||a.id}','${(a.title||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
+        </div>
+      </div>
+    </div>`).join('')}`;
+}
+
+async function validateExcursion(id, ref, title, email, firstname){
+  if(!confirm('Valider l\'excursion "'+title+'" ?')) return;
+
+  const { error } = await _sb.from('excursions').update({status:'publiée'}).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  try {
+    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({
+        _action: 'validation', _type: 'excursion',
+        ref, name: title, contact_email: email, contact_firstname: firstname
+      })
+    });
+  } catch(e){ console.warn('Email validation non envoyé:', e); }
+
+  showToast('✅ Excursion validée et mise en ligne !','var(--green)');
+  const card = document.getElementById('exc-card-'+id);
+  if(card) card.style.opacity = '0.5';
+  buildAdminExcursions(document.getElementById('admin-content'));
+}
+
+async function rejectExcursion(id, ref, title, email, firstname){
+  if(!confirm('Rejeter/suspendre l\'excursion "'+title+'" ?')) return;
+
+  const { error } = await _sb.from('excursions').update({status:'rejetée'}).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  showToast('Excursion rejetée.','var(--red)');
+  buildAdminExcursions(document.getElementById('admin-content'));
+}
+
+function openAdminExcursionDetail(id){
+  _adminModalEditMode = false;
+  renderAdminExcursionModal(id);
+}
+
+function renderAdminExcursionModal(id){
+  const a = _adminExcursionsCache.find(x=>String(x.id)===String(id));
+  if(!a){ showToast('Excursion introuvable, rafraîchissez la liste','var(--red)'); return; }
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
+
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
+  const esc = v => (v===undefined||v===null) ? '' : String(v).replace(/"/g,'&quot;');
+
+  const field = (label, value) => `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">${label}</div>
+      <div style="font-size:14px;color:#111827;">${(value!==undefined&&value!==null&&value!=='')?value:'—'}</div>
+    </div>`;
+
+  const editField = (label, fid, value, type) => `
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">${label}</label>
+      <input type="${type||'text'}" id="${fid}" value="${esc(value)}"
+        style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;box-sizing:border-box;">
+    </div>`;
+
+  const body = _adminModalEditMode ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
+      ${editField('Titre','ae-title',a.title)}
+      ${editField('Prix','ae-price',a.price,'number')}
+      ${editField('Ville','ae-city',a.city)}
+      ${editField('Pays','ae-country',a.country)}
+      ${editField('Durée','ae-duration',a.duration)}
+      ${editField('Participants max','ae-max-participants',a.max_participants,'number')}
+      ${editField('Âge minimum','ae-min-age',a.min_age,'number')}
+      ${editField('Point de rendez-vous','ae-meeting-point',a.meeting_point)}
+      ${editField('Heure début','ae-meeting-time',a.meeting_time)}
+      ${editField('Heure fin','ae-meeting-time-end',a.meeting_time_end)}
+      ${editField('Prénom contact','ae-contact-firstname',a.contact_firstname)}
+      ${editField('Nom contact','ae-contact-lastname',a.contact_lastname)}
+      ${editField('Email contact','ae-contact-email',a.contact_email)}
+      ${editField('Téléphone contact','ae-contact-phone',a.contact_phone)}
+    </div>
+    <div style="margin-top:4px;">
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Description</label>
+      <textarea id="ae-desc" rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
+    </div>
+  ` : `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
+      ${field('Référence', a.ref||a.id)}
+      ${field('Statut', '<span style="color:'+(statusColor[a.status]||'#6b7280')+';font-weight:700;">'+(a.status||'—')+'</span>')}
+      ${field('Titre', a.title)}
+      ${field('Catégorie', a.category_label||a.category)}
+      ${field('Prix', (a.price||0)+'€ / '+(a.price_type||'personne'))}
+      ${field('Ville', a.city)}
+      ${field('Pays', a.country)}
+      ${field('Durée', a.duration)}
+      ${field('Participants max', a.max_participants)}
+      ${field('Âge minimum', a.min_age)}
+      ${field('Difficulté', a.difficulty)}
+      ${field('Langues', (a.languages&&a.languages.length) ? a.languages.join(', ') : '—')}
+      ${field('Point de rendez-vous', a.meeting_point)}
+      ${field('Horaire', (a.meeting_time||'—')+' - '+(a.meeting_time_end||'—'))}
+      ${field('Inclus', a.included)}
+      ${field('Non inclus', a.not_included)}
+      ${field('À apporter', a.what_to_bring)}
+      ${field('Contact', (a.contact_firstname||'')+' '+(a.contact_lastname||''))}
+      ${field('Email contact', a.contact_email)}
+      ${field('Téléphone contact', a.contact_phone||'—')}
+      ${field('Créée le', a.created_at ? formatDateFull(a.created_at) : '—')}
+    </div>
+    <div style="margin-top:6px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">Points forts</div>
+      <div style="font-size:14px;color:#111827;line-height:1.6;">${(a.highlights&&a.highlights.length) ? a.highlights.join(' • ') : '—'}</div>
+    </div>
+    <div style="margin-top:10px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">Description</div>
+      <div style="font-size:14px;color:#111827;line-height:1.6;">${a.description||'—'}</div>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:6px;">Photos (${(a.photos&&a.photos.length)||0})</div>
+      ${(a.photos&&a.photos.length) ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+          ${a.photos.map(url=>`
+            <a href="${url}" target="_blank" rel="noopener">
+              <img src="${url}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);">
+            </a>`).join('')}
+        </div>
+      ` : `<div style="font-size:13px;color:var(--gray-500);">Aucune photo n'a été ajoutée pour cette excursion.</div>`}
+    </div>
+  `;
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header" style="background:linear-gradient(135deg,#003580,#0071c2);">
+        <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
+        <h2>✈️ ${a.title||'Excursion'}</h2>
+        <p>${_adminModalEditMode ? "Modification de l'excursion" : "Détail de l'excursion"}</p>
+      </div>
+      <div class="modal-body" style="max-height:58vh;overflow-y:auto;">
+        ${body}
+      </div>
+      <div style="display:flex;gap:8px;padding:16px 24px;border-top:1px solid var(--gray-200);flex-wrap:wrap;">
+        ${_adminModalEditMode ? `
+          <button onclick="saveAdminExcursionEdit('${a.id}')" style="flex:1;min-width:140px;background:#003580;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">💾 Enregistrer</button>
+          <button onclick="_adminModalEditMode=false;renderAdminExcursionModal('${a.id}')" style="flex:1;min-width:120px;background:var(--gray-100);color:var(--gray-700);padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">Annuler</button>
+        ` : `
+          <button onclick="_adminModalEditMode=true;renderAdminExcursionModal('${a.id}')" style="flex:1;min-width:120px;background:#eef2f7;color:#003580;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✏️ Modifier</button>
+          ${a.status==='en attente' ? `
+            <button onclick="document.getElementById('modal-root').innerHTML='';validateExcursion('${a.id}','${a.ref||a.id}','${(a.title||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#0d9e6e;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✅ Valider</button>
+            <button onclick="document.getElementById('modal-root').innerHTML='';rejectExcursion('${a.id}','${a.ref||a.id}','${(a.title||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#cc0000;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">❌ Rejeter</button>
+          ` : ''}
+        `}
+      </div>
+    </div>`;
+  root.appendChild(overlay);
+}
+
+async function saveAdminExcursionEdit(id){
+  const val = fid => document.getElementById(fid)?.value;
+  const updates = {
+    title: val('ae-title'),
+    price: parseFloat(val('ae-price'))||0,
+    city: val('ae-city'),
+    country: val('ae-country'),
+    duration: val('ae-duration'),
+    max_participants: parseInt(val('ae-max-participants'))||1,
+    min_age: parseInt(val('ae-min-age'))||0,
+    meeting_point: val('ae-meeting-point'),
+    meeting_time: val('ae-meeting-time'),
+    meeting_time_end: val('ae-meeting-time-end'),
+    contact_firstname: val('ae-contact-firstname'),
+    contact_lastname: val('ae-contact-lastname'),
+    contact_email: val('ae-contact-email'),
+    contact_phone: val('ae-contact-phone'),
+    description: val('ae-desc')
+  };
+
+  const { error } = await _sb.from('excursions').update(updates).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  showToast('✅ Excursion mise à jour','var(--green)');
+  _adminModalEditMode = false;
+  document.getElementById('modal-root').innerHTML = '';
+  buildAdminExcursions(document.getElementById('admin-content'));
 }
 
 function adminRefresh(){ switchAdminTab(currentAdminTab); showToast('📊 Données actualisées','var(--blue)'); }
