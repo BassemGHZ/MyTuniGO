@@ -6488,6 +6488,7 @@ function buildAdminDashboard(){
         ['payments','💳 Paiements'],
         ['risk','⚠️ Risque'],
         ['tech','⚙️ Technique'],
+        ['annonces','📋 Annonces'],
       ];
       tabs.forEach(([id,label],i)=>{
         const btn = document.createElement('button');
@@ -6583,6 +6584,104 @@ function switchAdminTab(tab){
   else if(tab==='payments') content.innerHTML = buildAdminPayments(KPIS,fmtEur,fmt,fmtPct,trend,kpiCard,secHeader);
   else if(tab==='risk') content.innerHTML = buildAdminRisk(KPIS,fmt,fmtPct,trend,kpiCard,secHeader);
   else if(tab==='tech') content.innerHTML = buildAdminTech(KPIS,fmt,fmtPct,trend,kpiCard,secHeader);
+  else if(tab==='annonces') buildAdminAnnonces(content);
+}
+
+async function buildAdminAnnonces(content){
+  content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">⏳ Chargement des annonces…</div>';
+
+  const { data, error } = await _sb.from('annonces').select('*').order('created_at', {ascending: false});
+
+  if(error){
+    content.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';
+    return;
+  }
+
+  const pending = (data||[]).filter(a=>a.status==='en attente');
+  const others  = (data||[]).filter(a=>a.status!=='en attente');
+  const all = [...pending, ...others];
+
+  if(!all.length){
+    content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">Aucune annonce pour le moment.</div>';
+    return;
+  }
+
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
+  const statusBg={'en attente':'#fff8e0','publiée':'#e8f9f0','rejetée':'#fff0f0','suspendue':'#f5f5f5'};
+
+  content.innerHTML = `
+    <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">📋 Annonces (${all.length}) — ${pending.length} en attente</h2>
+      <button onclick="buildAdminAnnonces(document.getElementById('admin-content'))" style="background:#003580;color:#fff;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">🔄 Actualiser</button>
+    </div>
+    ${all.map(a=>`
+    <div id="ann-card-${a.id}" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:12px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-size:16px;">${a.emoji||'🏠'}</span>
+            <strong style="font-size:15px;color:#111827;">${a.name||'—'}</strong>
+            <span style="background:${statusBg[a.status]||'#f5f5f5'};color:${statusColor[a.status]||'#6b7280'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${a.status||'—'}</span>
+          </div>
+          <div style="font-size:13px;color:#6b7280;line-height:1.7;">
+            📍 ${a.city||'—'}, ${a.country||'—'} &nbsp;·&nbsp; 
+            🏷️ ${a.type_label||a.type||'—'} &nbsp;·&nbsp; 
+            💶 ${a.price_night||0}€/nuit &nbsp;·&nbsp; 
+            🔖 <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">${a.ref||'—'}</code>
+          </div>
+          <div style="font-size:13px;color:#6b7280;margin-top:4px;">
+            👤 ${a.contact_firstname||''} ${a.contact_lastname||''} — ${a.contact_email||''}
+          </div>
+          ${a.description?`<div style="font-size:13px;color:#4b5563;margin-top:8px;font-style:italic;">"${a.description.substring(0,150)}${a.description.length>150?'…':''}"</div>`:''}
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;">
+          ${a.status==='en attente'?`
+          <button onclick="validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
+            style="background:#0d9e6e;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">✅ Valider</button>
+          <button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
+            style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter</button>
+          `:''}
+          ${a.status==='publiée'?`<button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
+        </div>
+      </div>
+    </div>`).join('')}`;
+}
+
+async function validateAnnonce(id, ref, name, email, firstname){
+  if(!confirm('Valider l\'annonce "'+name+'" ?')) return;
+
+  const { error } = await _sb.from('annonces').update({status:'publiée'}).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  // Email client
+  try {
+    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({
+        _action: 'validation',
+        ref, name, contact_email: email, contact_firstname: firstname
+      })
+    });
+  } catch(e){ console.warn('Email validation non envoyé:', e); }
+
+  showToast('✅ Annonce validée et mise en ligne !','var(--green)');
+  const card = document.getElementById('ann-card-'+id);
+  if(card) card.style.opacity = '0.5';
+  buildAdminAnnonces(document.getElementById('admin-content'));
+}
+
+async function rejectAnnonce(id, ref, name, email, firstname){
+  if(!confirm('Rejeter/suspendre l\'annonce "'+name+'" ?')) return;
+
+  const { error } = await _sb.from('annonces').update({status:'rejetée'}).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  showToast('Annonce rejetée.','var(--red)');
+  buildAdminAnnonces(document.getElementById('admin-content'));
 }
 
 function adminRefresh(){ switchAdminTab(currentAdminTab); showToast('📊 Données actualisées','var(--blue)'); }
