@@ -3034,6 +3034,24 @@ function annGo(dir){
   navigate('annonce');
 }
 
+async function uploadAnnoncePhotos(ref, photos){
+  const urls = [];
+  for(let i=0;i<photos.length;i++){
+    const p = photos[i];
+    try{
+      const blob = await (await fetch(p.dataUrl)).blob();
+      const extMatch = (p.name||'').match(/\.([a-zA-Z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+      const path = ref+'/'+Date.now()+'_'+i+'.'+ext;
+      const { error: upErr } = await _sb.storage.from('annonces-photos').upload(path, blob, { contentType: blob.type||'image/jpeg' });
+      if(upErr){ console.warn('Upload photo échoué:', upErr.message); continue; }
+      const { data: pub } = _sb.storage.from('annonces-photos').getPublicUrl(path);
+      if(pub?.publicUrl) urls.push(pub.publicUrl);
+    } catch(e){ console.warn('Erreur upload photo:', e.message); }
+  }
+  return urls;
+}
+
 async function annPublish(){
   if(!annValidate()) return;
   const ad = appState.annonceData;
@@ -3043,6 +3061,14 @@ async function annPublish(){
 
   const btn = document.querySelector('.btn-publish');
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
+
+  // 0. Upload des photos réelles (celles avec dataUrl) vers Supabase Storage
+  let photoUrls = [];
+  const realPhotos = (ad.photos||[]).filter(p=>p.dataUrl);
+  if(realPhotos.length){
+    if(btn){btn.innerHTML='<span class="spinner-sm"></span> Envoi des photos…';}
+    photoUrls = await uploadAnnoncePhotos(ref, realPhotos);
+  }
 
   // 1. Insert via REST API avec service_role (bypass RLS)
   const payload = {
@@ -3067,6 +3093,7 @@ async function annPublish(){
     bathrooms: ad.bathrooms || 1,
     capacity: ad.capacity || 2,
     amenities: ad.amenities || [],
+    photos: photoUrls,
     checkin: ad.checkin || '15:00',
     checkout: ad.checkout || '11:00',
     cancellation: ad.cancellation || 'flexible',
@@ -3079,6 +3106,8 @@ async function annPublish(){
     status: 'en attente',
     created_at: new Date().toISOString()
   };
+
+  if(btn){btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
 
   let annData = null;
   try {
@@ -6640,12 +6669,12 @@ async function buildAdminAnnonces(content){
           <button onclick="openAdminAnnonceDetail('${a.id}')"
             style="background:#eef2f7;color:#003580;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">👁️ Voir / Modifier</button>
           ${a.status==='en attente'?`
-          <button onclick="validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
+          <button onclick="validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
             style="background:#0d9e6e;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">✅ Valider</button>
-          <button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
+          <button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
             style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter</button>
           `:''}
-          ${a.status==='publiée'?`<button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
+          ${a.status==='publiée'?`<button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
         </div>
       </div>
     </div>`).join('')}`;
@@ -6777,6 +6806,17 @@ function renderAdminAnnonceModal(id){
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">Description</div>
       <div style="font-size:14px;color:#111827;line-height:1.6;">${a.description||'—'}</div>
     </div>
+    <div style="margin-top:14px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:6px;">Photos (${(a.photos&&a.photos.length)||0})</div>
+      ${(a.photos&&a.photos.length) ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+          ${a.photos.map(url=>`
+            <a href="${url}" target="_blank" rel="noopener">
+              <img src="${url}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);">
+            </a>`).join('')}
+        </div>
+      ` : `<div style="font-size:13px;color:var(--gray-500);">Aucune photo n'a été ajoutée pour cette annonce.</div>`}
+    </div>
   `;
 
   overlay.innerHTML = `
@@ -6796,8 +6836,8 @@ function renderAdminAnnonceModal(id){
         ` : `
           <button onclick="_adminModalEditMode=true;renderAdminAnnonceModal('${a.id}')" style="flex:1;min-width:120px;background:#eef2f7;color:#003580;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✏️ Modifier</button>
           ${a.status==='en attente' ? `
-            <button onclick="document.getElementById('modal-root').innerHTML='';validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#0d9e6e;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✅ Valider</button>
-            <button onclick="document.getElementById('modal-root').innerHTML='';rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#cc0000;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">❌ Rejeter</button>
+            <button onclick="document.getElementById('modal-root').innerHTML='';validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#0d9e6e;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✅ Valider</button>
+            <button onclick="document.getElementById('modal-root').innerHTML='';rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#cc0000;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">❌ Rejeter</button>
           ` : ''}
         `}
       </div>
