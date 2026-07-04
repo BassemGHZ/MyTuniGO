@@ -1332,7 +1332,7 @@ async function handleLogin(){
   const meta = data.user?.user_metadata || {};
   auth.currentUser = {
     id: data.user.id,
-    role: 'user',
+    role: meta.role || 'user',
     firstName: meta.first_name || email.split('@')[0],
     lastName:  meta.last_name  || '',
     email:     data.user.email,
