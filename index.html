@@ -867,7 +867,12 @@ function render() {
   else if(pg==='annonce'){ annAutoFill(); app.appendChild(buildAnnonce()); }
   else if(pg==='reservations') app.appendChild(buildReservations());
   else if(pg==='favoris') app.appendChild(buildFavoris());
-  else if(pg==='mesannonces') app.appendChild(buildMesAnnonces());
+  else if(pg==='mesannonces'){
+    const _mac = document.createElement('div');
+    _mac.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de vos annonces…</div>';
+    app.appendChild(_mac);
+    loadMesAnnonces(_mac);
+  }
   else if(pg==='annonce-detail') app.appendChild(buildAnnonceDetail());
   else if(pg==='profil') app.appendChild(buildProfil());
   else if(pg==='excursions') app.appendChild(buildExcursions());
@@ -3392,6 +3397,50 @@ function buildFavoris(){
 
 
 /* ===================== MES ANNONCES ===================== */
+function mapAnnonceRow(a){
+  const h = hotels.find(x=>x.annonceId===a.id);
+  return {
+    id: a.id,
+    ref: a.ref,
+    hotelId: h ? h.id : null,
+    emoji: a.emoji || '🏠',
+    name: a.name || 'Hébergement',
+    address: a.address || '',
+    city: a.city || '',
+    country: a.country || 'Tunisie',
+    typeLabel: a.type_label || a.type || 'Hébergement',
+    stars: a.stars || 3,
+    price_night: a.price_night || 0,
+    status: a.status || 'en attente',
+    discount: 0, // ⚠️ non persisté en base pour le moment (voir note)
+    ownerId: a.user_id,
+    createdAt: a.created_at || new Date().toISOString(),
+    // Pas encore de vraie table d'analytics côté Supabase : valeurs à 0 par défaut
+    stats: {
+      vues:0, clics:0, reservations:0, revenus:0, tauxOccupation:0, noteMoyenne:0, avis:0,
+      vuesMois: Array(12).fill(0), revenusMois: Array(12).fill(0)
+    }
+  };
+}
+
+async function loadMesAnnonces(container){
+  if(!auth.currentUser){navigate('home');return;}
+
+  const { data, error } = await _sb.from('annonces')
+    .select('*')
+    .eq('user_id', auth.currentUser.id)
+    .order('created_at', {ascending:false});
+
+  if(error){
+    if(container){container.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';}
+    return;
+  }
+
+  appState.myAnnonces = (data||[]).map(mapAnnonceRow);
+  const fresh = buildMesAnnonces();
+  if(container && container.parentNode){ container.replaceWith(fresh); }
+}
+
 function buildMesAnnonces(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
   const list=appState.myAnnonces;
@@ -3565,17 +3614,20 @@ function buildMesAnnonces(){
   return d;
 }
 
-function toggleAnnonceStatus(id){
+async function toggleAnnonceStatus(id){
   const a=appState.myAnnonces.find(x=>x.id===id);
   if(!a)return;
-  if(a.status==='publiée'){a.status='suspendue';showToast('Annonce suspendue','var(--gray-700)');}
-  else{a.status='publiée';showToast('✅ Annonce republiée !','var(--green)');}
+  const newStatus = a.status==='publiée' ? 'suspendue' : 'publiée';
+  const { error } = await _sb.from('annonces').update({status:newStatus}).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast(newStatus==='suspendue'?'Annonce suspendue':'✅ Annonce republiée !', newStatus==='suspendue'?'var(--gray-700)':'var(--green)');
   navigate('mesannonces');
 }
 
-function deleteAnnonce(id){
+async function deleteAnnonce(id){
   if(!confirm('Supprimer définitivement cette annonce ?'))return;
-  appState.myAnnonces=appState.myAnnonces.filter(x=>x.id!==id);
+  const { error } = await _sb.from('annonces').delete().eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
   showToast('Annonce supprimée','var(--red)');
   navigate('mesannonces');
 }
