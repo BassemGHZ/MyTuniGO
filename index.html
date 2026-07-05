@@ -1651,7 +1651,7 @@ function buildHome(){
 
 function hotelCardHTML(h){
   return `<div class="hotel-card" onclick="navigate('detail',{selectedHotelId:${h.id}})">
-    <div class="hc-img" style="background:linear-gradient(135deg,#e8f4ff,#cce0ff);">${h.emoji}</div>
+    <div class="hc-img" style="background:linear-gradient(135deg,#e8f4ff,#cce0ff);overflow:hidden;">${photoOrEmoji(h)}</div>
     <div class="hc-body">
       <div class="hc-name">${h.name}</div>
       <div class="hc-loc">📍 ${h.city}, ${h.country}</div>
@@ -1762,6 +1762,33 @@ function initResultsMaps(){
       _resultsFullMap = fmap;
     }
   }
+}
+
+function photoOrEmoji(h){
+  if(h.photos && h.photos.length && typeof h.photos[0]==='string' && h.photos[0].startsWith('http')){
+    return `<img src="${h.photos[0]}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">`;
+  }
+  return h.emoji||'🏠';
+}
+
+function galleryHtml(h){
+  if(h.photos && h.photos.length && typeof h.photos[0]==='string' && h.photos[0].startsWith('http')){
+    const thumbBgs = ['#fff4e0,#ffe0a0','#e0ffe8,#a0f0b8','#f0e8ff,#d4b0f8','#ffe8e8,#f8c0c0'];
+    return `
+      <div class="g-main" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;"><img src="${h.photos[0]}" style="width:100%;height:100%;object-fit:cover;"></div>
+      ${[0,1,2,3].map(i => h.photos[i+1]
+        ? `<div class="g-thumb" style="overflow:hidden;"><img src="${h.photos[i+1]}" style="width:100%;height:100%;object-fit:cover;"></div>`
+        : `<div class="g-thumb" style="background:linear-gradient(135deg,${thumbBgs[i]});display:flex;align-items:center;justify-content:center;font-size:32px;">${h.emoji||'🏠'}</div>`
+      ).join('')}
+    `;
+  }
+  return `
+      <div class="g-main" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);">${h.emoji}</div>
+      <div class="g-thumb" style="background:linear-gradient(135deg,#fff4e0,#ffe0a0);">🛏️</div>
+      <div class="g-thumb" style="background:linear-gradient(135deg,#e0ffe8,#a0f0b8);">🏊</div>
+      <div class="g-thumb" style="background:linear-gradient(135deg,#f0e8ff,#d4b0f8);">🛁</div>
+      <div class="g-thumb" style="background:linear-gradient(135deg,#ffe8e8,#f8c0c0);">🍽️</div>
+  `;
 }
 
 function buildResults(){
@@ -1928,7 +1955,7 @@ function buildResults(){
 
 function resultCardHTML(h){
   return `<div class="result-card">
-    <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);">${h.emoji}</div>
+    <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;">${photoOrEmoji(h)}</div>
     <div class="rc-body">
       <div class="rc-info">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px;">
@@ -2090,11 +2117,7 @@ function buildDetail(){
       <span class="det-loc">📍 ${h.address}</span>
     </div>
     <div class="gallery">
-      <div class="g-main" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);">${h.emoji}</div>
-      <div class="g-thumb" style="background:linear-gradient(135deg,#fff4e0,#ffe0a0);">🛏️</div>
-      <div class="g-thumb" style="background:linear-gradient(135deg,#e0ffe8,#a0f0b8);">🏊</div>
-      <div class="g-thumb" style="background:linear-gradient(135deg,#f0e8ff,#d4b0f8);">🛁</div>
-      <div class="g-thumb" style="background:linear-gradient(135deg,#ffe8e8,#f8c0c0);">🍽️</div>
+      ${galleryHtml(h)}
     </div>
     <div class="det-body">
       <div>
@@ -3367,7 +3390,7 @@ function buildFavoris(){
       ${favHotels.map(h=>`
         <div style="background:#fff;border-radius:var(--r-lg);overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1);border:1px solid var(--gray-200);transition:transform .2s,box-shadow .2s;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.15)'" onmouseout="this.style.transform='';this.style.boxShadow='0 1px 4px rgba(0,0,0,.1)'">
           <div style="position:relative;">
-            <div style="height:180px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:60px;cursor:pointer;" onclick="navigate('detail',{selectedHotelId:${h.id}})">${h.emoji}</div>
+            <div style="height:180px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:60px;cursor:pointer;overflow:hidden;" onclick="navigate('detail',{selectedHotelId:${h.id}})">${photoOrEmoji(h)}</div>
             <button onclick="toggleFavorite(${h.id});navigate('favoris')" title="Retirer des favoris" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.9);border:none;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.15);">❤️</button>
             ${h.discount>0?`<div style="position:absolute;top:10px;left:10px;background:#d40000;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:3px;">-${h.discount}%</div>`:''}
           </div>
@@ -5644,7 +5667,7 @@ function buildHostProfile(){
           <h3 style="font-size:18px;font-weight:700;margin-bottom:14px;">🏠 Logements de ${host.firstName}</h3>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">
             ${hostProps.map(h=>`<div onclick="navigate('detail',{selectedHotelId:${h.id}})" style="border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;cursor:pointer;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.12)'" onmouseout="this.style.boxShadow='none'">
-              <div style="height:120px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:42px;">${h.emoji}</div>
+              <div style="height:120px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:42px;overflow:hidden;">${photoOrEmoji(h)}</div>
               <div style="padding:12px;">
                 <div style="font-size:14px;font-weight:700;margin-bottom:3px;">${h.name}</div>
                 <div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;">📍 ${h.city}</div>
