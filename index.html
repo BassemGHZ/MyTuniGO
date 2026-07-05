@@ -8066,6 +8066,49 @@ _sb.auth.onAuthStateChange((event, session) => {
 
 render();
 
+/* ===================== CHARGEMENT DES ANNONCES PUBLIÉES (Supabase) ===================== */
+async function loadPublishedAnnonces(){
+  try{
+    const { data, error } = await _sb.from('annonces').select('*').eq('status','publiée').order('created_at',{ascending:false});
+    if(error){ console.warn('Erreur chargement annonces publiées:', error.message); return; }
+
+    (data||[]).forEach((a, i) => {
+      if(hotels.some(h=>h.annonceId===a.id)) return; // évite les doublons si déjà fusionné
+      hotels.push({
+        id: 100000 + i,
+        annonceId: a.id,
+        annonceRef: a.ref,
+        lat: a.lat ? parseFloat(a.lat) : (36.8 + Math.random()*2),
+        lng: a.lng ? parseFloat(a.lng) : (9.5 + Math.random()*2),
+        minNights: a.min_stay || 1,
+        name: a.name || 'Hébergement',
+        city: a.city || '',
+        country: a.country || 'Tunisie',
+        type: a.type_label || a.type || 'Hébergement',
+        stars: a.stars || 3,
+        rating: 0,
+        ratingLabel: 'Nouveau',
+        reviews: 0,
+        price: a.price_night || 0,
+        emoji: a.emoji || '🏠',
+        features: a.amenities || [],
+        desc: a.description || '',
+        address: a.address || '',
+        checkin: a.checkin || '15:00',
+        checkout: a.checkout || '11:00',
+        access: a.access || '',
+        photos: a.photos || [],
+        freeCancellation: a.cancellation === 'flexible',
+        payLater: true,
+        discount: 0
+      });
+    });
+
+    render();
+  } catch(e){ console.warn('Erreur loadPublishedAnnonces:', e.message); }
+}
+loadPublishedAnnonces();
+
 
 /* ===================== PHOTO PROFIL ===================== */
 function uploadProfilPhoto(event){
