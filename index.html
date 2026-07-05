@@ -3412,6 +3412,7 @@ function mapAnnonceRow(a){
     stars: a.stars || 3,
     price_night: a.price_night || 0,
     status: a.status || 'en attente',
+    photos: a.photos || [],
     discount: 0, // ⚠️ non persisté en base pour le moment (voir note)
     ownerId: a.user_id,
     createdAt: a.created_at || new Date().toISOString(),
@@ -3558,8 +3559,8 @@ function buildMesAnnonces(){
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
       <div style="display:flex;flex-wrap:wrap;">
         <!-- Image -->
-        <div style="width:180px;min-height:140px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:58px;flex-shrink:0;cursor:pointer;position:relative;" onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})">
-            ${a.emoji}
+        <div style="width:180px;min-height:140px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:58px;flex-shrink:0;cursor:pointer;position:relative;overflow:hidden;" onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})">
+            ${photoOrEmoji(a)}
             ${a.hotelId?`<div onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${a.hotelId}})"
               style="position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:11px;font-weight:700;
               color:#fff;background:rgba(0,163,92,.85);padding:5px 0;cursor:pointer;">
@@ -3655,7 +3656,7 @@ function buildAnnonceDetail(){
 
     <!-- Header -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px 24px;margin-bottom:24px;display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
-      <div style="font-size:56px;">${a.emoji}</div>
+      <div style="font-size:56px;width:80px;height:80px;border-radius:var(--r-md);overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);flex-shrink:0;">${photoOrEmoji(a)}</div>
       <div style="flex:1;min-width:200px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
           <h2 style="font-size:20px;font-weight:800;">${a.name}</h2>
