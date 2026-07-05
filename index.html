@@ -1964,7 +1964,7 @@ function resultCardHTML(h){
         </div>
         <div class="rc-type">${h.type} ${'★'.repeat(h.stars)}</div>
         <div class="rc-loc">📍 ${h.address}</div>
-        <div class="rc-tags">${h.features.slice(0,4).map(f=>`<span class="rc-tag">✓ ${f}</span>`).join('')}</div>
+        <div class="rc-tags">${h.features.slice(0,4).map(f=>`<span class="rc-tag">${amenIcon(f)} ${amenLabel(f)}</span>`).join('')}</div>
         <div class="rc-desc">${h.desc.substring(0,120)}…</div>
       </div>
       <div class="rc-price">
@@ -2130,7 +2130,7 @@ function buildDetail(){
         <div class="det-section">
           <div class="det-sec-title">🛎️ Équipements</div>
           <div class="amen-grid-det">
-            ${h.features.map(f=>`<div class="amen-item-det"><span style="font-size:18px;">${amenIcon(f)}</span> ${f}</div>`).join('')}
+            ${h.features.map(f=>`<div class="amen-item-det"><span style="font-size:18px;">${amenIcon(f)}</span> ${amenLabel(f)}</div>`).join('')}
             <div class="amen-item-det"><span style="font-size:18px;">♿</span> Accès PMR</div>
             <div class="amen-item-det"><span style="font-size:18px;">🚭</span> Non-fumeur</div>
           </div>
@@ -2223,7 +2223,18 @@ function renderStars(rating){
     + rating.toFixed(1)+'</span>';
 }
 
-function amenIcon(f){const m={'Wi-Fi gratuit':'📶','Piscine':'🏊','Spa':'💆','Restaurant':'🍽️','Parking':'🅿️','Cuisine équipée':'🍳','AC':'❄️','Terrasse':'🌿','Bar':'🍸','Petit-déjeuner inclus':'☕','Vue mer':'🌊','Onsen':'♨️','Salle de gym':'💪','Bar panoramique':'🌃','Concierge 24h':'🛎️','Bain japonais':'🛁','Jardin zen':'🎋','Yukata inclus':'👘','Dîner traditionnel':'🥢','Petit-déjeuner':'☕','Transfer aéroport':'🚗','Piscine privée':'🏊','Salle de sport':'💪'};return m[f]||'✓';}
+function amenLabel(f){
+  const annAmen = AMENITIES_ANN.find(a=>a.id===f);
+  if(annAmen) return annAmen.name;
+  return f;
+}
+
+function amenIcon(f){
+  const annAmen = AMENITIES_ANN.find(a=>a.id===f);
+  if(annAmen) return annAmen.icon;
+  const m={'Wi-Fi gratuit':'📶','Piscine':'🏊','Spa':'💆','Restaurant':'🍽️','Parking':'🅿️','Cuisine équipée':'🍳','AC':'❄️','Terrasse':'🌿','Bar':'🍸','Petit-déjeuner inclus':'☕','Vue mer':'🌊','Onsen':'♨️','Salle de gym':'💪','Bar panoramique':'🌃','Concierge 24h':'🛎️','Bain japonais':'🛁','Jardin zen':'🎋','Yukata inclus':'👘','Dîner traditionnel':'🥢','Petit-déjeuner':'☕','Transfer aéroport':'🚗','Piscine privée':'🏊','Salle de sport':'💪'};
+  return m[f]||'✓';
+}
 
 function calcNights(){
   const ci=document.getElementById('bk-ci')?.value||appState.checkIn||appState.searchCheckIn;
