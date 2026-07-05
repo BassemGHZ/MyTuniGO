@@ -3083,6 +3083,8 @@ async function annPublish(){
     country: ad.country || 'Tunisie',
     address: ad.address || '',
     zip: ad.zip || '',
+    size: ad.size ? parseFloat(ad.size) : null,
+    access: ad.access || '',
     lat: ad.lat ? parseFloat(ad.lat) : null,
     lng: ad.lng ? parseFloat(ad.lng) : null,
     price_night: ad.price_night || 0,
@@ -6862,6 +6864,7 @@ function renderAdminAnnonceModal(id){
       ${editField('Pays','am-country',a.country)}
       ${editField('Adresse','am-address',a.address)}
       ${editField('Code postal','am-zip',a.zip)}
+      ${editField('Surface (m²)','am-size',a.size,'number')}
       ${editField('Chambres','am-rooms',a.rooms,'number')}
       ${editField('Salles de bain','am-bathrooms',a.bathrooms,'number')}
       ${editField('Capacité','am-capacity',a.capacity,'number')}
@@ -6879,6 +6882,10 @@ function renderAdminAnnonceModal(id){
       <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Description</label>
       <textarea id="am-desc" rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
     </div>
+    <div style="margin-top:12px;">
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">🔑 Instructions d'accès</label>
+      <textarea id="am-access" rows="3" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.access||''}</textarea>
+    </div>
   ` : `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
       ${field('Référence', a.ref)}
@@ -6892,6 +6899,7 @@ function renderAdminAnnonceModal(id){
       ${field('Pays', a.country)}
       ${field('Adresse', a.address)}
       ${field('Code postal', a.zip)}
+      ${field('Surface', a.size ? a.size+' m²' : '—')}
       ${field('Coordonnées GPS', (a.lat&&a.lng) ? a.lat+', '+a.lng : '—')}
       ${field('Chambres', a.rooms)}
       ${field('Salles de bain', a.bathrooms)}
@@ -6909,6 +6917,10 @@ function renderAdminAnnonceModal(id){
     <div style="margin-top:6px;">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">Description</div>
       <div style="font-size:14px;color:#111827;line-height:1.6;">${a.description||'—'}</div>
+    </div>
+    <div style="margin-top:10px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:3px;">🔑 Instructions d'accès</div>
+      <div style="font-size:14px;color:#111827;line-height:1.6;">${a.access||'—'}</div>
     </div>
     <div style="margin-top:14px;">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:6px;">Photos (${(a.photos&&a.photos.length)||0})</div>
@@ -6958,6 +6970,8 @@ async function saveAdminAnnonceEdit(id){
     country: val('am-country'),
     address: val('am-address'),
     zip: val('am-zip'),
+    size: parseFloat(val('am-size'))||null,
+    access: val('am-access'),
     rooms: parseInt(val('am-rooms'))||1,
     bathrooms: parseInt(val('am-bathrooms'))||1,
     capacity: parseInt(val('am-capacity'))||1,
