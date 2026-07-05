@@ -714,28 +714,8 @@ const bookingRequests = [
    status:'pending', createdAt:'2025-04-18'},
 ];
 
-// Messages / conversations
-const conversations = [
-  {id:'CONV-001', propertyId:1, propertyName:'Le Grand Palais Hôtel',
-   hostId:'H1', hostName:'Sophie Martin', hostAvatar:'SM',
-   guestId:1, guestName:'Jean Dupont',
-   lastMessage:'Bonjour Jean ! Bien sûr, l\'appartement est disponible ces dates. 😊', lastAt:'2025-04-28T14:32:00Z',
-   unread:2,
-   messages:[
-     {id:'M1', sender:'guest', text:'Bonjour Sophie, je suis intéressé par votre logement pour du 15 au 20 juillet. Est-il disponible ?', at:'2025-04-28T10:00:00Z'},
-     {id:'M2', sender:'host',  text:'Bonjour Jean ! Bien sûr, l\'appartement est disponible ces dates. 😊', at:'2025-04-28T14:32:00Z'},
-   ]},
-  {id:'CONV-002', propertyId:3, propertyName:'Tokyo Sky Tower Hotel',
-   hostId:'H3', hostName:'Yuki Tanaka', hostAvatar:'YT',
-   guestId:1, guestName:'Jean Dupont',
-   lastMessage:'The check-in time is flexible, I can arrange for 3PM.', lastAt:'2025-04-27T09:15:00Z',
-   unread:0,
-   messages:[
-     {id:'M3', sender:'guest', text:'Hi Yuki! What time is check-in? We might arrive late.', at:'2025-04-27T08:00:00Z'},
-     {id:'M4', sender:'host',  text:'The check-in time is flexible, I can arrange for 3PM.', at:'2025-04-27T09:15:00Z'},
-     {id:'M5', sender:'guest', text:'Perfect, thank you so much!', at:'2025-04-27T09:20:00Z'},
-   ]},
-];
+// Messages / conversations : gérées désormais en base via Supabase (tables conversations + messages)
+// Voir loadMessagesList(), loadConversation(), sendMessage(), openMessageHost()
 
 // Calendar availability (per property)
 const calendarData = {
@@ -895,8 +875,20 @@ function render() {
   else if(pg==='excursion-form'){ excAutoFill(); app.appendChild(buildExcursionForm()); }
   else if(pg==='payment') app.appendChild(buildPayment());
   else if(pg==='host-profile') app.appendChild(buildHostProfile());
-  else if(pg==='messages') app.appendChild(buildMessages());
-  else if(pg==='conversation') app.appendChild(buildConversation());
+  else if(pg==='messages'){
+    const _mc = document.createElement('div');
+    _mc.id = 'messages-container';
+    _mc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement des messages…</div>';
+    app.appendChild(_mc);
+    loadMessagesList(_mc);
+  }
+  else if(pg==='conversation'){
+    const _cc = document.createElement('div');
+    _cc.id = 'conversation-container';
+    _cc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de la conversation…</div>';
+    app.appendChild(_cc);
+    loadConversation(_cc);
+  }
   else if(pg==='booking-requests') app.appendChild(buildBookingRequests());
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
   else if(pg==='admin') app.appendChild(buildAdminDashboard());
@@ -5562,6 +5554,7 @@ function getHostForHotel(hId){
   if(h && h.annonceId){
     return {
       id: 'HOST-'+h.annonceId,
+      authId: h.userId || null,
       firstName: h.contactFirstname || 'Hôte',
       lastName: h.contactLastname || '',
       email: h.contactEmail || '',
@@ -5583,24 +5576,50 @@ function getHostForHotel(hId){
   return hostsData.find(x=>x.properties.includes(hId)) || hostsData[0];
 }
 
-function openMessageHost(hId){
+async function openMessageHost(hId){
   if(!auth.currentUser){openModal('login');return;}
   const h = hotels.find(x=>x.id===hId);
   const host = getHostForHotel(hId);
-  // Find or create conversation
-  let conv = conversations.find(c=>c.propertyId===hId&&c.guestId===auth.currentUser.id);
-  if(!conv){
-    conv = {
-      id:'CONV-'+Date.now(), propertyId:hId,
-      propertyName:h?.name||'Hébergement',
-      hostId:host.id, hostName:host.firstName+' '+host.lastName, hostAvatar:host.avatar,
-      guestId:auth.currentUser.id, guestName:auth.currentUser.firstName+' '+auth.currentUser.lastName,
-      lastMessage:'', lastAt:new Date().toISOString(), unread:0, messages:[]
-    };
-    conversations.push(conv);
+
+  if(!h?.annonceId){
+    showToast('La messagerie est disponible uniquement pour les annonces publiées.','var(--red)');
+    return;
   }
-  appState.selectedConvId = conv.id;
-  navigate('conversation');
+  if(host.authId && auth.currentUser.id === host.authId){
+    showToast('Vous ne pouvez pas vous contacter vous-même.','var(--red)');
+    return;
+  }
+  if(!host.authId){
+    showToast("Cet hôte n'a pas encore de compte MyTunigo actif.",'var(--red)');
+    return;
+  }
+
+  try{
+    // Chercher une conversation existante entre ce client et cette annonce
+    const { data: existing, error: findErr } = await _sb.from('conversations')
+      .select('*')
+      .eq('logement_id', h.annonceId)
+      .or(`participant_a.eq.${auth.currentUser.id},participant_b.eq.${auth.currentUser.id}`)
+      .maybeSingle();
+    if(findErr) throw findErr;
+
+    let conv = existing;
+    if(!conv){
+      const { data: created, error: createErr } = await _sb.from('conversations').insert([{
+        logement_id: h.annonceId,
+        participant_a: auth.currentUser.id,
+        participant_b: host.authId
+      }]).select().single();
+      if(createErr) throw createErr;
+      conv = created;
+    }
+
+    appState.selectedConvId = conv.id;
+    navigate('conversation');
+  } catch(e){
+    console.error('openMessageHost error:', e.message);
+    showToast("Impossible d'ouvrir la conversation.",'var(--red)');
+  }
 }
 
 function openBookingRequest(hId){
@@ -5744,68 +5763,119 @@ function buildHostProfile(){
 /* ══════════════════════════════════════════════════════════════════
    MESSAGES PAGE
 ══════════════════════════════════════════════════════════════════ */
-function buildMessages(){
-  if(!auth.currentUser){navigate('home');return document.createElement('div');}
-  const userConvs = conversations.filter(c=>c.guestId===auth.currentUser.id||c.hostId===auth.currentUser.id);
-  const totalUnread = userConvs.reduce((s,c)=>s+c.unread,0);
+async function loadMessagesList(container){
+  if(!auth.currentUser){navigate('home');return;}
+  const uid = auth.currentUser.id;
 
-  const d = document.createElement('div');
-  d.innerHTML=`
+  const { data: convs, error } = await _sb.from('conversations')
+    .select('*')
+    .or(`participant_a.eq.${uid},participant_b.eq.${uid}`)
+    .order('created_at', {ascending:false});
+
+  if(error){
+    container.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';
+    return;
+  }
+
+  const list = convs || [];
+
+  if(list.length===0){
+    container.innerHTML = `
+    <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Messages</span></div>
+    <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
+      <h1 style="font-size:24px;font-weight:800;margin-bottom:20px;">💬 Messagerie</h1>
+      <div style="text-align:center;padding:60px 20px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
+        <div style="font-size:56px;margin-bottom:14px;">💬</div>
+        <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;">Aucun message</h3>
+        <p style="color:var(--gray-500);">Contactez un hôte depuis la fiche d'un hébergement.</p>
+        <button onclick="navigate('home')" style="margin-top:16px;background:var(--blue);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">Explorer les hébergements</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const otherIds = [...new Set(list.map(c=>c.participant_a===uid?c.participant_b:c.participant_a).filter(Boolean))];
+  const logementIds = [...new Set(list.map(c=>c.logement_id).filter(Boolean))];
+  const convIds = list.map(c=>c.id);
+
+  const [profRes, annRes, msgRes] = await Promise.all([
+    otherIds.length ? _sb.from('profiles').select('id,first_name,last_name,email').in('id', otherIds) : Promise.resolve({data:[]}),
+    logementIds.length ? _sb.from('annonces').select('id,name').in('id', logementIds) : Promise.resolve({data:[]}),
+    _sb.from('messages').select('conversation_id,content,created_at').in('conversation_id', convIds).order('created_at',{ascending:false})
+  ]);
+
+  const profMap = Object.fromEntries((profRes.data||[]).map(p=>[p.id,p]));
+  const annMap = Object.fromEntries((annRes.data||[]).map(a=>[a.id,a]));
+  const lastMsgMap = {};
+  (msgRes.data||[]).forEach(m=>{ if(!lastMsgMap[m.conversation_id]) lastMsgMap[m.conversation_id]=m; }); // premier = plus récent (déjà trié desc)
+
+  container.innerHTML = `
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Messages</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
       <div>
         <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">💬 Messagerie</h1>
-        <p style="font-size:15px;color:var(--gray-500);">${userConvs.length} conversation${userConvs.length>1?'s':''}${totalUnread>0?' · <strong style="color:var(--blue)">'+totalUnread+' non lu'+(totalUnread>1?'s':'')+'</strong>':''}</p>
+        <p style="font-size:15px;color:var(--gray-500);">${list.length} conversation${list.length>1?'s':''}</p>
       </div>
     </div>
-
-    ${userConvs.length===0?`
-    <div style="text-align:center;padding:60px 20px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
-      <div style="font-size:56px;margin-bottom:14px;">💬</div>
-      <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;">Aucun message</h3>
-      <p style="color:var(--gray-500);">Contactez un hôte depuis la fiche d'un hébergement.</p>
-      <button onclick="navigate('home')" style="margin-top:16px;background:var(--blue);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">Explorer les hébergements</button>
-    </div>`
-    :userConvs.map(conv=>{
-      const time=new Date(conv.lastAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    ${list.map(conv=>{
+      const otherId = conv.participant_a===uid?conv.participant_b:conv.participant_a;
+      const other = profMap[otherId];
+      const otherName = other ? `${other.first_name||''} ${other.last_name||''}`.trim() : 'Utilisateur';
+      const avatar = otherName.split(' ').filter(Boolean).map(n=>n[0]).join('').slice(0,2).toUpperCase() || '?';
+      const ann = annMap[conv.logement_id];
+      const lastMsg = lastMsgMap[conv.id];
+      const time = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '';
       return `<div onclick="appState.selectedConvId='${conv.id}';navigate('conversation')"
-        style="background:#fff;border:1px solid ${conv.unread>0?'var(--blue)':'var(--gray-200)'};border-radius:var(--r-lg);padding:18px 20px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:16px;transition:all .2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
-        <!-- Avatar hôte -->
-        <div style="position:relative;">
-          <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${conv.hostAvatar}</div>
-          ${conv.unread>0?`<div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--blue);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;">${conv.unread}</div>`:''}
-        </div>
+        style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:16px;transition:all .2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
+        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${avatar}</div>
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-            <span style="font-size:15px;font-weight:${conv.unread>0?'800':'600'};color:var(--gray-900);">${conv.hostName}</span>
+            <span style="font-size:15px;font-weight:600;color:var(--gray-900);">${otherName}</span>
             <span style="font-size:12px;color:var(--gray-400);">${time}</span>
           </div>
-          <div style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;">🏠 ${conv.propertyName}</div>
-          <div style="font-size:13px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${conv.lastMessage||'Démarrez la conversation…'}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;">🏠 ${ann?.name||''}</div>
+          <div style="font-size:13px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lastMsg?.content||'Démarrez la conversation…'}</div>
         </div>
         <span style="font-size:18px;color:var(--gray-300);">›</span>
       </div>`;
     }).join('')}
   </div>`;
-  return d;
 }
 
 /* ══════════════════════════════════════════════════════════════════
    CONVERSATION PAGE
 ══════════════════════════════════════════════════════════════════ */
-function buildConversation(){
-  if(!auth.currentUser){navigate('home');return document.createElement('div');}
-  const conv = conversations.find(c=>c.id===appState.selectedConvId);
-  if(!conv){navigate('messages');return document.createElement('div');}
-  // Mark as read
-  conv.unread = 0;
-  const isGuest = conv.guestId === auth.currentUser.id;
-  const otherName = isGuest ? conv.hostName : conv.guestName;
-  const otherAvatar = isGuest ? conv.hostAvatar : conv.guestName.split(' ').map(n=>n[0]).join('');
+async function loadConversation(container){
+  if(!auth.currentUser){navigate('home');return;}
+  const convId = appState.selectedConvId;
+  if(!convId){navigate('messages');return;}
+  const uid = auth.currentUser.id;
 
-  const d = document.createElement('div');
-  d.innerHTML=`
+  const { data: conv, error: convErr } = await _sb.from('conversations').select('*').eq('id', convId).maybeSingle();
+  if(convErr || !conv){
+    container.innerHTML = '<div style="padding:24px;color:red;">Conversation introuvable.</div>';
+    setTimeout(()=>navigate('messages'), 1200);
+    return;
+  }
+
+  const otherId = conv.participant_a===uid ? conv.participant_b : conv.participant_a;
+
+  const [{data: otherProf}, {data: ann}, {data: msgs, error: msgErr}] = await Promise.all([
+    _sb.from('profiles').select('id,first_name,last_name,email').eq('id', otherId).maybeSingle(),
+    _sb.from('annonces').select('id,name').eq('id', conv.logement_id).maybeSingle(),
+    _sb.from('messages').select('*').eq('conversation_id', convId).order('created_at', {ascending:true})
+  ]);
+  if(msgErr){
+    container.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+msgErr.message+'</div>';
+    return;
+  }
+
+  const otherName = otherProf ? `${otherProf.first_name||''} ${otherProf.last_name||''}`.trim() : 'Utilisateur';
+  const otherAvatar = otherName.split(' ').filter(Boolean).map(n=>n[0]).join('').slice(0,2).toUpperCase() || '?';
+  const h = hotels.find(x=>x.annonceId===conv.logement_id);
+
+  container.innerHTML = `
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('messages')">Messages</span><span class="bc-sep">›</span><span>${otherName}</span></div>
   <div style="max-width:760px;margin:0 auto;padding:20px 20px 40px;">
     <!-- Header conversation -->
@@ -5813,21 +5883,21 @@ function buildConversation(){
       <div style="width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${otherAvatar}</div>
       <div style="flex:1;">
         <div style="font-size:16px;font-weight:700;">${otherName}</div>
-        <div style="font-size:13px;color:var(--blue-l);cursor:pointer;" onclick="navigate('detail',{selectedHotelId:${conv.propertyId}})">🏠 ${conv.propertyName}</div>
+        <div style="font-size:13px;color:var(--blue-l);${h?'cursor:pointer;':''}" ${h?`onclick="navigate('detail',{selectedHotelId:${h.id}})"`:''}>🏠 ${ann?.name||''}</div>
       </div>
-      <button onclick="navigate('detail',{selectedHotelId:${conv.propertyId}})" style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir le logement</button>
+      ${h?`<button onclick="navigate('detail',{selectedHotelId:${h.id}})" style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir le logement</button>`:''}
     </div>
 
     <!-- Messages list -->
     <div id="conv-messages" style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:14px;min-height:320px;max-height:480px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;">
-      ${conv.messages.length===0?'<div style="text-align:center;padding:40px;color:var(--gray-400);font-size:14px;">Démarrez la conversation avec '+otherName+' !</div>'
-      :conv.messages.map(m=>{
-        const mine = (m.sender==='guest'&&isGuest)||(m.sender==='host'&&!isGuest);
-        const t=new Date(m.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+      ${(msgs||[]).length===0?'<div style="text-align:center;padding:40px;color:var(--gray-400);font-size:14px;">Démarrez la conversation avec '+otherName+' !</div>'
+      :(msgs||[]).map(m=>{
+        const mine = m.sender_id === uid;
+        const t=new Date(m.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
         return `<div style="display:flex;flex-direction:${mine?'row-reverse':'row'};align-items:flex-end;gap:8px;">
           ${!mine?`<div style="width:32px;height:32px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${otherAvatar}</div>`:''}
           <div style="max-width:72%;">
-            <div style="background:${mine?'var(--blue)':'var(--gray-100)'};color:${mine?'#fff':'var(--gray-900)'};padding:10px 14px;border-radius:${mine?'18px 18px 4px 18px':'18px 18px 18px 4px'};font-size:14px;line-height:1.5;">${m.text}</div>
+            <div style="background:${mine?'var(--blue)':'var(--gray-100)'};color:${mine?'#fff':'var(--gray-900)'};padding:10px 14px;border-radius:${mine?'18px 18px 4px 18px':'18px 18px 18px 4px'};font-size:14px;line-height:1.5;">${(m.content||'').replace(/</g,'&lt;')}</div>
             <div style="font-size:11px;color:var(--gray-400);margin-top:3px;text-align:${mine?'right':'left'};">${t}</div>
           </div>
         </div>`;
@@ -5839,35 +5909,69 @@ function buildConversation(){
       <textarea id="msg-input" placeholder="Écrivez votre message…"
         style="flex:1;border:none;resize:none;font-size:14px;font-family:inherit;outline:none;min-height:44px;max-height:120px;line-height:1.5;color:var(--gray-900);"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage('${conv.id}');}"></textarea>
-      <button onclick="sendMessage('${conv.id}')" style="background:var(--blue);color:#fff;width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">→</button>
+      <button id="msg-send-btn" onclick="sendMessage('${conv.id}')" style="background:var(--blue);color:#fff;width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">→</button>
     </div>
     <p style="font-size:12px;color:var(--gray-400);text-align:center;margin-top:8px;">Entrée pour envoyer · Shift+Entrée pour un saut de ligne</p>
   </div>`;
 
-  // Scroll to bottom
-  setTimeout(()=>{const el=document.getElementById('conv-messages');if(el)el.scrollTop=el.scrollHeight;},100);
-  return d;
+  setTimeout(()=>{const el=document.getElementById('conv-messages');if(el)el.scrollTop=el.scrollHeight;},50);
 }
 
-function sendMessage(convId){
+async function sendMessage(convId){
   const input = document.getElementById('msg-input');
   const text = input?.value?.trim();
   if(!text) return;
-  const conv = conversations.find(c=>c.id===convId);
-  if(!conv) return;
-  const isGuest = conv.guestId === auth.currentUser?.id;
-  conv.messages.push({id:'M'+Date.now(), sender:isGuest?'guest':'host', text, at:new Date().toISOString()});
-  conv.lastMessage = text;
-  conv.lastAt = new Date().toISOString();
-  // Auto reply after 1.5s
-  setTimeout(()=>{
-    const replies = ['Bonjour ! Merci pour votre message, je reviens vers vous très vite. 😊','Parfait, je note votre demande !','Bien sûr, cela me semble tout à fait possible.','Je vais vérifier les disponibilités et je vous confirme.'];
-    const reply = replies[Math.floor(Math.random()*replies.length)];
-    conv.messages.push({id:'M'+Date.now(), sender:isGuest?'host':'guest', text:reply, at:new Date().toISOString()});
-    conv.lastMessage = reply;
-    conv.lastAt = new Date().toISOString();
-    navigate('conversation');
-  },1500);
+  const btn = document.getElementById('msg-send-btn');
+  if(btn){btn.disabled=true;}
+
+  const uid = auth.currentUser?.id;
+  const { data: conv, error: convErr } = await _sb.from('conversations').select('*').eq('id', convId).maybeSingle();
+  if(convErr || !conv){ if(btn)btn.disabled=false; return; }
+
+  const { error: insertErr } = await _sb.from('messages').insert([{
+    conversation_id: convId,
+    sender_id: uid,
+    content: text
+  }]);
+
+  if(insertErr){
+    console.error('sendMessage error:', insertErr.message);
+    showToast("Le message n'a pas pu être envoyé.",'var(--red)');
+    if(btn)btn.disabled=false;
+    return;
+  }
+
+  // Notifier le destinataire par email via l'Edge Function
+  try{
+    const otherId = conv.participant_a===uid ? conv.participant_b : conv.participant_a;
+    const [{data: otherProf}, {data: myProf}, {data: ann}] = await Promise.all([
+      _sb.from('profiles').select('email').eq('id', otherId).maybeSingle(),
+      _sb.from('profiles').select('first_name,last_name').eq('id', uid).maybeSingle(),
+      _sb.from('annonces').select('name').eq('id', conv.logement_id).maybeSingle()
+    ]);
+    const senderName = myProf ? `${myProf.first_name||''} ${myProf.last_name||''}`.trim() : 'Un utilisateur';
+
+    if(otherProf?.email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({
+          conversation_id: convId,
+          recipient_email: otherProf.email,
+          sender_name: senderName,
+          property_name: ann?.name || '',
+          message_text: text
+        })
+      });
+    }
+  } catch(efErr){
+    console.error('notify-message Edge Function error:', efErr.message);
+  }
+
+  input.value = '';
   navigate('conversation');
 }
 
@@ -7663,7 +7767,7 @@ function buildMobileNav(){
   if(window.innerWidth > 768) return '';
   const u = auth.currentUser;
   const pg = appState.page;
-  const unreadMsgs = (typeof conversations!=='undefined') ? conversations.filter(c=>c.unread>0&&(c.guestId===u?.id||c.hostId===u?.id)).length : 0;
+  const unreadMsgs = 0; // TODO: brancher sur un vrai compteur "messages non lus" Supabase (colonne read)
   const pendingReq = (typeof bookingRequests!=='undefined') ? bookingRequests.filter(r=>r.status==='pending').length : 0;
 
   const items = [
@@ -8134,6 +8238,7 @@ async function loadPublishedAnnonces(){
         id: 100000 + i,
         annonceId: a.id,
         annonceRef: a.ref,
+        userId: a.user_id || null,
         contactFirstname: a.contact_firstname || '',
         contactLastname: a.contact_lastname || '',
         contactEmail: a.contact_email || '',
