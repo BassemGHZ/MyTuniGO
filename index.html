@@ -5547,7 +5547,29 @@ function showPaymentSuccess(ref,title,total,method){
 
 /* ── Host on detail page ── */
 function getHostForHotel(hId){
-  return hostsData.find(h=>h.properties.includes(hId)) || hostsData[0];
+  const h = hotels.find(x=>x.id===hId);
+  if(h && h.annonceId){
+    return {
+      id: 'HOST-'+h.annonceId,
+      firstName: h.contactFirstname || 'Hôte',
+      lastName: h.contactLastname || '',
+      email: h.contactEmail || '',
+      phone: h.contactPhone || '',
+      avatar: (h.contactFirstname?.[0]||'H')+(h.contactLastname?.[0]||''),
+      superhost: false,
+      badges: ['verified'],
+      rating: 0,
+      reviews: 0,
+      responseTime: '—',
+      memberSince: new Date().toISOString(),
+      bio: '',
+      languages: ['Français'],
+      city: h.city || '',
+      country: h.country || '',
+      properties: [hId]
+    };
+  }
+  return hostsData.find(x=>x.properties.includes(hId)) || hostsData[0];
 }
 
 function openMessageHost(hId){
@@ -8101,6 +8123,10 @@ async function loadPublishedAnnonces(){
         id: 100000 + i,
         annonceId: a.id,
         annonceRef: a.ref,
+        contactFirstname: a.contact_firstname || '',
+        contactLastname: a.contact_lastname || '',
+        contactEmail: a.contact_email || '',
+        contactPhone: a.contact_phone || '',
         lat: a.lat ? parseFloat(a.lat) : (36.8 + Math.random()*2),
         lng: a.lng ? parseFloat(a.lng) : (9.5 + Math.random()*2),
         minNights: a.min_stay || 1,
