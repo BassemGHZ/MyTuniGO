@@ -2670,53 +2670,13 @@ function annStep1(ad){
     <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">La carte se centre sur votre adresse</span>
   </div>
 
-  <!-- Coordonnées GPS -->
-  <div style="margin-top:16px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--r-md);padding:14px;">
-    <div style="font-size:12px;color:var(--blue-l);background:#e8f4ff;border:1px solid #b3d4f0;border-radius:var(--r-sm);padding:10px 12px;margin-bottom:14px;line-height:1.6;">
-      💡 Trouvez vos coordonnées GPS sur <strong>Google Maps</strong> : clic droit sur le lieu → "Plus d'infos sur cet endroit" → les coordonnées apparaissent en haut.
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-      <div>
-        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">LATITUDE *</label>
-        <input type="number" step="0.000001" id="af-lat" placeholder="Ex : 48.856613"
-          value="${ad.lat||''}" 
-          oninput="annSet('lat',this.value);updateMapFromCoords()"
-          onchange="annSet('lat',this.value);updateMapFromCoords()"
-          onpaste="setTimeout(updateMapFromCoords,100)"
-          style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:monospace;">
-        <small style="font-size:11px;color:var(--gray-400);">Entre -90 et 90 (ex: 48.856613 pour Paris)</small>
-      </div>
-      <div>
-        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">LONGITUDE *</label>
-        <input type="number" step="0.000001" id="af-lng" placeholder="Ex : 2.352222"
-          value="${ad.lng||''}"
-          oninput="annSet('lng',this.value)"
-          style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:monospace;">
-        <small style="font-size:11px;color:var(--gray-400);">Entre -180 et 180 (ex: 2.352222 pour Paris)</small>
-      </div>
-    </div>
-
-    <!-- Bouton Localiser -->
-    <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <button onclick="localiserSurCarte()"
-        style="background:var(--blue);color:#fff;padding:11px 28px;border-radius:50px;
-               font-size:14px;font-weight:800;border:none;cursor:pointer;
-               box-shadow:0 4px 14px rgba(30,45,78,.3);display:inline-flex;align-items:center;gap:8px;">
-        📍 Localiser
-      </button>
-      <span style="font-size:13px;color:var(--gray-400);">Cliquez après avoir saisi lat. et long.</span>
-    </div>
-
-    ${ad.lat&&ad.lng?`<div style="margin-top:10px;font-size:12px;color:var(--green);font-weight:600;">✅ ${parseFloat(ad.lat||0).toFixed(6)}, ${parseFloat(ad.lng||0).toFixed(6)}</div>`:''}
-  </div>
-
   <!-- Carte -->
   <div style="margin-top:16px;">
-    <div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-      🗺️ <span>Carte — <strong>cliquez pour déplacer le marqueur</strong></span>
+    <div style="font-size:13px;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-weight:600;">
+      🗺️ <span>Localisation du bien <span style="color:var(--red);">*</span> — <strong>cliquez sur la carte pour positionner un point</strong></span>
     </div>
-    <div id="ann-map" style="height:260px;border-radius:var(--r-lg);border:1.5px solid var(--gray-300);overflow:hidden;z-index:1;"></div>
-    <div id="ann-map-coords" style="font-size:11px;color:var(--gray-400);margin-top:5px;text-align:right;"></div>
+    <div id="ann-map" style="height:420px;border-radius:var(--r-lg);border:1.5px solid var(--gray-300);overflow:hidden;z-index:1;"></div>
+    <div id="ann-map-coords" style="font-size:12px;color:${ad.lat&&ad.lng?'var(--green)':'var(--red)'};margin-top:6px;text-align:right;font-weight:600;">${ad.lat&&ad.lng?'✅ Coordonnées : '+parseFloat(ad.lat).toFixed(6)+', '+parseFloat(ad.lng).toFixed(6):'⚠️ Aucun point positionné — cliquez sur la carte'}</div>
   </div>
 
   <div class="ann-sec" style="margin-top:20px;">Accès</div>
@@ -2814,10 +2774,9 @@ function annStep3(ad){
       </div>`).join('')}
   </div>
   <div class="ann-sec" style="margin-top:20px;">Règles de séjour</div>
-  <div class="ann-row-3">
+  <div class="ann-row-3" style="grid-template-columns:1fr 1fr;">
     <div class="a-field"><label>Heure d'arrivée</label><input type="time" value="${ad.checkin}" oninput="annSet('checkin',this.value)"></div>
     <div class="a-field"><label>Heure de départ</label><input type="time" value="${ad.checkout}" oninput="annSet('checkout',this.value)"></div>
-    <div class="a-field"><label>Séjour minimum (nuits)</label><input type="number" min="1" value="${ad.min_stay}" oninput="annSet('min_stay',+this.value)"></div>
   </div>
   <div class="ann-sec" style="margin-top:20px;">🌙 Durée de séjour</div>
   <p style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">Définissez les durées minimale et maximale de séjour pour votre logement.</p>
@@ -3044,6 +3003,7 @@ function annValidate(){
   }
   if(cur===1){
     if(!ad.address.trim()||!ad.city.trim()||!ad.zip.trim()){showToast('⚠️ Remplissez l\'adresse, ville et code postal.','var(--red)');return false;}
+    if(!ad.lat||!ad.lng){showToast('⚠️ Cliquez sur la carte pour positionner votre bien.','var(--red)');return false;}
   }
   if(cur===3){
     if(!ad.price_night||ad.price_night<1){showToast('⚠️ Entrez un prix par nuit valide.','var(--red)');return false;}
@@ -8330,49 +8290,6 @@ function initHotelMap(hId){
   }, 100);
 }
 
-function localiserSurCarte(){
-  const latEl = document.getElementById('af-lat');
-  const lngEl = document.getElementById('af-lng');
-  if(!latEl || !lngEl){ showToast('Champs introuvables','var(--red)'); return; }
-  const lat = parseFloat(latEl.value);
-  const lng = parseFloat(lngEl.value);
-  if(isNaN(lat)||isNaN(lng)){ showToast('Renseignez la latitude ET la longitude','var(--red)'); return; }
-  if(lat<-90||lat>90){ showToast('Latitude invalide (-90 à 90)','var(--red)'); return; }
-  if(lng<-180||lng>180){ showToast('Longitude invalide (-180 à 180)','var(--red)'); return; }
-  annSet('lat',lat); annSet('lng',lng);
-  // Destroy old map
-  const mapEl = document.getElementById('ann-map');
-  if(!mapEl){ showToast('Zone carte introuvable','var(--red)'); return; }
-  if(annMap){ try{ annMap.off(); annMap.remove(); }catch(e){} annMap=null; annMarker=null; }
-  mapEl.innerHTML='';
-  // Recreate after DOM reset
-  setTimeout(function(){
-    try{
-      annMap = L.map(mapEl,{scrollWheelZoom:false}).setView([lat,lng],14);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-        attribution:'CartoDB',subdomains:'abcd',maxZoom:19
-      }).addTo(annMap);
-      var icon = L.divIcon({
-        html:'<div style="background:#E84B10;border:3px solid #fff;border-radius:50%;width:22px;height:22px;box-shadow:0 3px 10px rgba(0,0,0,.5);"></div>',
-        iconSize:[22,22],iconAnchor:[11,11],className:''
-      });
-      annMarker = L.marker([lat,lng],{icon:icon,draggable:true}).addTo(annMap);
-      annMarker.on('dragend',function(e){
-        var p=e.target.getLatLng();
-        annSet('lat',p.lat); annSet('lng',p.lng);
-        var le=document.getElementById('af-lat'); if(le) le.value=p.lat.toFixed(6);
-        var ge=document.getElementById('af-lng'); if(ge) ge.value=p.lng.toFixed(6);
-        var ce=document.getElementById('ann-map-coords');
-        if(ce) ce.textContent='Coordonnées : '+p.lat.toFixed(6)+', '+p.lng.toFixed(6);
-      });
-      annMap.on('click',function(e){ placeAnnMarker(e.latlng.lat,e.latlng.lng); });
-      var ce=document.getElementById('ann-map-coords');
-      if(ce) ce.textContent='Coordonnées : '+lat.toFixed(6)+', '+lng.toFixed(6);
-      showToast('📍 Point affiché !','var(--green)');
-    }catch(err){ showToast('Erreur : '+err.message,'var(--red)'); }
-  },120);
-}
-
 function initAnnMap(){
   const mapEl = document.getElementById('ann-map');
   if(!mapEl){ console.warn('ann-map not found'); return; }
@@ -8419,7 +8336,10 @@ function placeAnnMarker(lat, lng){
 
 function updateCoordsDisplay(lat, lng){
   const el = document.getElementById('ann-map-coords');
-  if(el) el.textContent = 'Coordonnées : ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+  if(el){
+    el.textContent = '✅ Coordonnées : ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+    el.style.color = 'var(--green)';
+  }
   appState.annonceData.lat = lat;
   appState.annonceData.lng = lng;
 }
@@ -8450,11 +8370,6 @@ async function geocodeAddress(){
         annMap.setView([lat,lng],15);
         placeAnnMarker(lat,lng);
       }
-      // Also update the lat/lng input fields
-      const latEl=document.getElementById('af-lat');
-      const lngEl=document.getElementById('af-lng');
-      if(latEl){latEl.value=lat.toFixed(6);}
-      if(lngEl){lngEl.value=lng.toFixed(6);}
       appState.annonceData.lat=lat;
       appState.annonceData.lng=lng;
       showToast('📍 Adresse localisée avec succès !','var(--green)');
