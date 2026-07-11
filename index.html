@@ -2504,6 +2504,23 @@ function selectPayMode(mode){
   }
 }
 
+/* ===================== VÉRIFICATION DE DISPONIBILITÉ (anti double-réservation) ===================== */
+async function checkAnnonceDatesAvailable(annonceId, checkIn, checkOut){
+  if(!annonceId || !checkIn || !checkOut) return true;
+  const { data, error } = await _sb.from('reservations_availability')
+    .select('check_in,check_out,status')
+    .eq('logement_id', annonceId)
+    .lt('check_in', checkOut)
+    .gt('check_out', checkIn);
+  if(error){
+    console.error('checkAnnonceDatesAvailable error:', error.message);
+    // En cas d'erreur réseau, on laisse passer plutôt que de bloquer injustement —
+    // mais on log pour investiguer si ça se reproduit.
+    return true;
+  }
+  return !(data && data.length > 0);
+}
+
 function handleConfirmChoice(hId, total){
   // Version lancement : paiement sur place uniquement
   payOnSite(hId, total);
@@ -2528,7 +2545,15 @@ async function payOnSite(hId, total){
   const guestsCount = appState.searchGuests||1;
 
   const btn = document.getElementById('main-confirm-btn');
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Envoi…';}
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Vérification des dates…';}
+
+  const available = await checkAnnonceDatesAvailable(h.annonceId, appState.checkIn, appState.checkOut);
+  if(!available){
+    showToast('⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre. Choisissez d\'autres dates.','var(--red)');
+    if(btn){btn.disabled=false;btn.innerHTML='📨 Envoyer ma demande de réservation';}
+    return;
+  }
+  if(btn){btn.innerHTML='<span class="spinner-sm"></span> Envoi…';}
 
   const { error } = await _sb.from('reservations').insert([{
     logement_id: h.annonceId,
@@ -2546,7 +2571,8 @@ async function payOnSite(hId, total){
 
   if(error){
     console.error('payOnSite error:', error.message);
-    showToast("La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
+    const conflict = error.code === '23P01' || /exclu|overlap/i.test(error.message||'');
+    showToast(conflict ? '⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre.' : "La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
     if(btn){btn.disabled=false;btn.innerHTML='📨 Envoyer ma demande de réservation';}
     return;
   }
@@ -6574,7 +6600,15 @@ async function submitBookingRequest(hId){
   const ref = 'REQ-'+Math.random().toString(36).substr(2,6).toUpperCase();
 
   const btn = document.querySelector('#modal-root .modal button[onclick^="submitBookingRequest"]');
-  if(btn){btn.disabled=true;btn.textContent='Envoi…';}
+  if(btn){btn.disabled=true;btn.textContent='Vérification des dates…';}
+
+  const available = await checkAnnonceDatesAvailable(h.annonceId, checkIn, checkOut);
+  if(!available){
+    showToast('⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre. Choisissez d\'autres dates.','var(--red)');
+    if(btn){btn.disabled=false;btn.textContent='📨 Envoyer la demande';}
+    return;
+  }
+  if(btn){btn.textContent='Envoi…';}
 
   const { error } = await _sb.from('reservations').insert([{
     logement_id: h.annonceId,
@@ -6592,7 +6626,8 @@ async function submitBookingRequest(hId){
 
   if(error){
     console.error('submitBookingRequest error:', error.message);
-    showToast("La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
+    const conflict = error.code === '23P01' || /exclu|overlap/i.test(error.message||'');
+    showToast(conflict ? '⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre.' : "La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
     if(btn){btn.disabled=false;btn.textContent='📨 Envoyer la demande';}
     return;
   }
