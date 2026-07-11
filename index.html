@@ -650,14 +650,8 @@ const hotels = [
   {id:20, lat:-1.2921, lng:36.8219, minNights:2, name:"Dubai Marina Suites",            city:"Dubaï",           country:"Émirats",     type:"Appartement", stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:987,  price:310, emoji:"🏙️", features:["Wi-Fi gratuit","Piscine","Parking","Spa","Restaurant"], desc:"Suite luxueuse vue sur la marina de Dubaï. Accès plage privée.",                                   freeCancellation:true,  payLater:false, discount:0},
 ];
 
-const destinations = [
-  {name:"Paris",country:"France",count:"1 847",emoji:"🗼",color:"#4a90d9"},
-  {name:"Tokyo",country:"Japon",count:"3 202",emoji:"⛩️",color:"#e74c3c"},
-  {name:"Barcelone",country:"Espagne",count:"2 103",emoji:"🌞",color:"#f39c12"},
-  {name:"Rome",country:"Italie",count:"1 654",emoji:"🏛️",color:"#8e44ad"},
-  {name:"Londres",country:"Royaume-Uni",count:"4 511",emoji:"🎡",color:"#2c3e50"},
-  {name:"Santorin",country:"Grèce",count:"789",emoji:"🏖️",color:"#1abc9c"},
-];
+// Destinations populaires : calculées dynamiquement à partir des vraies
+// annonces publiées — voir getPopularDestinations()
 
 const reviewsData = [
   {name:"Sophie M.",country:"France",score:9.2,date:"Mars 2025",text:"Séjour absolument fantastique. L'hôtel est magnifique et le personnel aux petits soins. Je recommande vivement le restaurant gastronomique !"},
@@ -1499,6 +1493,60 @@ function showToast(msg, bg='var(--green)'){
 }
 
 /* ===================== HOME ===================== */
+/* ===================== DESTINATIONS POPULAIRES ===================== */
+// Regroupe les vraies annonces publiées par ville, compte le nombre réel
+// d'annonces par ville, trie par nombre décroissant, garde les 6 premières.
+// Chaque destination affiche une vraie photo (celle de l'une de ses
+// annonces) plutôt qu'un emoji générique.
+function titleCaseCity(name){
+  return name.trim().split(/\s+/).filter(Boolean)
+    .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+}
+
+function titleCaseCity(name){
+  return normalizeCityName(name);
+}
+
+// Normalise un nom de ville : espaces avant/après supprimés, espaces multiples
+// réduits à un seul, casse uniformisée (Première Lettre En Majuscule).
+// Utilisé à la fois à la saisie (formulaire d'annonce) et à l'affichage
+// (destinations populaires), pour que "CHEBBA", " chebba " et "Chebba"
+// soient toujours traités comme UNE seule et même ville.
+function normalizeCityName(str){
+  return (str||'').trim().replace(/\s+/g,' ').split(' ').filter(Boolean)
+    .map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+}
+
+function annNormalizeCity(){
+  const el = document.getElementById('af-city');
+  if(!el) return;
+  const normalized = normalizeCityName(el.value);
+  el.value = normalized;
+  annSet('city', normalized);
+}
+
+function excNormalizeCity(){
+  const el = document.getElementById('ef-city');
+  if(!el) return;
+  const normalized = normalizeCityName(el.value);
+  el.value = normalized;
+  excSet('city', normalized);
+}
+
+function getPopularDestinations(){
+  const real = hotels.filter(h => h.annonceId && h.city && h.city.trim());
+  const byCity = {};
+  real.forEach(h=>{
+    // Normalisation pour le regroupement : "CHEBBA", "Chebba", "chebba" doivent
+    // compter comme une seule et même ville, quelle que soit la casse saisie par l'hôte.
+    const key = h.city.trim().toLowerCase()+'|'+(h.country||'').trim().toLowerCase();
+    if(!byCity[key]) byCity[key] = { name:titleCaseCity(h.city), country:h.country, count:0, photo:null, emoji:h.emoji||'📍' };
+    byCity[key].count++;
+    if(!byCity[key].photo && h.photos && h.photos.length>0) byCity[key].photo = h.photos[0];
+  });
+  return Object.values(byCity).sort((a,b)=>b.count-a.count).slice(0,6);
+}
+
 /* ===================== HÉBERGEMENTS EN VEDETTE ===================== */
 // Algorithme de sélection (aucune vraie statistique de vues/réservations
 // n'existe encore côté plateforme, donc on se base sur des signaux fiables
@@ -1545,13 +1593,21 @@ function buildHome(){
   <div class="section">
     <div class="sec-title">🌍 Destinations populaires</div>
     <div class="sec-sub">Explorez nos destinations les plus prisées</div>
-    <div class="dest-grid">
-      ${destinations.map(dest=>`<div class="dest-card" onclick="searchByDest('${dest.name}')">
-        <div class="dest-bg" style="background:linear-gradient(135deg,${dest.color}cc,${dest.color}88);">${dest.emoji}</div>
-        <div class="dest-overlay"></div>
-        <div class="dest-info"><h3>${dest.name}</h3><p>${dest.count} hébergements</p></div>
-      </div>`).join('')}
-    </div>
+    ${(()=>{
+      const dests = getPopularDestinations();
+      if(dests.length===0){
+        return `<div style="text-align:center;padding:36px 20px;background:var(--gray-50);border-radius:var(--r-lg);">
+          <p style="color:var(--gray-500);font-size:14px;">Les destinations populaires apparaîtront ici dès les premières annonces publiées.</p>
+        </div>`;
+      }
+      return `<div class="dest-grid">
+        ${dests.map(dest=>`<div class="dest-card" onclick="searchByDest('${dest.name}')">
+          <div class="dest-bg" style="${dest.photo?`background:url('${dest.photo}') center/cover;`:'background:linear-gradient(135deg,#0071c2cc,#0071c288);'}">${dest.photo?'':dest.emoji}</div>
+          <div class="dest-overlay"></div>
+          <div class="dest-info"><h3>${dest.name}</h3><p>${dest.count} hébergement${dest.count>1?'s':''}</p></div>
+        </div>`).join('')}
+      </div>`;
+    })()}
   </div>
 
   <div style="background:var(--gray-100);padding:40px 0;">
@@ -2792,7 +2848,7 @@ function annStep1(ad){
   <div class="ann-full a-field"><label>Adresse (numéro et rue) *</label>
     <input id="af-address" type="text" placeholder="Ex : 24 avenue des Lilas" value="${ad.address}" oninput="annSet('address',this.value)"></div>
   <div style="display:grid;grid-template-columns:2fr 1fr 2fr;gap:14px;margin-bottom:14px;">
-    <div class="a-field"><label>Ville *</label><input id="af-city" type="text" maxlength="30" placeholder="Paris" value="${ad.city}" oninput="annSet(\'city\',this.value)"></div>
+    <div class="a-field"><label>Ville *</label><input id="af-city" type="text" maxlength="30" placeholder="Paris" value="${ad.city}" oninput="annSet('city',this.value)" onblur="annNormalizeCity()"></div>
     <div class="a-field"><label>Code postal</label><input id="af-zip" type="text" placeholder="75001" value="${ad.zip}" oninput="annSet(\'zip\',this.value)"></div>
     <div class="a-field"><label>Pays</label><select oninput="annSet(\'country\',this.value)">${opts}</select></div>
   </div>
@@ -3197,7 +3253,7 @@ async function annPublish(){
     emoji: EMOJIS_MAP[ad.type] || '🏠',
     name: ad.name,
     description: ad.desc || '',
-    city: ad.city,
+    city: normalizeCityName(ad.city),
     country: ad.country || 'Tunisie',
     address: ad.address || '',
     zip: ad.zip || '',
@@ -4866,7 +4922,7 @@ function excFormStep0(fd){
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Ville *</label>
-        <input id="ef-city" type="text" maxlength="30" placeholder="Ex : Marrakech" value="${fd.city}" oninput="excSet('city',this.value)"
+        <input id="ef-city" type="text" maxlength="30" placeholder="Ex : Marrakech" value="${fd.city}" oninput="excSet('city',this.value)" onblur="excNormalizeCity()"
           style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Pays *</label>
         <select oninput="excSet('country',this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
@@ -5286,7 +5342,7 @@ async function excFormPublish(){
     meeting_time: fd.meetingTime||'',
     meeting_time_end: fd.meetingTimeEnd||'',
     schedule: fd.schedule||'',
-    city: fd.city||'',
+    city: normalizeCityName(fd.city)||'',
     country: fd.country||'Tunisie',
     duration: durationStr,
     price: fd.price||0,
