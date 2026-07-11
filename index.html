@@ -2404,9 +2404,9 @@ function buildConfirm(){
   d.innerHTML=`<div class="confirm-wrap">
     <div class="confirm-card">
       <div class="confirm-hdr">
-        <div class="confirm-icon">🏨</div>
-        <h2>Confirmez votre réservation</h2>
-        <p>Vérifiez les détails avant de finaliser</p>
+        <div class="confirm-icon">📨</div>
+        <h2>Envoyez votre demande de réservation</h2>
+        <p>Vérifiez les détails avant de l'envoyer à l'hôte</p>
       </div>
       <div class="confirm-body">
 
@@ -2420,7 +2420,7 @@ function buildConfirm(){
           <div class="sum-row"><span>Chambres</span><span>${appState.rooms||1}</span></div>
           ${nights>0?`<div class="sum-row"><span>Durée</span><span>${nights} nuit${nights>1?'s':''}</span></div>`:''}
           <div class="sum-row" style="font-weight:800;font-size:15px;border-top:1px solid var(--gray-300);margin-top:8px;padding-top:8px;">
-            <span>Total</span><span style="color:var(--blue)">${total}€</span>
+            <span>Total estimé</span><span style="color:var(--blue)">${total}€</span>
           </div>
         </div>
 
@@ -2443,7 +2443,7 @@ function buildConfirm(){
             <div style="flex:1;">
               <div style="font-size:15px;font-weight:800;color:#0a5c3e;margin-bottom:5px;">🏨 Paiement sur place</div>
               <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:10px;">
-                Vous réglez directement à l'hébergement à votre arrivée. Aucun prélèvement en ligne maintenant.
+                Une fois votre demande acceptée par l'hôte, vous réglerez directement à l'hébergement à votre arrivée. Aucun prélèvement en ligne.
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <span style="font-size:11px;background:#fff;color:#0a5c3e;padding:3px 10px;border-radius:20px;font-weight:700;border:1px solid #6bcf9e;">💵 Espèces</span>
@@ -2457,11 +2457,10 @@ function buildConfirm(){
 
         <!-- Bouton principal -->
         <button id="main-confirm-btn" class="btn-confirm" onclick="handleConfirmChoice(${h.id},${total})">
-          💳 Procéder au paiement →
+          📨 Envoyer ma demande de réservation
         </button>
         <p style="font-size:12px;color:var(--gray-500);text-align:center;margin-top:10px;">
-          🔒 Réservation sécurisée. Paiement sur place à l'arrivée.
-          ${canPayLater?'Vous pouvez choisir de payer maintenant ou sur place.':''}
+          📨 Votre demande sera transmise à l'hôte, qui dispose de 24h pour l'examiner.
         </p>
       </div>
     </div>
@@ -2494,11 +2493,11 @@ function selectPayMode(mode){
   const btn = document.getElementById('main-confirm-btn');
   if(btn){
     if(mode==='now'){
-      btn.textContent = '💳 Procéder au paiement →';
+      btn.textContent = '📨 Envoyer ma demande de réservation';
       btn.style.background = 'var(--yellow)';
       btn.style.color      = 'var(--gray-900)';
     } else {
-      btn.textContent = '🏨 Confirmer — Payer sur place';
+      btn.textContent = '📨 Envoyer ma demande de réservation';
       btn.style.background = 'var(--green)';
       btn.style.color      = '#fff';
     }
@@ -2526,51 +2525,58 @@ async function payOnSite(hId, total){
   const nights = Math.max(1,Math.round((new Date(appState.checkOut)-new Date(appState.checkIn))/86400000))||1;
   const ref = 'SF-'+Math.random().toString(36).substr(2,8).toUpperCase();
   const notes = document.getElementById('cf-notes')?.value||'';
+  const guestsCount = appState.searchGuests||1;
 
   const btn = document.getElementById('main-confirm-btn');
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Confirmation…';}
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Envoi…';}
 
-  const { data: created, error } = await _sb.from('reservations').insert([{
+  const { error } = await _sb.from('reservations').insert([{
     logement_id: h.annonceId,
     guest_id: auth.currentUser.id,
     check_in: appState.checkIn||null,
     check_out: appState.checkOut||null,
     nights,
     rooms: appState.rooms||1,
-    guests_count: appState.searchGuests||1,
+    guests_count: guestsCount,
     total,
-    status: 'confirmée',
+    status: 'en attente',
     reference: ref,
     notes
-  }]).select().single();
+  }]);
 
   if(error){
     console.error('payOnSite error:', error.message);
-    showToast("La réservation n'a pas pu être enregistrée : "+error.message,'var(--red)');
-    if(btn){btn.disabled=false;btn.textContent='🏨 Confirmer — Payer sur place';}
+    showToast("La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
+    if(btn){btn.disabled=false;btn.innerHTML='📨 Envoyer ma demande de réservation';}
     return;
   }
 
-  // Notifier l'hôte par email via l'Edge Function (réutilise notify-message)
+  // Emails : confirmation immédiate au client + alerte à l'hôte (même flux que les demandes classiques)
   try{
-    const { data: ann } = await _sb.from('annonces').select('user_id,name,contact_email').eq('id', h.annonceId).maybeSingle();
+    const { data: ann } = await _sb.from('annonces').select('name,contact_email').eq('id', h.annonceId).maybeSingle();
+    const propertyName = ann?.name || h.name;
+    const payload = {
+      property_name: propertyName,
+      guest_name: name,
+      check_in: appState.checkIn, check_out: appState.checkOut,
+      guests_count: guestsCount, total, message: notes
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+    };
+    if(email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+        method:'POST', headers, body: JSON.stringify({...payload, type:'request_received', recipient_email: email})
+      });
+    }
     if(ann?.contact_email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-message', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify({
-          recipient_email: ann.contact_email,
-          sender_name: name,
-          property_name: ann.name || h.name,
-          message_text: '📅 Nouvelle réservation confirmée : du '+(appState.checkIn||'?')+' au '+(appState.checkOut||'?')+' ('+nights+' nuit'+(nights>1?'s':'')+', '+total+'€). Référence : '+ref
-        })
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+        method:'POST', headers, body: JSON.stringify({...payload, type:'host_alert', recipient_email: ann.contact_email})
       });
     }
   } catch(efErr){
-    console.error('notify host of reservation error:', efErr.message);
+    console.error('notify-booking error:', efErr.message);
   }
 
   appState.confirmedBooking = {
@@ -2604,30 +2610,26 @@ function submitBooking(hId,total){
 
 function buildSuccess(){
   const b=appState.confirmedBooking;
-  const ref='SF-'+Math.random().toString(36).substr(2,8).toUpperCase();
   const d=document.createElement('div');
   d.innerHTML=`<div class="confirm-wrap">
     <div class="confirm-card">
-      <div class="confirm-hdr" style="background:var(--green);">
-        <div class="confirm-icon">✅</div>
-        <h2>Réservation confirmée !</h2>
-        <p>Votre séjour est enregistré</p>
+      <div class="confirm-hdr" style="background:var(--blue);">
+        <div class="confirm-icon">📨</div>
+        <h2>Demande envoyée !</h2>
+        <p>Votre demande est en attente de validation par l'hôte</p>
       </div>
       <div class="confirm-body">
-        <p style="font-size:15px;color:var(--gray-700);margin-bottom:18px;">Bonjour <strong>${b.name}</strong>, votre réservation au <strong>${b.hotel.name}</strong> est confirmée ! Un e-mail a été envoyé à <strong>${b.email}</strong>.</p>
+        <p style="font-size:15px;color:var(--gray-700);margin-bottom:18px;line-height:1.7;">Bonjour <strong>${b.name}</strong>, votre demande de réservation pour <strong>${b.hotel.name}</strong> a bien été transmise à l'hôte. Vous recevrez un e-mail à <strong>${b.email}</strong> dès qu'il aura pris sa décision, généralement sous 24h.</p>
         <div class="sum-box">
-          <div style="font-weight:800;font-size:15px;margin-bottom:10px;">🎉 Détails du séjour</div>
-          <div class="sum-row"><span>Référence</span><span><code style="background:var(--gray-100);padding:2px 8px;border-radius:4px;">${ref}</code></span></div>
-          ${b.paymentMethod?`<div class="sum-row"><span>💳 Paiement</span><span>${b.paymentMethod}</span></div>`:''}
+          <div style="font-weight:800;font-size:15px;margin-bottom:10px;">📋 Récapitulatif de votre demande</div>
+          <div class="sum-row"><span>Référence</span><span><code style="background:var(--gray-100);padding:2px 8px;border-radius:4px;">${b.ref}</code></span></div>
+          <div class="sum-row"><span>Statut</span><span style="font-weight:700;color:#e6a800;">⏳ En attente de validation</span></div>
           <hr style="border:none;border-top:1px solid var(--gray-200);margin:8px 0;">
-          <div class="sum-row"><span>💰 Montant total payé</span><span style="font-weight:700;">${b.total}€</span></div>
-          <div class="sum-row"><span style="color:var(--gray-500);">Commission MyTunigo (7%)</span><span style="color:var(--red);">-${b.commission||Math.round(b.total*0.07)}€</span></div>
-          <div class="sum-row" style="font-weight:800;font-size:15px;"><span style="color:var(--green);">💶 Versement hôte</span><span style="color:var(--green);">${b.netToHost||Math.round(b.total*0.93)}€</span></div>
-          ${b.paymentMethod?`<div class="sum-row"><span>💳 Paiement</span><span>${b.paymentMethod}</span></div>`:''}
           <div class="sum-row"><span>Hébergement</span><span>${b.hotel.name}</span></div>
           <div class="sum-row"><span>Arrivée</span><span>${b.checkIn||'—'}</span></div>
           <div class="sum-row"><span>Départ</span><span>${b.checkOut||'—'}</span></div>
-          <div class="sum-row" style="font-weight:800;font-size:15px;border-top:1px solid var(--gray-300);margin-top:8px;padding-top:8px;"><span>Total</span><span style="color:var(--green)">${b.total}€</span></div>
+          ${b.paymentMethod?`<div class="sum-row"><span>💳 Paiement prévu</span><span>${b.paymentMethod}</span></div>`:''}
+          <div class="sum-row" style="font-weight:800;font-size:15px;border-top:1px solid var(--gray-300);margin-top:8px;padding-top:8px;"><span>Total estimé</span><span style="color:var(--blue)">${b.total}€</span></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="appState.confirmedBooking=null;navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">📅 Mes réservations</button>
