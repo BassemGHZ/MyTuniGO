@@ -706,13 +706,8 @@ const hostsData = [
    properties:[4]},
 ];
 
-// Booking requests (Airbnb-style: host must accept/decline)
-const bookingRequests = [
-  {id:'REQ-003', hotelId:4, guestId:3, guestName:'Mehdi Benali', guestAvatar:'MB',
-   checkIn:'2026-06-10', checkOut:'2026-06-13', guests:2, rooms:1, total:323,
-   message:'Bonjour, je souhaite réserver votre appartement pour 3 nuits avec ma compagne. Est-il disponible ?',
-   status:'pending', createdAt:'2025-04-18'},
-];
+// Demandes de réservation : gérées désormais en base via Supabase (table reservations, statut 'en attente')
+// Voir loadBookingRequests(), submitBookingRequest(), handleBookingRequest()
 
 // Messages / conversations : gérées désormais en base via Supabase (tables conversations + messages)
 // Voir loadMessagesList(), loadConversation(), sendMessage(), openMessageHost()
@@ -865,7 +860,12 @@ function render() {
   else if(pg==='detail') app.appendChild(buildDetail());
   else if(pg==='confirm') app.appendChild(buildConfirm());
   else if(pg==='annonce'){ annAutoFill(); app.appendChild(buildAnnonce()); }
-  else if(pg==='reservations') app.appendChild(buildReservations());
+  else if(pg==='reservations'){
+    const _rc = document.createElement('div');
+    _rc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de vos réservations…</div>';
+    app.appendChild(_rc);
+    loadReservations(_rc);
+  }
   else if(pg==='favoris') app.appendChild(buildFavoris());
   else if(pg==='mesannonces'){
     const _mac = document.createElement('div');
@@ -873,7 +873,12 @@ function render() {
     app.appendChild(_mac);
     loadMesAnnonces(_mac);
   }
-  else if(pg==='annonce-detail') app.appendChild(buildAnnonceDetail());
+  else if(pg==='annonce-detail'){
+    const _adc = document.createElement('div');
+    _adc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement…</div>';
+    app.appendChild(_adc);
+    loadAnnonceDetail(_adc);
+  }
   else if(pg==='profil') app.appendChild(buildProfil());
   else if(pg==='excursions') app.appendChild(buildExcursions());
   else if(pg==='excursion-detail') app.appendChild(buildExcursionDetail());
@@ -894,7 +899,12 @@ function render() {
     app.appendChild(_cc);
     loadConversation(_cc);
   }
-  else if(pg==='booking-requests') app.appendChild(buildBookingRequests());
+  else if(pg==='booking-requests'){
+    const _brc = document.createElement('div');
+    _brc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement des demandes…</div>';
+    app.appendChild(_brc);
+    loadBookingRequests(_brc);
+  }
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
   else if(pg==='admin') app.appendChild(buildAdminDashboard());
   else if(pg==='about')     app.appendChild(buildAboutPage());
@@ -2500,23 +2510,69 @@ function handleConfirmChoice(hId, total){
   payOnSite(hId, total);
 }
 
-function payOnSite(hId, total){
+async function payOnSite(hId, total){
   const name = document.getElementById('cf-name')?.value?.trim();
   const email = document.getElementById('cf-email')?.value?.trim();
   if(!name){showToast('⚠️ Remplissez votre prénom et nom.','var(--red)');document.getElementById('cf-name')?.focus();return;}
   if(!email){showToast('⚠️ Remplissez votre adresse e-mail.','var(--red)');document.getElementById('cf-email')?.focus();return;}
   if(!/\S+@\S+\.\S+/.test(email)){showToast('⚠️ Adresse e-mail invalide.','var(--red)');return;}
+  if(!auth.currentUser){openModal('login');showToast('Connectez-vous pour réserver','var(--blue)');return;}
+
   const h = hotels.find(x=>x.id===hId);
+  if(!h?.annonceId){
+    showToast("Cet hébergement n'est pas une annonce réelle — réservation indisponible.",'var(--red)');
+    return;
+  }
   const nights = Math.max(1,Math.round((new Date(appState.checkOut)-new Date(appState.checkIn))/86400000))||1;
   const ref = 'SF-'+Math.random().toString(36).substr(2,8).toUpperCase();
-  const newResa = {
-    id:ref, hotelId:hId, name, email, total,
-    checkIn:appState.checkIn||'', checkOut:appState.checkOut||'',
-    rooms:appState.rooms||1, nights, status:'confirmée',
-    paymentMethod:'Paiement sur place',
-    createdAt:new Date().toISOString().split('T')[0]
-  };
-  appState.reservations.unshift(newResa);
+  const notes = document.getElementById('cf-notes')?.value||'';
+
+  const btn = document.getElementById('main-confirm-btn');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Confirmation…';}
+
+  const { data: created, error } = await _sb.from('reservations').insert([{
+    logement_id: h.annonceId,
+    guest_id: auth.currentUser.id,
+    check_in: appState.checkIn||null,
+    check_out: appState.checkOut||null,
+    nights,
+    rooms: appState.rooms||1,
+    guests_count: appState.searchGuests||1,
+    total,
+    status: 'confirmée',
+    reference: ref,
+    notes
+  }]).select().single();
+
+  if(error){
+    console.error('payOnSite error:', error.message);
+    showToast("La réservation n'a pas pu être enregistrée : "+error.message,'var(--red)');
+    if(btn){btn.disabled=false;btn.textContent='🏨 Confirmer — Payer sur place';}
+    return;
+  }
+
+  // Notifier l'hôte par email via l'Edge Function (réutilise notify-message)
+  try{
+    const { data: ann } = await _sb.from('annonces').select('user_id,name,contact_email').eq('id', h.annonceId).maybeSingle();
+    if(ann?.contact_email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({
+          recipient_email: ann.contact_email,
+          sender_name: name,
+          property_name: ann.name || h.name,
+          message_text: '📅 Nouvelle réservation confirmée : du '+(appState.checkIn||'?')+' au '+(appState.checkOut||'?')+' ('+nights+' nuit'+(nights>1?'s':'')+', '+total+'€). Référence : '+ref
+        })
+      });
+    }
+  } catch(efErr){
+    console.error('notify host of reservation error:', efErr.message);
+  }
+
   appState.confirmedBooking = {
     hotel:h, name, email, total,
     checkIn:appState.checkIn, checkOut:appState.checkOut,
@@ -3208,13 +3264,57 @@ function checkAuthAndGo(page){
 }
 
 /* ===================== RESERVATIONS PAGE ===================== */
+async function loadReservations(container){
+  if(!auth.currentUser){navigate('home');return;}
+  const uid = auth.currentUser.id;
+
+  const { data, error } = await _sb.from('reservations')
+    .select('*')
+    .eq('guest_id', uid)
+    .order('created_at', {ascending:false});
+
+  if(error){
+    if(container){container.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';}
+    return;
+  }
+
+  const logementIds = [...new Set((data||[]).map(r=>r.logement_id).filter(Boolean))];
+  const { data: anns } = logementIds.length
+    ? await _sb.from('annonces').select('id,name,city,country,emoji').in('id', logementIds)
+    : { data: [] };
+  const annMap = Object.fromEntries((anns||[]).map(a=>[a.id,a]));
+
+  appState.reservations = (data||[]).map(r=>{
+    const h = hotels.find(x=>x.annonceId===r.logement_id);
+    const ann = annMap[r.logement_id] || {};
+    return {
+      id: r.reference || r.id,
+      _dbId: r.id,
+      hotelId: h ? h.id : null,
+      name: ((auth.currentUser.firstName||'')+' '+(auth.currentUser.lastName||'')).trim(),
+      email: auth.currentUser.email||'',
+      checkIn: r.check_in, checkOut: r.check_out,
+      rooms: r.rooms||1, nights: r.nights||1,
+      total: r.total||0, status: r.status||'confirmée',
+      createdAt: r.created_at,
+      _propName: ann.name || (h?h.name:'Hébergement'),
+      _propCity: ann.city || (h?h.city:'—'),
+      _propCountry: ann.country || (h?h.country:'—'),
+      _propEmoji: ann.emoji || (h?h.emoji:'🏨'),
+    };
+  });
+
+  const fresh = buildReservations();
+  if(container && container.parentNode){ container.replaceWith(fresh); }
+}
+
 function buildReservations(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
-  const tabs=['toutes','confirmée','terminée','annulée'];
+  const tabs=['toutes','confirmée','en attente','terminée','refusée','annulée'];
   const filt=appState.resaFilter||'toutes';
   const list=appState.reservations.filter(r=>filt==='toutes'||r.status===filt);
-  const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000'};
-  const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0'};
+  const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000'};
+  const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0'};
 
   const d=document.createElement('div');
   d.innerHTML=`
@@ -3255,10 +3355,9 @@ function buildReservations(){
       <p style="color:var(--gray-500);">Explorez nos hébergements pour planifier votre prochain séjour.</p>
       <button onclick="navigate('home')" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Explorer les hébergements</button>
     </div>`:list.map(r=>{
-      const h=hotels.find(x=>x.id===r.hotelId)||{name:'Hébergement',emoji:'🏨',city:'—',country:'—'};
-      const ci=new Date(r.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
-      const co=new Date(r.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
-      const isPast=new Date(r.checkOut)<new Date();
+      const h=hotels.find(x=>x.id===r.hotelId)||{name:r._propName||'Hébergement',emoji:r._propEmoji||'🏨',city:r._propCity||'—',country:r._propCountry||'—'};
+      const ci=r.checkIn?new Date(r.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+      const co=r.checkOut?new Date(r.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
       return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
         <div style="display:flex;gap:0;flex-wrap:wrap;">
           <div style="width:180px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:56px;flex-shrink:0;min-height:130px;">
@@ -3267,7 +3366,7 @@ function buildReservations(){
           <div style="flex:1;padding:18px 20px;display:flex;gap:16px;flex-wrap:wrap;">
             <div style="flex:1;min-width:200px;">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-                <span style="font-size:17px;font-weight:700;color:var(--blue-l);cursor:pointer;" onclick="navigate('detail',{selectedHotelId:${h.id}})">${h.name}</span>
+                <span style="font-size:17px;font-weight:700;color:var(--blue-l);${r.hotelId?'cursor:pointer;':''}" ${r.hotelId?`onclick="navigate('detail',{selectedHotelId:${r.hotelId}})"`:''}>${h.name}</span>
                 <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[r.status]};color:${statusColor[r.status]};">${r.status.toUpperCase()}</span>
               </div>
               <div style="font-size:13px;color:var(--gray-500);margin-bottom:10px;">📍 ${h.city}, ${h.country}</div>
@@ -3294,15 +3393,15 @@ function buildReservations(){
               </div>
               <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
                 ${r.status==='confirmée'?`
-                  <button onclick="navigate('detail',{selectedHotelId:${h.id}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir l'hôtel</button>
-                  <button onclick="cancelReservation('${r.id}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>
+                  ${r.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir l'hôtel</button>`:''}
+                  <button onclick="cancelReservation('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>
                 `:''}
-                ${r.status==='terminée'?`
-                  <button onclick="navigate('detail',{selectedHotelId:${h.id}})" style="background:var(--gray-100);color:var(--gray-700);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">Laisser un avis</button>
-                  <button onclick="navigate('detail',{selectedHotelId:${h.id}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Réserver à nouveau</button>
+                ${r.status==='terminée'&&r.hotelId?`
+                  <button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--gray-100);color:var(--gray-700);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">Laisser un avis</button>
+                  <button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Réserver à nouveau</button>
                 `:''}
                 ${r.status==='annulée'?`
-                  <span style="font-size:12px;color:var(--gray-400);">Remboursé le ${new Date(r.createdAt).toLocaleDateString('fr-FR')}</span>
+                  <span style="font-size:12px;color:var(--gray-400);">Annulée</span>
                 `:''}
               </div>
             </div>
@@ -3322,10 +3421,12 @@ function buildReservations(){
   return d;
 }
 
-function cancelReservation(id){
+async function cancelReservation(dbId){
   if(!confirm('Êtes-vous sûr de vouloir annuler cette réservation ?')) return;
-  const r=appState.reservations.find(x=>x.id===id);
-  if(r){r.status='annulée';showToast('Réservation annulée','var(--red)');navigate('reservations');}
+  const { error } = await _sb.from('reservations').update({status:'annulée'}).eq('id', dbId);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast('Réservation annulée','var(--red)');
+  navigate('reservations');
 }
 
 /* ===================== FAVORIS PAGE ===================== */
@@ -3634,11 +3735,38 @@ async function deleteAnnonce(id){
 }
 
 /* ===================== ANNONCE DETAIL/STATS ===================== */
-function buildAnnonceDetail(){
-  if(!auth.currentUser){navigate('home');return document.createElement('div');}
+async function loadAnnonceDetail(container){
+  if(!auth.currentUser){navigate('home');return;}
   const a=appState.myAnnonces.find(x=>x.id===appState.selectedAnnonceId);
-  if(!a){navigate('mesannonces');return document.createElement('div');}
+  if(!a){navigate('mesannonces');return;}
+
+  // Charger les vraies réservations reçues sur cette annonce
+  const { data: resaRows, error: resaErr } = await _sb.from('reservations')
+    .select('*')
+    .eq('logement_id', a.id)
+    .order('created_at', {ascending:false})
+    .limit(10);
+
+  let realReservations = [];
+  if(!resaErr && resaRows && resaRows.length){
+    const guestIds = [...new Set(resaRows.map(r=>r.guest_id).filter(Boolean))];
+    const { data: profs } = guestIds.length
+      ? await _sb.from('profiles').select('id,first_name,last_name').in('id', guestIds)
+      : { data: [] };
+    const profMap = Object.fromEntries((profs||[]).map(p=>[p.id,p]));
+    realReservations = resaRows.map(r=>{
+      const p = profMap[r.guest_id];
+      return {
+        guestName: p ? `${p.first_name||''} ${p.last_name||''}`.trim() : 'Voyageur',
+        checkIn: r.check_in, checkOut: r.check_out,
+        total: r.total||0, status: r.status||'confirmée'
+      };
+    });
+  }
+
   const s=a.stats;
+  // Le nombre réel de réservations reçues prime sur la stat mock à 0
+  s.reservations = realReservations.length || s.reservations;
   const MOIS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const maxVues=Math.max(...s.vuesMois,1);
   const maxRev=Math.max(...s.revenusMois,1);
@@ -3763,7 +3891,7 @@ function buildAnnonceDetail(){
     <!-- Dernières réservations liées -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;">
       <div style="font-size:15px;font-weight:700;margin-bottom:14px;">📅 Réservations récentes sur cette annonce</div>
-      ${s.reservations===0?`<div style="text-align:center;padding:24px;color:var(--gray-500);font-size:14px;">Aucune réservation encore reçue pour cette annonce.</div>`:`
+      ${realReservations.length===0?`<div style="text-align:center;padding:24px;color:var(--gray-500);font-size:14px;">Aucune réservation encore reçue pour cette annonce.</div>`:`
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <thead><tr style="background:var(--gray-50);border-bottom:1px solid var(--gray-200);">
@@ -3774,19 +3902,15 @@ function buildAnnonceDetail(){
             <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--gray-600);font-size:12px;text-transform:uppercase;">Statut</th>
           </tr></thead>
           <tbody>
-            ${Array.from({length:Math.min(s.reservations,5)}).map((_,i)=>{
-              const guests=['Sophie M.','James T.','Hiroshi K.','Elena R.','Marc D.'];
-              const dates=[['2025-06-10','2025-06-14'],['2025-05-20','2025-05-25'],['2025-04-08','2025-04-12'],['2025-03-15','2025-03-18'],['2025-02-01','2025-02-05']];
-              const amounts=[Math.round(a.price_night*4*1.1),Math.round(a.price_night*5*1.1),Math.round(a.price_night*4*1.1),Math.round(a.price_night*3*1.1),Math.round(a.price_night*4*1.1)];
-              const statuses=['confirmée','confirmée','terminée','terminée','annulée'];
+            ${realReservations.map(r=>{
               const sColor={confirmée:'var(--green)','en attente':'#a07000',terminée:'var(--gray-600)',annulée:'var(--red)'};
               const sBg={confirmée:'#e8f9f0','en attente':'#fff8e0',terminée:'#f1f3f5',annulée:'#fff0f0'};
               return `<tr style="border-bottom:1px solid var(--gray-100);">
-                <td style="padding:10px 14px;font-weight:600;">${guests[i]}</td>
-                <td style="padding:10px 14px;color:var(--gray-600);">${new Date(dates[i][0]).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</td>
-                <td style="padding:10px 14px;color:var(--gray-600);">${new Date(dates[i][1]).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</td>
-                <td style="padding:10px 14px;font-weight:700;">${amounts[i]}€</td>
-                <td style="padding:10px 14px;"><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:${sBg[statuses[i]]};color:${sColor[statuses[i]]};">${statuses[i].toUpperCase()}</span></td>
+                <td style="padding:10px 14px;font-weight:600;">${r.guestName}</td>
+                <td style="padding:10px 14px;color:var(--gray-600);">${r.checkIn?new Date(r.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—'}</td>
+                <td style="padding:10px 14px;color:var(--gray-600);">${r.checkOut?new Date(r.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—'}</td>
+                <td style="padding:10px 14px;font-weight:700;">${r.total}€</td>
+                <td style="padding:10px 14px;"><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:${sBg[r.status]||'#f1f3f5'};color:${sColor[r.status]||'var(--gray-600)'};">${r.status.toUpperCase()}</span></td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -3795,7 +3919,8 @@ function buildAnnonceDetail(){
     </div>
 
   </div>`;
-  return d;
+  if(container && container.parentNode){ container.replaceWith(d); }
+  else { return d; }
 }
 
 /* ===================== MON PROFIL ===================== */
@@ -5635,12 +5760,6 @@ async function openMessageHost(hId){
   }
 }
 
-function openBookingRequest(hId){
-  if(!auth.currentUser){openModal('login');return;}
-  appState.selectedHotelId = hId;
-  navigate('booking-request-form');
-}
-
 /* ══════════════════════════════════════════════════════════════════
    HOST PROFILE PAGE
 ══════════════════════════════════════════════════════════════════ */
@@ -5991,35 +6110,62 @@ async function sendMessage(convId){
 /* ══════════════════════════════════════════════════════════════════
    BOOKING REQUESTS (host view)
 ══════════════════════════════════════════════════════════════════ */
-function buildBookingRequests(){
-  if(!auth.currentUser){navigate('home');return document.createElement('div');}
+async function loadBookingRequests(container){
+  if(!auth.currentUser){navigate('home');return;}
+  const uid = auth.currentUser.id;
   const filter = appState.bookingRequestsFilter||'all';
-  // Only show requests for hotels owned by current user
-  const userAnnonceHotelIds = (auth.currentUser
-    ? appState.myAnnonces.filter(a=>a.ownerId===auth.currentUser.id||!a.ownerId).map(a=>a.hotelId)
-    : []);
-  const list = bookingRequests.filter(r=>{
-    const matchFilter = filter==='all' || r.status===filter;
-    const matchOwner  = userAnnonceHotelIds.length===0 || userAnnonceHotelIds.includes(r.hotelId);
-    return matchFilter && matchOwner;
-  });
-  const statusColor={pending:'#e6a800',accepted:'var(--green)',declined:'var(--red)'};
-  const statusBg={pending:'#fff8e0',accepted:'#e8f9f0',declined:'#fff0f0'};
-  const statusLabel={pending:'En attente',accepted:'Acceptée',declined:'Refusée'};
-  const userHotelIds2 = (auth.currentUser
-    ? appState.myAnnonces.filter(a=>a.ownerId===auth.currentUser.id||!a.ownerId).map(a=>a.hotelId)
-    : []);
-  const pending = bookingRequests.filter(r=>r.status==='pending'
-    && (userHotelIds2.length===0||userHotelIds2.includes(r.hotelId))).length;
+  const statusMap = {pending:'en attente', accepted:'confirmée', declined:'refusée'};
 
-  const d = document.createElement('div');
-  d.innerHTML=`
+  // 1. Mes propres annonces (pour restreindre aux demandes reçues sur MES biens)
+  const { data: myAnns, error: annErr } = await _sb.from('annonces').select('id,name,emoji').eq('user_id', uid);
+  if(annErr){ if(container){container.innerHTML='<div style="padding:24px;color:red;">Erreur : '+annErr.message+'</div>';} return; }
+  const annIds = (myAnns||[]).map(a=>a.id);
+  const annMap = Object.fromEntries((myAnns||[]).map(a=>[a.id,a]));
+
+  let resaRows = [];
+  if(annIds.length){
+    let q = _sb.from('reservations').select('*').in('logement_id', annIds).order('created_at',{ascending:false});
+    const { data, error } = await q;
+    if(error){ if(container){container.innerHTML='<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';} return; }
+    resaRows = data||[];
+  }
+
+  const guestIds = [...new Set(resaRows.map(r=>r.guest_id).filter(Boolean))];
+  const { data: profs } = guestIds.length
+    ? await _sb.from('profiles').select('id,first_name,last_name').in('id', guestIds)
+    : { data: [] };
+  const profMap = Object.fromEntries((profs||[]).map(p=>[p.id,p]));
+
+  const all = resaRows.map(r=>{
+    const p = profMap[r.guest_id];
+    const guestName = p ? `${p.first_name||''} ${p.last_name||''}`.trim() : 'Voyageur';
+    return {
+      id: r.id, ref: r.reference,
+      annonceId: r.logement_id,
+      hotelId: (hotels.find(x=>x.annonceId===r.logement_id)||{}).id || null,
+      propertyName: annMap[r.logement_id]?.name || 'Hébergement',
+      propertyEmoji: annMap[r.logement_id]?.emoji || '🏨',
+      guestName, guestAvatar: guestName.split(' ').filter(Boolean).map(n=>n[0]).join('').slice(0,2).toUpperCase()||'?',
+      checkIn: r.check_in, checkOut: r.check_out,
+      total: r.total||0, message: r.notes||'',
+      status: r.status // 'en attente' | 'confirmée' | 'refusée'
+    };
+  });
+
+  const pendingCount = all.filter(r=>r.status==='en attente').length;
+  const list = all.filter(r=>filter==='all' || r.status===statusMap[filter]);
+
+  const statusColor={'en attente':'#e6a800',confirmée:'var(--green)',refusée:'var(--red)'};
+  const statusBg={'en attente':'#fff8e0',confirmée:'#e8f9f0',refusée:'#fff0f0'};
+  const statusLabel={'en attente':'En attente',confirmée:'Acceptée',refusée:'Refusée'};
+
+  container.innerHTML=`
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Demandes de réservation</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:28px;">
       <div>
         <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📨 Demandes de réservation</h1>
-        <p style="font-size:15px;color:var(--gray-500);">${bookingRequests.length} demande${bookingRequests.length>1?'s':''}${pending>0?' · <strong style="color:#e6a800">'+pending+' en attente</strong>':''}</p>
+        <p style="font-size:15px;color:var(--gray-500);">${all.length} demande${all.length>1?'s':''}${pendingCount>0?' · <strong style="color:#e6a800">'+pendingCount+' en attente</strong>':''}</p>
       </div>
     </div>
 
@@ -6033,86 +6179,79 @@ function buildBookingRequests(){
     <!-- List -->
     ${list.length===0?`<div style="text-align:center;padding:60px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
       <div style="font-size:52px;margin-bottom:14px;">📭</div>
-      <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--gray-700);">Aucune demande ${filter!=='all'?statusLabel[filter].toLowerCase():''}</h3>
+      <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--gray-700);">Aucune demande${filter!=='all'?' '+statusLabel[statusMap[filter]].toLowerCase():''}</h3>
     </div>`
     :list.map(req=>{
-      const h=hotels.find(x=>x.id===req.hotelId)||{name:'Hébergement',emoji:'🏨'};
-      const ci=new Date(req.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
-      const co=new Date(req.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
-      const nights=Math.round((new Date(req.checkOut)-new Date(req.checkIn))/86400000);
-      return `<div style="background:#fff;border:1px solid ${req.status==='pending'?'#ffe0a0':'var(--gray-200)'};border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
-        ${req.status==='pending'?'<div style="background:linear-gradient(90deg,#FFB400,#FFD666);height:4px;"></div>':''}
+      const ci=req.checkIn?new Date(req.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—';
+      const co=req.checkOut?new Date(req.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—';
+      const nights=(req.checkIn&&req.checkOut)?Math.round((new Date(req.checkOut)-new Date(req.checkIn))/86400000):0;
+      return `<div style="background:#fff;border:1px solid ${req.status==='en attente'?'#ffe0a0':'var(--gray-200)'};border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
+        ${req.status==='en attente'?'<div style="background:linear-gradient(90deg,#FFB400,#FFD666);height:4px;"></div>':''}
         <div style="padding:20px;">
           <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
-            <!-- Guest info -->
             <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${req.guestAvatar}</div>
             <div style="flex:1;min-width:200px;">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
                 <span style="font-size:16px;font-weight:700;">${req.guestName}</span>
-                <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[req.status]};color:${statusColor[req.status]};">${statusLabel[req.status].toUpperCase()}</span>
+                <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[req.status]};color:${statusColor[req.status]};">${(statusLabel[req.status]||req.status).toUpperCase()}</span>
               </div>
-              <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">🏠 ${h.name} ${h.emoji}</div>
-              ${(()=>{
-                const avail = isDateRangeAvailable(req.hotelId, req.checkIn, req.checkOut);
-                const nights2 = Math.round((new Date(req.checkOut)-new Date(req.checkIn))/86400000);
-                const ann2 = appState.myAnnonces.find(a=>a.hotelId===req.hotelId);
-                const cal2 = ann2 ? calendarData[ann2.id] : null;
-                const minN2 = (cal2&&cal2.minNights)||(h&&h.minNights)||1;
-                const nightsOk = nights2 >= minN2;
-                if(avail && nightsOk){
-                  return '<div style="display:inline-flex;align-items:center;gap:6px;background:#e8f9f0;border:1px solid #6bcf9e;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;color:#166534;margin-bottom:10px;">'
-                    +'<span>✅</span> Dates disponibles</div>';
-                } else if(!avail){
-                  return '<div style="display:inline-flex;align-items:center;gap:6px;background:#fff0f0;border:1px solid #ffcccc;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;color:var(--red);margin-bottom:10px;">'
-                    +'<span>⛔</span> Dates non disponibles — conflit dans le calendrier</div>';
-                } else {
-                  return '<div style="display:inline-flex;align-items:center;gap:6px;background:#fff8ee;border:1px solid #f0c080;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;color:#a06000;margin-bottom:10px;">'
-                    +'<span>⚠️</span> Séjour minimum : '+minN2+' nuits (demande : '+nights2+' nuit'+(nights2>1?'s':'')+')</div>';
-                }
-              })()}
+              <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">${req.propertyEmoji} ${req.propertyName}</div>
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;">
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Arrivée</div><div style="font-size:13px;font-weight:600;">${ci}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Départ</div><div style="font-size:13px;font-weight:600;">${co}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Durée</div><div style="font-size:13px;font-weight:600;">${nights} nuit${nights>1?'s':''}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
               </div>
-              <!-- Message -->
-              <div style="background:#f9f9ff;border-left:3px solid var(--blue-l);padding:10px 14px;border-radius:0 var(--r-md) var(--r-md) 0;font-size:13px;color:var(--gray-700);font-style:italic;line-height:1.6;">
-                "${req.message}"
-              </div>
+              ${req.message?`<div style="background:#f9f9ff;border-left:3px solid var(--blue-l);padding:10px 14px;border-radius:0 var(--r-md) var(--r-md) 0;font-size:13px;color:var(--gray-700);font-style:italic;line-height:1.6;">"${req.message}"</div>`:''}
             </div>
-            <!-- Actions -->
-            ${req.status==='pending'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
-              <button onclick="handleBookingRequest('${req.id}','accepted')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;transition:opacity .2s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">✅ Accepter</button>
-              <button onclick="handleBookingRequest('${req.id}','declined')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
+            ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
+              <button onclick="handleBookingRequest('${req.id}','confirmée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;transition:opacity .2s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">✅ Accepter</button>
+              <button onclick="handleBookingRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
             </div>`:''}
           </div>
         </div>
       </div>`;
     }).join('')}
   </div>`;
-  return d;
 }
 
-function handleBookingRequest(reqId, decision){
-  const req = bookingRequests.find(r=>r.id===reqId);
-  if(!req) return;
-  req.status = decision;
-  if(decision==='accepted'){
-    // Add to reservations
-    const h = hotels.find(x=>x.id===req.hotelId);
-    const nights = Math.round((new Date(req.checkOut)-new Date(req.checkIn))/86400000);
-    appState.reservations.unshift({
-      id:'SF-'+Math.random().toString(36).substr(2,8).toUpperCase(),
-      hotelId:req.hotelId, name:req.guestName, email:'',
-      checkIn:req.checkIn, checkOut:req.checkOut, rooms:1, nights,
-      total:req.total, status:'confirmée', paymentMethod:'Paiement sur place',
-      createdAt:new Date().toISOString().split('T')[0]
-    });
-    showToast('✅ Demande acceptée ! Réservation ajoutée.','var(--green)');
-  } else {
-    showToast('Demande refusée.','var(--gray-700)');
+async function handleBookingRequest(reqId, decision){
+  const { data: resa, error: fetchErr } = await _sb.from('reservations').select('*').eq('id', reqId).maybeSingle();
+  if(fetchErr || !resa){ showToast('Demande introuvable','var(--red)'); return; }
+
+  const { error } = await _sb.from('reservations').update({status: decision}).eq('id', reqId);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  showToast(decision==='confirmée' ? '✅ Demande acceptée ! Réservation confirmée.' : 'Demande refusée.', decision==='confirmée'?'var(--green)':'var(--gray-700)');
+
+  // Email de décision au client
+  try{
+    const [{data: guestProf}, {data: ann}] = await Promise.all([
+      _sb.from('profiles').select('email,first_name,last_name').eq('id', resa.guest_id).maybeSingle(),
+      _sb.from('annonces').select('name').eq('id', resa.logement_id).maybeSingle()
+    ]);
+    if(guestProf?.email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({
+          type: 'decision',
+          decision: decision==='confirmée' ? 'accepted' : 'declined',
+          recipient_email: guestProf.email,
+          guest_name: `${guestProf.first_name||''} ${guestProf.last_name||''}`.trim(),
+          property_name: ann?.name || 'Hébergement',
+          check_in: resa.check_in, check_out: resa.check_out,
+          guests_count: resa.guests_count, total: resa.total
+        })
+      });
+    }
+  } catch(efErr){
+    console.error('notify-booking decision error:', efErr.message);
   }
+
   navigate('booking-requests');
 }
 
@@ -6412,28 +6551,82 @@ function validateReqDates(){
   if(ci) coEl.min=new Date(new Date(ci).getTime()+86400000).toISOString().split('T')[0];
 }
 
-function submitBookingRequest(hId){
+async function submitBookingRequest(hId){
   const checkIn = document.getElementById('req-checkin')?.value;
   const checkOut = document.getElementById('req-checkout')?.value;
   const guests = parseInt(document.getElementById('req-guests')?.value||1);
   const message = document.getElementById('req-message')?.value?.trim();
   if(!checkIn||!checkOut){showToast('⚠️ Choisissez vos dates','var(--red)');return;}
   if(!message){showToast('⚠️ Écrivez un message à l\'hôte','var(--red)');return;}
+  if(!auth.currentUser){openModal('login');return;}
+
   const h = hotels.find(x=>x.id===hId);
+  if(!h?.annonceId){
+    showToast("Cet hébergement n'est pas une annonce réelle.",'var(--red)');
+    return;
+  }
   const nights = Math.max(1,Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
   const total = h ? h.price*nights : 0;
   const u = auth.currentUser;
-  const initials = u.firstName[0]+u.lastName[0];
-  const newReq = {
-    id:'REQ-'+Math.random().toString(36).substr(2,6).toUpperCase(),
-    hotelId:hId, guestId:u.id,
-    guestName:u.firstName+' '+u.lastName, guestAvatar:initials,
-    checkIn, checkOut, guests, total, message,
-    status:'pending', createdAt:new Date().toISOString().split('T')[0]
-  };
-  bookingRequests.unshift(newReq);
+  const guestName = (u.firstName+' '+u.lastName).trim();
+  const ref = 'REQ-'+Math.random().toString(36).substr(2,6).toUpperCase();
+
+  const btn = document.querySelector('#modal-root .modal button[onclick^="submitBookingRequest"]');
+  if(btn){btn.disabled=true;btn.textContent='Envoi…';}
+
+  const { error } = await _sb.from('reservations').insert([{
+    logement_id: h.annonceId,
+    guest_id: u.id,
+    check_in: checkIn,
+    check_out: checkOut,
+    nights,
+    rooms: 1,
+    guests_count: guests,
+    total,
+    status: 'en attente',
+    reference: ref,
+    notes: message
+  }]);
+
+  if(error){
+    console.error('submitBookingRequest error:', error.message);
+    showToast("La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
+    if(btn){btn.disabled=false;btn.textContent='📨 Envoyer la demande';}
+    return;
+  }
+
   document.getElementById('modal-root').innerHTML='';
   showToast('📨 Demande envoyée ! L\'hôte dispose de 24h pour répondre.','var(--blue)');
+
+  // Emails : confirmation immédiate au client + alerte à l'hôte
+  try{
+    const { data: ann } = await _sb.from('annonces').select('name,contact_email').eq('id', h.annonceId).maybeSingle();
+    const propertyName = ann?.name || h.name;
+    const payload = {
+      property_name: propertyName,
+      guest_name: guestName,
+      check_in: checkIn, check_out: checkOut,
+      guests_count: guests, total, message
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+    };
+    // 1. Confirmation au client
+    if(u.email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+        method:'POST', headers, body: JSON.stringify({...payload, type:'request_received', recipient_email: u.email})
+      });
+    }
+    // 2. Alerte à l'hôte
+    if(ann?.contact_email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+        method:'POST', headers, body: JSON.stringify({...payload, type:'host_alert', recipient_email: ann.contact_email})
+      });
+    }
+  } catch(efErr){
+    console.error('notify-booking error:', efErr.message);
+  }
 }
 
 /* ===================== DEALS FILTER ===================== */
@@ -7781,7 +7974,6 @@ function buildMobileNav(){
   const u = auth.currentUser;
   const pg = appState.page;
   const unreadMsgs = 0; // TODO: brancher sur un vrai compteur "messages non lus" Supabase (colonne read)
-  const pendingReq = (typeof bookingRequests!=='undefined') ? bookingRequests.filter(r=>r.status==='pending').length : 0;
 
   const items = [
     {icon:'🏠', label:'Accueil',   page:'home'},
