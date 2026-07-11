@@ -1499,6 +1499,32 @@ function showToast(msg, bg='var(--green)'){
 }
 
 /* ===================== HOME ===================== */
+/* ===================== HÉBERGEMENTS EN VEDETTE ===================== */
+// Algorithme de sélection (aucune vraie statistique de vues/réservations
+// n'existe encore côté plateforme, donc on se base sur des signaux fiables
+// disponibles dès aujourd'hui) :
+//   1. Éligibilité : uniquement de vraies annonces publiées (h.annonceId
+//      présent), avec au moins 1 photo — jamais de logement "vide".
+//   2. Tri principal : nombre de photos décroissant (meilleur indicateur
+//      de qualité/sérieux disponible actuellement).
+//   3. Départage : ancienneté décroissante (les plus récentes en premier),
+//      pour faire tourner la mise en avant plutôt que figer toujours les
+//      4 mêmes annonces.
+//   4. Limite à 4 résultats.
+// À enrichir plus tard avec de vrais signaux (vues, taux de conversion,
+// nombre de réservations) une fois les tables d'analytics en place.
+function getFeaturedHotels(){
+  const real = hotels.filter(h => h.annonceId && h.photos && h.photos.length > 0);
+  real.sort((a,b) => {
+    const photoDiff = (b.photos.length||0) - (a.photos.length||0);
+    if(photoDiff !== 0) return photoDiff;
+    // Les id 100000+i sont attribués dans l'ordre de récence (created_at desc
+    // côté requête Supabase), donc id croissant = annonce plus récente.
+    return a.id - b.id;
+  });
+  return real.slice(0,4);
+}
+
 function buildHome(){
   const d=document.createElement('div');
   d.innerHTML=`
@@ -1531,8 +1557,18 @@ function buildHome(){
   <div style="background:var(--gray-100);padding:40px 0;">
     <div class="section" style="padding-top:0;padding-bottom:0;">
       <div class="sec-title">⭐ Hébergements en vedette</div>
-      <div class="sec-sub">Sélectionnés par notre équipe pour vous</div>
-      <div class="hotel-grid">${hotels.slice(0,4).map(h=>hotelCardHTML(h)).join('')}</div>
+      <div class="sec-sub">Les logements les mieux présentés du moment</div>
+      ${(()=>{
+        const featured = getFeaturedHotels();
+        if(featured.length===0){
+          return `<div style="text-align:center;padding:44px 20px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
+            <div style="font-size:44px;margin-bottom:10px;">🏡</div>
+            <p style="color:var(--gray-600);font-size:15px;margin-bottom:16px;">Aucun hébergement mis en avant pour l'instant.</p>
+            <button onclick="checkAuthAndGo('annonce')" style="background:var(--blue);color:#fff;padding:10px 24px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">📋 Publier votre logement</button>
+          </div>`;
+        }
+        return `<div class="hotel-grid">${featured.map(h=>hotelCardHTML(h)).join('')}</div>`;
+      })()}
     </div>
   </div>
 
@@ -8608,6 +8644,7 @@ async function loadPublishedAnnonces(){
         checkout: a.checkout || '11:00',
         access: a.access || '',
         photos: a.photos || [],
+        createdAt: a.created_at || null,
         freeCancellation: a.cancellation === 'flexible',
         payLater: true,
         discount: 0
