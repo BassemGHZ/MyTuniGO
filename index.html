@@ -3303,6 +3303,9 @@ async function loadReservations(container){
   if(!auth.currentUser){navigate('home');return;}
   const uid = auth.currentUser.id;
 
+  // Bascule automatiquement les réservations passées en "terminée" avant de les afficher
+  try{ await _sb.rpc('fn_auto_complete_reservations'); }catch(e){ console.warn('fn_auto_complete_reservations:', e.message); }
+
   const { data, error } = await _sb.from('reservations')
     .select('*')
     .eq('guest_id', uid)
@@ -6150,6 +6153,9 @@ async function loadBookingRequests(container){
   const uid = auth.currentUser.id;
   const filter = appState.bookingRequestsFilter||'all';
   const statusMap = {pending:'en attente', accepted:'confirmée', declined:'refusée'};
+
+  // Bascule automatiquement les réservations passées en "terminée" avant de les afficher
+  try{ await _sb.rpc('fn_auto_complete_reservations'); }catch(e){ console.warn('fn_auto_complete_reservations:', e.message); }
 
   // 1. Mes propres annonces (pour restreindre aux demandes reçues sur MES biens)
   const { data: myAnns, error: annErr } = await _sb.from('annonces').select('id,name,emoji').eq('user_id', uid);
