@@ -6771,6 +6771,7 @@ async function initBlockedDatesPicker(hId){
       + '<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">'
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;display:inline-block;"></span>Disponible</span>'
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#ffdddd;border:1px solid #ffaaaa;display:inline-block;"></span>Indisponible</span>'
+      + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:var(--blue);display:inline-block;"></span>Votre séjour sélectionné</span>'
       + '</div>';
   }
 
@@ -8540,6 +8541,29 @@ _sb.auth.onAuthStateChange((event, session) => {
 })();
 
 render();
+
+// ── Restauration de session au chargement de la page ──
+// auth.currentUser n'est qu'une variable JS en mémoire : sans ceci, un simple
+// rechargement de page "déconnecte" l'app même si la session Supabase (JWT en
+// localStorage) est toujours valide — d'où les formulaires qui se vident et
+// les vérifications "connectez-vous" qui réapparaissent à tort.
+_sb.auth.getSession().then(({ data: { session } }) => {
+  if(session?.user && !auth.currentUser){
+    const meta = session.user.user_metadata || {};
+    auth.currentUser = {
+      id: session.user.id,
+      role: meta.role || 'user',
+      firstName: meta.first_name || session.user.email.split('@')[0],
+      lastName:  meta.last_name  || '',
+      email:     session.user.email,
+      emailVerified: true,
+      createdAt: session.user.created_at?.split('T')[0] || '',
+      bankData: { preferredMethod: 'virement' }
+    };
+    renderAuthArea();
+    render();
+  }
+}).catch(e => console.warn('Restauration de session échouée:', e.message));
 
 /* ===================== CHARGEMENT DES ANNONCES PUBLIÉES (Supabase) ===================== */
 async function loadPublishedAnnonces(){
