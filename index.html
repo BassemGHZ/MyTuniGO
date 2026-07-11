@@ -2331,14 +2331,21 @@ function goToPayment(hId, total){
 
 function isDateRangeAvailable(hId, checkIn, checkOut){
   if(!checkIn || !checkOut) return true;
-  // Find annonce for this hotel
+  // Utilise l'ensemble réel (réservations Supabase + blocages hôte) chargé par le calendrier
+  if(appState._bkUnavailable && appState._bkHotelId===hId){
+    const start=new Date(checkIn), end=new Date(checkOut);
+    for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
+      if(appState._bkUnavailable.has(d.toISOString().split('T')[0])) return false;
+    }
+    return true;
+  }
+  // Repli (calendrier pas encore chargé) : ancienne heuristique locale
   const ann = appState.myAnnonces.find(a=>
     a.name && hotels.find(h=>h.id===hId && (h.name===a.name || a.city===h.city))
   );
-  if(!ann) return true; // No managed calendar = always available
+  if(!ann) return true;
   const cal = calendarData[ann.id];
   if(!cal || !cal.blocked.length) return true;
-  // Check each day in range
   const start = new Date(checkIn);
   const end   = new Date(checkOut);
   for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
@@ -6286,6 +6293,9 @@ async function handleBookingRequest(reqId, decision){
 /* ══════════════════════════════════════════════════════════════════
    HOST CALENDAR PAGE
 ══════════════════════════════════════════════════════════════════ */
+let _hostCalReservedSet = new Set();
+let _hostCalAnnonceId = null;
+
 function buildHostCalendar(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
   const {year,month} = appState.calendarView;
@@ -6343,9 +6353,10 @@ function buildHostCalendar(){
         </div>
         <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;"></div>
         <div style="display:flex;gap:16px;margin-top:18px;flex-wrap:wrap;">
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--red);"></div>Indisponible</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;"></div>Disponible (clic pour bloquer)</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--red);"></div>Réservé (non modifiable)</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--gray-400);"></div>Bloqué par vous (clic pour débloquer)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#fff;border:2px solid var(--blue);"></div>Aujourd'hui</div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#e8f4ff;border:1px solid #b3d4f0;"></div>Disponible (clic pour bloquer)</div>
         </div>
       </div>
       <div>
@@ -6366,10 +6377,15 @@ function buildHostCalendar(){
   </div>`;
 
   // Build grid and stats AFTER innerHTML is set, using real DOM elements
-  setTimeout(()=>{
+  (async ()=>{
+    const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || null;
+    if(annId !== _hostCalAnnonceId){
+      _hostCalAnnonceId = annId;
+      _hostCalReservedSet = annId ? new Set(await loadReservedDatesForAnnonce(annId)) : new Set();
+    }
     renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
     updateCalStats(cal, daysInMonth);
-  }, 0);
+  })();
 
   return d;
 }
@@ -6389,43 +6405,53 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
   // Day cells
   for(let day=1; day<=daysInMonth; day++){
     const dateStr = year+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    const isReserved = _hostCalReservedSet.has(dateStr);
     const isBlocked = cal.blocked.includes(dateStr);
     const isToday   = dateStr === today;
     const isPast    = dateStr < today;
     const price     = cal.priceOverrides[dateStr];
+    const clickable = !isPast && !isReserved;
 
     const cell = document.createElement('div');
+    let bg, color, border;
+    if(isPast){ bg='var(--gray-100)'; color='var(--gray-300)'; border='1px solid var(--gray-100)'; }
+    else if(isReserved){ bg='var(--red)'; color='#fff'; border='1px solid var(--red)'; }
+    else if(isBlocked){ bg='var(--gray-400)'; color='#fff'; border='1px solid var(--gray-400)'; }
+    else { bg='#e8f9f0'; color='var(--gray-900)'; border='1px solid #6bcf9e'; }
+
     cell.style.cssText =
       'text-align:center;padding:10px 4px;border-radius:6px;font-size:13px;font-weight:'+(isToday?'800':'400')+
       ';transition:background .15s,transform .1s;'+
-      'background:'+(isBlocked?'var(--red)':isPast?'var(--gray-100)':'#e8f4ff')+';'+
-      'color:'+(isBlocked?'#fff':isPast?'var(--gray-300)':isToday?'var(--blue)':'var(--gray-900)')+';'+
-      'border:'+(isToday?'2px solid var(--blue)':'1px solid '+(isBlocked?'transparent':isPast?'var(--gray-100)':'#b3d4f0'))+';'+
-      'cursor:'+(isPast?'default':'pointer')+';';
+      'background:'+bg+';color:'+color+';'+
+      'border:'+(isToday?'2px solid var(--blue)':border)+';'+
+      'cursor:'+(clickable?'pointer':'not-allowed')+';';
 
     cell.textContent = day;
     if(isBlocked) cell.classList.add('cal-blocked');
+    if(isReserved) cell.classList.add('cal-reserved');
     cell.dataset.date = dateStr;
 
     if(price){
       const priceEl = document.createElement('div');
-      priceEl.style.cssText = 'font-size:9px;color:'+(isBlocked?'#fff':'var(--blue)')+';font-weight:700;margin-top:2px;';
+      priceEl.style.cssText = 'font-size:9px;color:'+((isBlocked||isReserved)?'#fff':'var(--blue)')+';font-weight:700;margin-top:2px;';
       priceEl.textContent = price+'€';
       cell.appendChild(priceEl);
     }
 
-    if(!isPast){
+    if(clickable){
       cell.addEventListener('click', function(){
         toggleBlockDay(this.dataset.date);
       });
       cell.addEventListener('mouseenter', function(){
         if(!this.classList.contains('cal-blocked'))
-          this.style.background='#c8e6ff';
+          this.style.background='#c8f0d8';
       });
       cell.addEventListener('mouseleave', function(){
         if(!this.classList.contains('cal-blocked'))
-          this.style.background='#e8f4ff';
+          this.style.background='#e8f9f0';
       });
+    } else if(isReserved){
+      cell.title = 'Date réservée — non modifiable';
     }
 
     grid.appendChild(cell);
@@ -6469,6 +6495,10 @@ function navCalendar(dir){
 }
 
 function toggleBlockDay(dateStr){
+  if(_hostCalReservedSet.has(dateStr)){
+    showToast('⛔ Cette date est déjà réservée — impossible de la modifier.','var(--red)');
+    return;
+  }
   const cal = getCalForAnnonce(appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || 'ANN-K7L8M9N0');
   const wasBlocked = cal.blocked.includes(dateStr);
   if(wasBlocked){
@@ -6482,9 +6512,9 @@ function toggleBlockDay(dateStr){
   const cell = document.querySelector('[data-date="'+dateStr+'"]');
   if(cell){
     const nowBlocked = cal.blocked.includes(dateStr);
-    cell.style.background = nowBlocked ? 'var(--red)' : '#e8f4ff';
+    cell.style.background = nowBlocked ? 'var(--gray-400)' : '#e8f9f0';
     cell.style.color = nowBlocked ? '#fff' : 'var(--gray-900)';
-    cell.style.border = nowBlocked ? '1px solid transparent' : '1px solid #b3d4f0';
+    cell.style.border = nowBlocked ? '1px solid var(--gray-400)' : '1px solid #6bcf9e';
     if(nowBlocked){ cell.classList.add('cal-blocked'); }
     else { cell.classList.remove('cal-blocked'); }
   }
@@ -6691,36 +6721,41 @@ function getBlockedDatesForHotel(hId){
   return cal ? cal.blocked : [];
 }
 
-function initBlockedDatesPicker(hId){
-  const blocked = getBlockedDatesForHotel(hId);
-  if(!blocked.length) return;
-
-  // Show blocked dates info
-  const infoEl = document.getElementById('bk-blocked-info');
-  const textEl = document.getElementById('bk-blocked-text');
-  if(infoEl && textEl){
-    // Group consecutive dates
-    const sorted = [...blocked].sort();
-    const today = new Date().toISOString().split('T')[0];
-    const future = sorted.filter(d=>d>=today);
-    if(future.length > 0){
-      const count = future.length;
-      textEl.textContent = count+' date'+(count>1?'s':'')+' indisponible'+(count>1?'s':'')+' sur ce logement.';
-      infoEl.style.display = 'block';
+async function loadReservedDatesForAnnonce(annonceId){
+  if(!annonceId) return [];
+  const { data, error } = await _sb.from('reservations_availability')
+    .select('check_in,check_out')
+    .eq('logement_id', annonceId);
+  if(error){ console.error('loadReservedDatesForAnnonce error:', error.message); return []; }
+  const days = new Set();
+  (data||[]).forEach(r=>{
+    if(!r.check_in || !r.check_out) return;
+    let d = new Date(r.check_in);
+    const end = new Date(r.check_out);
+    while(d < end){
+      days.add(d.toISOString().split('T')[0]);
+      d.setDate(d.getDate()+1);
     }
-  }
+  });
+  return [...days];
+}
 
-  // Render mini-calendar showing current month + next month
+async function initBlockedDatesPicker(hId){
+  const h = hotels.find(x=>x.id===hId);
   const miniCal = document.getElementById('bk-mini-cal');
-  if(!miniCal) return;
+  if(!h || !miniCal) return;
 
+  const localBlocked = getBlockedDatesForHotel(hId);
+  const reserved = h.annonceId ? await loadReservedDatesForAnnonce(h.annonceId) : [];
+  const unavailable = new Set([...localBlocked, ...reserved]);
+  appState._bkUnavailable = unavailable;
+  appState._bkHotelId = hId;
+
+  miniCal.style.display = 'block';
   const today = new Date();
 
-  // Determine which months to show based on selected dates
   function getCalMonths(){
     const ciVal = document.getElementById('bk-ci')?.value;
-    const coVal = document.getElementById('bk-co')?.value;
-    // Use the earliest of: checkin, checkout, or today
     let baseDate = today;
     if(ciVal) baseDate = new Date(ciVal) < today ? today : new Date(ciVal);
     const m1 = {year: baseDate.getFullYear(), month: baseDate.getMonth()};
@@ -6729,70 +6764,109 @@ function initBlockedDatesPicker(hId){
     return [m1, m2];
   }
 
-  function refreshMiniCal(){
+  function refresh(){
     const months = getCalMonths();
-    miniCal.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:8px;">📅 Disponibilités</div>'
-      + months.map(({year,month})=>renderMiniMonth(year, month, blocked, today)).join('')
+    miniCal.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:8px;">📅 Cliquez pour choisir vos dates</div>'
+      + months.map(({year,month})=>renderBookingMonth(year, month, unavailable, today)).join('')
       + '<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">'
+      + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;display:inline-block;"></span>Disponible</span>'
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#ffdddd;border:1px solid #ffaaaa;display:inline-block;"></span>Indisponible</span>'
-      + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#e8f4ff;border:1px solid #b3d4f0;display:inline-block;"></span>Disponible</span>'
       + '</div>';
   }
 
-  miniCal.style.display = 'block';
-  refreshMiniCal();
+  appState._bkRefreshCal = refresh;
+  refresh();
 
-  // Add event listeners to date inputs — refresh calendar + validate
+  // Les champs de saisie manuelle restent valides (accessibilité) et se synchronisent avec le calendrier
   const ciEl = document.getElementById('bk-ci');
   const coEl = document.getElementById('bk-co');
-  if(ciEl) ciEl.addEventListener('change', ()=>{ validateDateAgainstBlocked(hId); refreshMiniCal(); });
-  if(coEl) coEl.addEventListener('change', ()=>{ validateDateAgainstBlocked(hId); refreshMiniCal(); });
+  if(ciEl) ciEl.addEventListener('change', ()=>{ validateDateAgainstBlocked(hId); refresh(); });
+  if(coEl) coEl.addEventListener('change', ()=>{ validateDateAgainstBlocked(hId); refresh(); });
 }
 
-function renderMiniMonth(year, month, blocked, today){
+function renderBookingMonth(year, month, unavailable, today){
   const monthNames=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
   const offset = firstDay === 0 ? 6 : firstDay - 1;
   const todayStr = today.toISOString().split('T')[0];
   const days = ['L','M','M','J','V','S','D'];
+  const ci = appState.checkIn||'';
+  const co = appState.checkOut||'';
 
   let html = '<div style="margin-bottom:10px;">';
   html += '<div style="font-size:12px;font-weight:700;text-align:center;margin-bottom:6px;color:var(--gray-700);">'
     + monthNames[month]+' '+year+'</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;">';
-  // Day headers
   days.forEach(d=>{
     html += '<div style="text-align:center;font-size:9px;font-weight:700;color:var(--gray-400);padding:2px 0;">'+d+'</div>';
   });
-  // Empty cells
   for(let i=0;i<offset;i++) html+='<div></div>';
-  // Days
   for(let day=1;day<=daysInMonth;day++){
     const ds = year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
-    const isBlocked = blocked.includes(ds);
+    const isUnavail = unavailable.has(ds);
     const isPast = ds < todayStr;
-    const bg = isBlocked ? '#ffdddd' : isPast ? '#f5f5f5' : '#e8f4ff';
-    const color = isBlocked ? '#cc0000' : isPast ? '#cccccc' : 'var(--gray-700)';
-    const border = isBlocked ? '1px solid #ffaaaa' : isPast ? '1px solid #eeeeee' : '1px solid #b3d4f0';
-    const fw = ds===todayStr ? '800' : '400';
-    html += '<div style="text-align:center;padding:3px 1px;font-size:10px;font-weight:'+fw
-      +';background:'+bg+';color:'+color+';border:'+border
-      +';border-radius:2px;">'
-      +(isBlocked ? '<s>'+day+'</s>' : day)+'</div>';
+    const isCi = ds===ci, isCo = ds===co;
+    const inRange = ci && co && ds>ci && ds<co;
+    const clickable = !isUnavail && !isPast;
+    let bg='#e8f9f0', border='1px solid #6bcf9e', color='var(--gray-700)';
+    if(isPast){ bg='#f5f5f5'; border='1px solid #eeeeee'; color='#cccccc'; }
+    else if(isUnavail){ bg='#ffdddd'; border='1px solid #ffaaaa'; color='#cc0000'; }
+    if(isCi||isCo){ bg='var(--blue)'; border='1px solid var(--blue)'; color='#fff'; }
+    else if(inRange){ bg='#cce0ff'; border='1px solid #99c2ff'; color='var(--blue)'; }
+    const fw = ds===todayStr ? '800':'500';
+    html += '<div '+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
+      +'text-align:center;padding:5px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;"'
+      +(clickable?' onmouseover="this.style.transform=\'scale(1.1)\'" onmouseout="this.style.transform=\'\'"':'')
+      +'>'+(isUnavail&&!isCi&&!isCo?'<s>'+day+'</s>':day)+'</div>';
   }
   html += '</div></div>';
   return html;
 }
 
+function bkSelectDate(ds){
+  const ciEl = document.getElementById('bk-ci');
+  const coEl = document.getElementById('bk-co');
+  if(!ciEl||!coEl) return;
+  const ci = ciEl.value;
+  const co = coEl.value;
+
+  if(!ci || (ci && co)){
+    // Démarre une nouvelle sélection
+    ciEl.value = ds; coEl.value = '';
+    appState.checkIn = ds; appState.checkOut = '';
+  } else if(ds <= ci){
+    // Clique une date antérieure ou égale à l'arrivée -> redémarre depuis cette date
+    ciEl.value = ds; coEl.value = '';
+    appState.checkIn = ds; appState.checkOut = '';
+  } else {
+    // Vérifie qu'aucune date indisponible ne se trouve dans l'intervalle choisi
+    const unavailable = appState._bkUnavailable || new Set();
+    let conflict = false;
+    let d = new Date(ci); d.setDate(d.getDate()+1);
+    const end = new Date(ds);
+    while(d < end){
+      if(unavailable.has(d.toISOString().split('T')[0])){ conflict = true; break; }
+      d.setDate(d.getDate()+1);
+    }
+    if(conflict){
+      showToast('⛔ Votre séjour engloberait des dates indisponibles. Choisissez une autre date de départ.','var(--red)');
+      return;
+    }
+    coEl.value = ds;
+    appState.checkOut = ds;
+  }
+  updateBk();
+  if(appState._bkRefreshCal) appState._bkRefreshCal();
+}
+
 function validateDateAgainstBlocked(hId){
-  const blocked = getBlockedDatesForHotel(hId);
+  const blocked = (appState._bkUnavailable && appState._bkHotelId===hId) ? [...appState._bkUnavailable] : getBlockedDatesForHotel(hId);
   if(!blocked.length) return;
   const ci = document.getElementById('bk-ci')?.value;
   const co = document.getElementById('bk-co')?.value;
   const warnEl = document.getElementById('bk-avail-warn');
 
-  // Check if selected checkin or checkout is a blocked date
   if(ci && blocked.includes(ci)){
     showToast('⛔ La date d\'arrivée est indisponible','var(--red)');
     if(warnEl) warnEl.style.display='flex';
@@ -6803,7 +6877,6 @@ function validateDateAgainstBlocked(hId){
     if(warnEl) warnEl.style.display='flex';
     return;
   }
-  // Check range
   if(ci && co){
     const start = new Date(ci), end = new Date(co);
     for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
