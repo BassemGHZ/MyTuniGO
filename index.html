@@ -3628,8 +3628,9 @@ function buildFavoris(){
 
 
 /* ===================== MES ANNONCES ===================== */
-function mapAnnonceRow(a){
+function mapAnnonceRow(a, resaStats){
   const h = hotels.find(x=>x.annonceId===a.id);
+  const s = (resaStats && resaStats[a.id]) || {count:0, revenue:0};
   return {
     id: a.id,
     ref: a.ref,
@@ -3647,9 +3648,10 @@ function mapAnnonceRow(a){
     discount: 0, // ⚠️ non persisté en base pour le moment (voir note)
     ownerId: a.user_id,
     createdAt: a.created_at || new Date().toISOString(),
-    // Pas encore de vraie table d'analytics côté Supabase : valeurs à 0 par défaut
+    // Réservations et revenus = vraies données Supabase (confirmée + terminée).
+    // Vues/clics/occupation/note : pas encore de table d'analytics, restent à 0.
     stats: {
-      vues:0, clics:0, reservations:0, revenus:0, tauxOccupation:0, noteMoyenne:0, avis:0,
+      vues:0, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:0, noteMoyenne:0, avis:0,
       vuesMois: Array(12).fill(0), revenusMois: Array(12).fill(0)
     }
   };
@@ -3668,7 +3670,26 @@ async function loadMesAnnonces(container){
     return;
   }
 
-  appState.myAnnonces = (data||[]).map(mapAnnonceRow);
+  // Agrège les vraies réservations (confirmée + terminée) par annonce
+  const annIds = (data||[]).map(a=>a.id);
+  const resaStats = {};
+  if(annIds.length){
+    const { data: resaRows, error: resaErr } = await _sb.from('reservations')
+      .select('logement_id,total,status')
+      .in('logement_id', annIds)
+      .in('status', ['confirmée','terminée']);
+    if(resaErr){
+      console.warn('Erreur chargement stats réservations:', resaErr.message);
+    } else {
+      (resaRows||[]).forEach(r=>{
+        if(!resaStats[r.logement_id]) resaStats[r.logement_id] = {count:0, revenue:0};
+        resaStats[r.logement_id].count++;
+        resaStats[r.logement_id].revenue += r.total||0;
+      });
+    }
+  }
+
+  appState.myAnnonces = (data||[]).map(a=>mapAnnonceRow(a, resaStats));
   const fresh = buildMesAnnonces();
   if(container && container.parentNode){ container.replaceWith(fresh); }
 }
