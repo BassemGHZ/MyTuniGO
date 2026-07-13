@@ -5907,6 +5907,34 @@ function getHostForHotel(hId){
   return hostsData.find(x=>x.properties.includes(hId)) || hostsData[0];
 }
 
+async function openConversationWithGuest(annonceId, guestId){
+  if(!auth.currentUser){openModal('login');return;}
+  try{
+    const { data: existing, error: findErr } = await _sb.from('conversations')
+      .select('*')
+      .eq('logement_id', annonceId)
+      .or(`participant_a.eq.${guestId},participant_b.eq.${guestId}`)
+      .maybeSingle();
+    if(findErr) throw findErr;
+
+    let conv = existing;
+    if(!conv){
+      const { data: created, error: createErr } = await _sb.from('conversations').insert([{
+        logement_id: annonceId,
+        participant_a: auth.currentUser.id,
+        participant_b: guestId
+      }]).select().single();
+      if(createErr) throw createErr;
+      conv = created;
+    }
+    appState.selectedConvId = conv.id;
+    navigate('conversation');
+  } catch(e){
+    console.error('openConversationWithGuest error:', e.message);
+    showToast("Impossible d'ouvrir la conversation.",'var(--red)');
+  }
+}
+
 async function openMessageHost(hId){
   if(!auth.currentUser){openModal('login');return;}
   const h = hotels.find(x=>x.id===hId);
@@ -6338,6 +6366,7 @@ async function loadBookingRequests(container){
     return {
       id: r.id, ref: r.reference,
       annonceId: r.logement_id,
+      guestId: r.guest_id,
       hotelId: (hotels.find(x=>x.annonceId===r.logement_id)||{}).id || null,
       propertyName: annMap[r.logement_id]?.name || 'Hébergement',
       propertyEmoji: annMap[r.logement_id]?.emoji || '🏨',
@@ -6401,8 +6430,9 @@ async function loadBookingRequests(container){
               ${req.message?`<div style="background:#f9f9ff;border-left:3px solid var(--blue-l);padding:10px 14px;border-radius:0 var(--r-md) var(--r-md) 0;font-size:13px;color:var(--gray-700);font-style:italic;line-height:1.6;">"${req.message}"</div>`:''}
             </div>
             ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
-              <button onclick="handleBookingRequest('${req.id}','confirmée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;transition:opacity .2s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">✅ Accepter</button>
-              <button onclick="handleBookingRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
+              <button onclick="decideBookingRequest('${req.id}','confirmée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;transition:opacity .2s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">✅ Accepter</button>
+              <button onclick="decideBookingRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
+              <button onclick="openConversationWithGuest('${req.annonceId}','${req.guestId}')" style="background:#fff;color:var(--blue-l);padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--blue-l);cursor:pointer;">💬 Contacter</button>
             </div>`:''}
           </div>
         </div>
@@ -6411,7 +6441,14 @@ async function loadBookingRequests(container){
   </div>`;
 }
 
-async function handleBookingRequest(reqId, decision){
+function decideBookingRequest(reqId, decision){
+  const label = decision==='confirmée' ? 'accepter' : 'refuser';
+  const reason = prompt('Message optionnel pour le client (laissez vide pour le message standard) :', '');
+  if(reason === null) return; // l'hôte a annulé la boîte de dialogue, aucune action
+  handleBookingRequest(reqId, decision, reason.trim());
+}
+
+async function handleBookingRequest(reqId, decision, hostMessage){
   const { data: resa, error: fetchErr } = await _sb.from('reservations').select('*').eq('id', reqId).maybeSingle();
   if(fetchErr || !resa){ showToast('Demande introuvable','var(--red)'); return; }
 
@@ -6440,7 +6477,8 @@ async function handleBookingRequest(reqId, decision){
           guest_name: `${guestProf.first_name||''} ${guestProf.last_name||''}`.trim(),
           property_name: ann?.name || 'Hébergement',
           check_in: resa.check_in, check_out: resa.check_out,
-          guests_count: resa.guests_count, total: resa.total
+          guests_count: resa.guests_count, total: resa.total,
+          host_message: hostMessage || ''
         })
       });
     }
