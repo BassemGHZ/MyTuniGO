@@ -3561,27 +3561,37 @@ async function cancelReservation(dbId){
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
   showToast('Réservation annulée','var(--red)');
 
-  // Informe l'hôte par email — les dates se libèrent automatiquement
+  // Informe l'hôte ET le client par email — les dates se libèrent automatiquement
   // (la vue de disponibilité et la contrainte anti-chevauchement excluent
   // déjà le statut "annulée", aucune action supplémentaire n'est nécessaire).
   try{
-    const { data: ann } = await _sb.from('annonces').select('name,contact_email').eq('id', resa.logement_id).maybeSingle();
+    const [{data: ann}, {data: guestProf}] = await Promise.all([
+      _sb.from('annonces').select('name,contact_email').eq('id', resa.logement_id).maybeSingle(),
+      _sb.from('profiles').select('email,first_name,last_name').eq('id', resa.guest_id).maybeSingle()
+    ]);
+    const guestName = guestProf ? `${guestProf.first_name||''} ${guestProf.last_name||''}`.trim() : 'Un voyageur';
+    const propertyName = ann?.name || 'votre hébergement';
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+    };
+    const basePayload = {
+      guest_name: guestName, property_name: propertyName,
+      check_in: resa.check_in, check_out: resa.check_out,
+      guests_count: resa.guests_count, total: resa.total
+    };
+    // 1. Email à l'hôte
     if(ann?.contact_email){
-      const guestName = ((auth.currentUser?.firstName||'')+' '+(auth.currentUser?.lastName||'')).trim() || 'Un voyageur';
       await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify({
-          type: 'cancelled_by_guest',
-          recipient_email: ann.contact_email,
-          guest_name: guestName,
-          property_name: ann.name || 'votre hébergement',
-          check_in: resa.check_in, check_out: resa.check_out,
-          guests_count: resa.guests_count, total: resa.total
-        })
+        method: 'POST', headers,
+        body: JSON.stringify({...basePayload, type: 'cancelled_by_guest', recipient_email: ann.contact_email})
+      });
+    }
+    // 2. Email de confirmation au client lui-même
+    if(guestProf?.email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+        method: 'POST', headers,
+        body: JSON.stringify({...basePayload, type: 'cancelled_confirmation', recipient_email: guestProf.email})
       });
     }
   } catch(efErr){
