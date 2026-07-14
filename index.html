@@ -931,7 +931,19 @@ function navigate(page, extra){
   if(page !== 'annonce') appState.annoncePage = 0;
   appState.page = page;
   window.scrollTo(0,0);
+  if(page==='detail' && extra?.selectedHotelId){
+    logAnnonceView(extra.selectedHotelId);
+  }
   render();
+}
+
+async function logAnnonceView(hId){
+  const h = hotels.find(x=>x.id===hId);
+  if(!h?.annonceId) return; // pas une vraie annonce (démo)
+  if(auth.currentUser && h.userId && auth.currentUser.id === h.userId) return; // l'hôte qui consulte sa propre fiche ne compte pas
+  try{
+    await _sb.from('annonce_views').insert([{ annonce_id: h.annonceId, viewer_id: auth.currentUser?.id || null }]);
+  } catch(e){ console.warn('logAnnonceView:', e.message); }
 }
 
 /* ===================== HEADER ===================== */
@@ -3670,9 +3682,10 @@ function buildFavoris(){
 
 
 /* ===================== MES ANNONCES ===================== */
-function mapAnnonceRow(a, resaStats){
+function mapAnnonceRow(a, resaStats, viewStats){
   const h = hotels.find(x=>x.annonceId===a.id);
   const s = (resaStats && resaStats[a.id]) || {count:0, revenue:0};
+  const v = (viewStats && viewStats[a.id]) || 0;
   return {
     id: a.id,
     ref: a.ref,
@@ -3690,10 +3703,10 @@ function mapAnnonceRow(a, resaStats){
     discount: 0, // ⚠️ non persisté en base pour le moment (voir note)
     ownerId: a.user_id,
     createdAt: a.created_at || new Date().toISOString(),
-    // Réservations et revenus = vraies données Supabase (confirmée + terminée).
-    // Vues/clics/occupation/note : pas encore de table d'analytics, restent à 0.
+    // Réservations, revenus et vues = vraies données Supabase.
+    // Clics/occupation/note : pas encore de table dédiée, restent à 0.
     stats: {
-      vues:0, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:0, noteMoyenne:0, avis:0,
+      vues:v, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:0, noteMoyenne:0, avis:0,
       vuesMois: Array(12).fill(0), revenusMois: Array(12).fill(0)
     }
   };
@@ -3712,8 +3725,9 @@ async function loadMesAnnonces(container){
     return;
   }
 
-  // Agrège les vraies réservations (confirmée + terminée) par annonce
   const annIds = (data||[]).map(a=>a.id);
+
+  // Agrège les vraies réservations (confirmée + terminée) par annonce
   const resaStats = {};
   if(annIds.length){
     const { data: resaRows, error: resaErr } = await _sb.from('reservations')
@@ -3731,7 +3745,20 @@ async function loadMesAnnonces(container){
     }
   }
 
-  appState.myAnnonces = (data||[]).map(a=>mapAnnonceRow(a, resaStats));
+  // Agrège les vraies vues par annonce
+  const viewStats = {};
+  if(annIds.length){
+    const { data: viewRows, error: viewErr } = await _sb.from('annonce_views')
+      .select('annonce_id')
+      .in('annonce_id', annIds);
+    if(viewErr){
+      console.warn('Erreur chargement stats vues:', viewErr.message);
+    } else {
+      (viewRows||[]).forEach(v=>{ viewStats[v.annonce_id] = (viewStats[v.annonce_id]||0) + 1; });
+    }
+  }
+
+  appState.myAnnonces = (data||[]).map(a=>mapAnnonceRow(a, resaStats, viewStats));
   const fresh = buildMesAnnonces();
   if(container && container.parentNode){ container.replaceWith(fresh); }
 }
@@ -3957,9 +3984,20 @@ async function loadAnnonceDetail(container){
     });
   }
 
+  // Charger les vraies vues (total + répartition par mois de l'année en cours)
+  const { data: viewRows } = await _sb.from('annonce_views').select('viewed_at').eq('annonce_id', a.id);
+  const vuesMois = Array(12).fill(0);
+  const thisYear = new Date().getFullYear();
+  (viewRows||[]).forEach(v=>{
+    const d = new Date(v.viewed_at);
+    if(d.getFullYear()===thisYear) vuesMois[d.getMonth()]++;
+  });
+
   const s=a.stats;
-  // Le nombre réel de réservations reçues prime sur la stat mock à 0
-  s.reservations = realReservations.length || s.reservations;
+  s.vues = (viewRows||[]).length;
+  s.vuesMois = vuesMois;
+  // Seules les réservations confirmée/terminée comptent comme "réservations" réelles
+  s.reservations = resaRows ? resaRows.filter(r=>r.status==='confirmée'||r.status==='terminée').length : 0;
   const MOIS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const maxVues=Math.max(...s.vuesMois,1);
   const maxRev=Math.max(...s.revenusMois,1);
