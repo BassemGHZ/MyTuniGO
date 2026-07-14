@@ -3682,9 +3682,27 @@ function buildFavoris(){
 
 
 /* ===================== MES ANNONCES ===================== */
+// Taux d'occupation = nuits réservées (confirmée/terminée) sur les 90 prochains
+// jours, divisé par 90. Mesure la "remplissage" à venir du calendrier de l'hôte.
+function computeOccupancyRate(resaList, windowDays){
+  windowDays = windowDays || 90;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const windowEnd = new Date(today); windowEnd.setDate(windowEnd.getDate()+windowDays);
+  let bookedNights = 0;
+  (resaList||[]).forEach(r=>{
+    if(!r.check_in || !r.check_out) return;
+    const ci = new Date(r.check_in), co = new Date(r.check_out);
+    const start = ci > today ? ci : today;
+    const end = co < windowEnd ? co : windowEnd;
+    const nights = Math.max(0, Math.round((end-start)/86400000));
+    bookedNights += nights;
+  });
+  return Math.min(100, Math.round(bookedNights / windowDays * 100));
+}
+
 function mapAnnonceRow(a, resaStats, viewStats){
   const h = hotels.find(x=>x.annonceId===a.id);
-  const s = (resaStats && resaStats[a.id]) || {count:0, revenue:0};
+  const s = (resaStats && resaStats[a.id]) || {count:0, revenue:0, occupancy:0};
   const v = (viewStats && viewStats[a.id]) || 0;
   return {
     id: a.id,
@@ -3706,7 +3724,7 @@ function mapAnnonceRow(a, resaStats, viewStats){
     // Réservations, revenus et vues = vraies données Supabase.
     // Clics/occupation/note : pas encore de table dédiée, restent à 0.
     stats: {
-      vues:v, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:0, noteMoyenne:0, avis:0,
+      vues:v, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:s.occupancy||0, noteMoyenne:0, avis:0,
       vuesMois: Array(12).fill(0), revenusMois: Array(12).fill(0)
     }
   };
@@ -3731,16 +3749,22 @@ async function loadMesAnnonces(container){
   const resaStats = {};
   if(annIds.length){
     const { data: resaRows, error: resaErr } = await _sb.from('reservations')
-      .select('logement_id,total,status')
+      .select('logement_id,total,status,check_in,check_out')
       .in('logement_id', annIds)
       .in('status', ['confirmée','terminée']);
     if(resaErr){
       console.warn('Erreur chargement stats réservations:', resaErr.message);
     } else {
+      const byAnnonce = {};
       (resaRows||[]).forEach(r=>{
-        if(!resaStats[r.logement_id]) resaStats[r.logement_id] = {count:0, revenue:0};
+        if(!resaStats[r.logement_id]) resaStats[r.logement_id] = {count:0, revenue:0, occupancy:0};
         resaStats[r.logement_id].count++;
         resaStats[r.logement_id].revenue += r.total||0;
+        if(!byAnnonce[r.logement_id]) byAnnonce[r.logement_id] = [];
+        byAnnonce[r.logement_id].push(r);
+      });
+      Object.keys(byAnnonce).forEach(id=>{
+        resaStats[id].occupancy = computeOccupancyRate(byAnnonce[id]);
       });
     }
   }
@@ -3998,6 +4022,7 @@ async function loadAnnonceDetail(container){
   s.vuesMois = vuesMois;
   // Seules les réservations confirmée/terminée comptent comme "réservations" réelles
   s.reservations = resaRows ? resaRows.filter(r=>r.status==='confirmée'||r.status==='terminée').length : 0;
+  s.tauxOccupation = resaRows ? computeOccupancyRate(resaRows.filter(r=>r.status==='confirmée'||r.status==='terminée')) : 0;
   const MOIS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const maxVues=Math.max(...s.vuesMois,1);
   const maxRev=Math.max(...s.revenusMois,1);
