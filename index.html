@@ -6248,6 +6248,7 @@ async function loadMessagesList(container){
       const ann = annMap[conv.logement_id];
       const lastMsg = lastMsgMap[conv.id];
       const time = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '';
+      const startDate = conv.created_at ? new Date(conv.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}) : '';
       return `<div onclick="appState.selectedConvId='${conv.id}';navigate('conversation')"
         style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:16px;transition:all .2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
         <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${avatar}</div>
@@ -6257,7 +6258,8 @@ async function loadMessagesList(container){
             <span style="font-size:12px;color:var(--gray-400);">${time}</span>
           </div>
           <div style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;">🏠 ${ann?.name||''}</div>
-          <div style="font-size:13px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lastMsg?.content||'Démarrez la conversation…'}</div>
+          <div style="font-size:13px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">${lastMsg?.content||'Démarrez la conversation…'}</div>
+          <div style="font-size:11px;color:var(--gray-400);">🗓️ Conversation débutée le ${startDate}</div>
         </div>
         <span style="font-size:18px;color:var(--gray-300);">›</span>
       </div>`;
