@@ -2065,13 +2065,13 @@ function buildResults(){
 }
 
 function resultCardHTML(h){
-  return `<div class="result-card">
+  return `<div class="result-card" onclick="navigate('detail',{selectedHotelId:${h.id}})" style="cursor:pointer;">
     <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;">${photoOrEmoji(h)}</div>
     <div class="rc-body">
       <div class="rc-info">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px;">
-          <div class="rc-name" onclick="navigate('detail',{selectedHotelId:${h.id}})">${h.name}</div>
-          <button id="fav-btn-${h.id}" onclick="toggleFavorite(${h.id})" style="background:none;border:none;font-size:22px;cursor:pointer;flex-shrink:0;line-height:1;padding:0;transition:transform .15s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${getFavIcon(h.id)}</button>
+          <div class="rc-name">${h.name}</div>
+          <button id="fav-btn-${h.id}" onclick="event.stopPropagation();toggleFavorite(${h.id})" style="background:none;border:none;font-size:22px;cursor:pointer;flex-shrink:0;line-height:1;padding:0;transition:transform .15s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${getFavIcon(h.id)}</button>
         </div>
         <div class="rc-type">${h.type} ${'★'.repeat(h.stars)}</div>
         <div class="rc-loc">📍 ${h.address}</div>
@@ -2088,7 +2088,7 @@ function resultCardHTML(h){
         <div>
           <div class="rc-amount">${h.price}€</div>
           <div class="rc-excl">par nuit, taxes incluses</div>
-          <button class="btn-choose" onclick="navigate('detail',{selectedHotelId:${h.id}})">Voir dispo</button>
+          <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})">Voir dispo</button>
         </div>
       </div>
     </div>
@@ -6246,6 +6246,7 @@ async function loadMessagesList(container){
       const otherName = other ? `${other.first_name||''} ${other.last_name||''}`.trim() : 'Utilisateur';
       const avatar = otherName.split(' ').filter(Boolean).map(n=>n[0]).join('').slice(0,2).toUpperCase() || '?';
       const ann = annMap[conv.logement_id];
+      const annHotel = hotels.find(x=>x.annonceId===conv.logement_id);
       const lastMsg = lastMsgMap[conv.id];
       const time = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '';
       const startDate = conv.created_at ? new Date(conv.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}) : '';
@@ -6257,7 +6258,7 @@ async function loadMessagesList(container){
             <span style="font-size:15px;font-weight:600;color:var(--gray-900);">${otherName}</span>
             <span style="font-size:12px;color:var(--gray-400);">${time}</span>
           </div>
-          <div style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;">🏠 ${ann?.name||''}</div>
+          <div ${annHotel?`onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${annHotel.id}})"`:''} style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;${annHotel?'cursor:pointer;text-decoration:underline;':''}">🏠 ${ann?.name||''}</div>
           <div style="font-size:13px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">${lastMsg?.content||'Démarrez la conversation…'}</div>
           <div style="font-size:11px;color:var(--gray-400);">🗓️ Conversation débutée le ${startDate}</div>
         </div>
