@@ -5958,6 +5958,8 @@ function getHostForHotel(hId){
       badges: ['verified'],
       rating: 0,
       reviews: 0,
+      totalStays: 0,
+      responseRate: 0,
       responseTime: '—',
       memberSince: new Date().toISOString(),
       bio: '',
@@ -6048,7 +6050,8 @@ async function openMessageHost(hId){
    HOST PROFILE PAGE
 ══════════════════════════════════════════════════════════════════ */
 function buildHostProfile(){
-  const host = hostsData.find(h=>h.id===appState.selectedHostId) || hostsData[0];
+  const host = getHostForHotel(appState.selectedHotelId) || hostsData.find(h=>h.id===appState.selectedHostId) || hostsData[0];
+  const isRealHost = !!host.authId;
   const hostProps = hotels.filter(h=>host.properties.includes(h.id));
   const stars = n => '★'.repeat(Math.round(n)) + '☆'.repeat(5-Math.round(n));
 
@@ -6112,7 +6115,7 @@ function buildHostProfile(){
         <!-- About -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;margin-bottom:20px;">
           <h3 style="font-size:18px;font-weight:700;margin-bottom:12px;">À propos de ${host.firstName}</h3>
-          <p style="font-size:15px;color:var(--gray-700);line-height:1.75;">${host.bio}</p>
+          <p style="font-size:15px;color:var(--gray-700);line-height:1.75;">${host.bio || (isRealHost ? "Cet hôte n'a pas encore ajouté de description." : '')}</p>
         </div>
 
         <!-- Verifications -->
@@ -6151,14 +6154,17 @@ function buildHostProfile(){
         <!-- Reviews -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;">
           <h3 style="font-size:18px;font-weight:700;margin-bottom:14px;">💬 Avis récents (${host.reviews})</h3>
-          <div style="display:flex;align-items:center;gap:16px;background:var(--gray-50);padding:14px;border-radius:var(--r-md);margin-bottom:16px;">
+          ${(isRealHost && host.reviews===0) ? '' : `<div style="display:flex;align-items:center;gap:16px;background:var(--gray-50);padding:14px;border-radius:var(--r-md);margin-bottom:16px;">
             <div style="font-size:44px;font-weight:800;color:var(--blue);">${host.rating}</div>
             <div>
               <div style="font-size:16px;font-weight:700;color:var(--gray-900);">${host.rating>=4.9?'Exceptionnel':host.rating>=4.7?'Excellent':'Très bien'}</div>
               <div style="color:var(--yellow-d);font-size:18px;">${stars(host.rating)}</div>
             </div>
-          </div>
-          ${[{name:'Marie L.',country:'France',date:'Mars 2025',text:'Sophie est une hôte exceptionnelle ! Appartement impeccable, très bien situé. Elle nous a laissé un guide avec ses adresses favorites. On reviendra !',score:5},
+          </div>`}
+          ${isRealHost ? `
+          <div style="text-align:center;padding:30px 10px;color:var(--gray-500);font-size:14px;">
+            Aucun avis pour le moment.
+          </div>` : [{name:'Marie L.',country:'France',date:'Mars 2025',text:'Sophie est une hôte exceptionnelle ! Appartement impeccable, très bien situé. Elle nous a laissé un guide avec ses adresses favorites. On reviendra !',score:5},
              {name:'James T.',country:'UK',date:'Fév. 2025',text:'Amazing host, very responsive and helpful. The apartment is exactly as described. Highly recommend!',score:5},
              {name:'Ana R.',country:'Espagne',date:'Jan. 2025',text:'Todo perfecto. Sophie estuvo disponible para cualquier pregunta. El apartamento es precioso.',score:5}
           ].map(r=>`<div style="padding:14px 0;border-bottom:1px solid var(--gray-100);">
@@ -6805,7 +6811,7 @@ function buildHostCardHTML(hId){
           <span>⚡ ${host.responseTime}</span>
         </div>
       </div>
-      <button onclick="navigate('host-profile',{selectedHostId:'${host.id}'})" style="background:var(--gray-50);color:var(--blue-l);padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--gray-200);cursor:pointer;white-space:nowrap;">Voir profil</button>
+      <button onclick="navigate('host-profile',{selectedHostId:'${host.id}', selectedHotelId:${hId}})" style="background:var(--gray-50);color:var(--blue-l);padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--gray-200);cursor:pointer;white-space:nowrap;">Voir profil</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
       ${host.badges.map(b=>{const bi=BADGE_INFO[b]||{label:b,icon:'•',color:'#666',bg:'#f5f5f5'};return`<span style="font-size:11px;background:${bi.bg};color:${bi.color};border:1px solid ${bi.color}33;padding:3px 9px;border-radius:20px;font-weight:600;">${bi.icon} ${bi.label}</span>`;}).join('')}
