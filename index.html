@@ -1730,27 +1730,24 @@ function buildHome(){
     <!-- Grille unifiée -->
     <div class="deals-grid" id="deals-unified-grid">
       <!-- Hébergements deals -->
-      ${[...hotels.filter(h=>h.discount>0),
-         ...appState.myAnnonces.filter(a=>a.discount>0&&a.status==='publiée').map(a=>({
-           id:'ann-'+a.id, name:a.name, city:a.city, country:a.country,
-           emoji:a.emoji, discount:a.discount, price:a.price_night,
-           isMyAnn:true, annId:a.id
-         }))
-        ].map(h=>{
-          const oc = h.isMyAnn ? "navigate('mesannonces')" : "navigate('detail',{selectedHotelId:"+h.id+"})";
-          const myBadge = h.isMyAnn ? '<span style="font-size:10px;background:#e8f4ff;color:var(--blue-l);padding:2px 6px;border-radius:20px;font-weight:700;">MON ANNONCE</span>' : '';
-          const imgBg = h.isMyAnn ? ' style="background:linear-gradient(135deg,#e8f4ff,#cce0ff)"' : '';
+      ${hotels.filter(h=>h.discount>0).map(h=>{
+          const oc = "navigate('detail',{selectedHotelId:"+h.id+"})";
+          const isReal = !!h.annonceId;
+          // Pour une vraie annonce, h.price est le prix ORIGINAL (non réduit) ;
+          // pour les hébergements de démo, h.price est déjà le prix affiché réduit.
+          const displayNew = isReal ? Math.round(h.price*(1-h.discount/100)) : h.price;
+          const displayOld = isReal ? h.price : Math.round(h.price/(1-h.discount/100));
           return '<div class="deal-card" data-deal-type="hotel" onclick="'+oc+'">'
-            +'<div class="deal-img"'+imgBg+'>'+h.emoji+'</div>'
+            +'<div class="deal-img">'+h.emoji+'</div>'
             +'<div class="deal-body">'
             +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">'
             +'<span style="font-size:10px;background:#e8f4ff;color:var(--blue-l);padding:2px 7px;border-radius:20px;font-weight:700;">🏨 Hébergement</span>'
-            +'<div class="deal-badge">-'+h.discount+'%</div>'+myBadge+'</div>'
+            +'<div class="deal-badge">-'+h.discount+'%</div></div>'
             +'<div class="deal-name">'+h.name+'</div>'
             +'<div class="deal-loc">📍 '+h.city+', '+h.country+'</div>'
             +'<div class="deal-prices">'
-            +'<span class="deal-old">'+Math.round(h.price/(1-h.discount/100))+'€</span>'
-            +'<span class="deal-new">'+h.price+'€</span>'
+            +'<span class="deal-old">'+displayOld+'€</span>'
+            +'<span class="deal-new">'+displayNew+'€</span>'
             +'<span style="font-size:12px;color:var(--gray-500)">/nuit</span>'
             +'</div></div></div>';
         }).join('')}
@@ -3816,7 +3813,8 @@ function mapAnnonceRow(a, resaStats, viewStats){
     price_night: a.price_night || 0,
     status: a.status || 'en attente',
     photos: a.photos || [],
-    discount: 0, // ⚠️ non persisté en base pour le moment (voir note)
+    discount: a.discount_percent || 0,
+    promoExpiry: a.promo_expires_at || null,
     ownerId: a.user_id,
     createdAt: a.created_at || new Date().toISOString(),
     // Réservations, revenus et vues = vraies données Supabase.
@@ -4049,7 +4047,7 @@ function buildMesAnnonces(){
           </div>
         </div>
       </div>
-      ${a.discount>0?`<div style="background:linear-gradient(90deg,#d40000,#ff4444);padding:10px 20px;font-size:13px;color:#fff;font-weight:700;border-top:none;display:flex;align-items:center;justify-content:space-between;"><span>🔥 Offre de dernière minute active — ${a.discount}% de réduction jusqu'au ${new Date(Date.now()+7*86400000).toLocaleDateString('fr-FR')}</span><button onclick="removePromo('${a.id}')" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;">Retirer</button></div>`:''}
+      ${a.discount>0?`<div style="background:linear-gradient(90deg,#d40000,#ff4444);padding:10px 20px;font-size:13px;color:#fff;font-weight:700;border-top:none;display:flex;align-items:center;justify-content:space-between;"><span>🔥 Offre de dernière minute active — ${a.discount}% de réduction jusqu'au ${a.promoExpiry?new Date(a.promoExpiry).toLocaleDateString('fr-FR'):'—'}</span><button onclick="removePromo('${a.id}')" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;">Retirer</button></div>`:''}
       ${a.status==='en attente'?`<div style="background:#fff8e0;padding:10px 20px;font-size:13px;color:#856404;border-top:1px solid #ffe080;">⏳ Votre annonce est en cours de vérification par notre équipe. Délai estimé : 24h.</div>`:''}
       ${a.status==='suspendue'?`<div style="background:#fff0f0;padding:10px 20px;font-size:13px;color:var(--red);border-top:1px solid #ffcccc;">⛔ Cette annonce est suspendue. Republier pour la rendre visible aux voyageurs.</div>`:''}
     </div>`).join('')}
@@ -5742,24 +5740,66 @@ function updatePromoPreview(basePrice){
   if(badgeEl) badgeEl.textContent = '-'+pct+'%';
 }
 
-function applyPromo(annonceId){
+async function applyPromo(annonceId){
   const a = appState.myAnnonces.find(x=>x.id===annonceId);
   if(!a) return;
   const pct = parseInt(document.getElementById('promo-pct')?.value||20);
   const days = parseInt(document.getElementById('promo-duration')?.value||7);
   if(pct<5||pct>70){showToast('⚠️ Réduction entre 5% et 70%','var(--red)');return;}
-  a.discount = pct;
-  a.promoExpiry = new Date(Date.now()+days*86400000).toISOString().split('T')[0];
+
+  const expiresAt = new Date(Date.now()+days*86400000).toISOString();
+  const { error } = await _sb.from('annonces')
+    .update({ discount_percent: pct, promo_expires_at: expiresAt })
+    .eq('id', annonceId);
+
+  if(error){
+    console.error('applyPromo error:', error.message);
+    showToast('Erreur : '+error.message,'var(--red)');
+    return;
+  }
+
   document.getElementById('modal-root').innerHTML = '';
   showToast('🔥 Offre de dernière minute activée ! -'+pct+'%','#d40000');
+
+  // Email de confirmation à l'hôte lui-même
+  try{
+    if(auth.currentUser?.email){
+      const newPrice = Math.round(a.price_night * (1 - pct/100));
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-price-drop', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({
+          type: 'promo_activated',
+          recipient_email: auth.currentUser.email,
+          guest_name: auth.currentUser.firstName || 'vous',
+          property_name: a.name,
+          old_price: a.price_night,
+          new_price: newPrice,
+          days
+        })
+      });
+    }
+  } catch(efErr){
+    console.error('notify-price-drop (promo) error:', efErr.message);
+  }
+
   navigate('mesannonces');
 }
 
-function removePromo(annonceId){
+async function removePromo(annonceId){
   const a = appState.myAnnonces.find(x=>x.id===annonceId);
   if(!a) return;
-  a.discount = 0;
-  a.promoExpiry = null;
+  const { error } = await _sb.from('annonces')
+    .update({ discount_percent: 0, promo_expires_at: null })
+    .eq('id', annonceId);
+  if(error){
+    console.error('removePromo error:', error.message);
+    showToast('Erreur : '+error.message,'var(--red)');
+    return;
+  }
   document.getElementById('modal-root').innerHTML = '';
   showToast('Promotion retirée','var(--gray-700)');
   navigate('mesannonces');
@@ -8983,7 +9023,7 @@ async function loadPublishedAnnonces(){
         createdAt: a.created_at || null,
         freeCancellation: a.cancellation === 'flexible',
         payLater: true,
-        discount: 0
+        discount: a.discount_percent || 0
       });
     });
 
