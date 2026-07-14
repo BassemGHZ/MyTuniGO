@@ -3462,8 +3462,8 @@ function buildReservations(){
     <!-- Stat cards -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px;">
       ${[
-        {label:'Total dépensé',val:appState.reservations.filter(r=>r.status!=='annulée').reduce((s,r)=>s+r.total,0).toLocaleString()+'€',icon:'💶',color:'var(--blue)'},
-        {label:'Nuits réservées',val:appState.reservations.filter(r=>r.status!=='annulée').reduce((s,r)=>s+r.nights,0),icon:'🌙',color:'#8e44ad'},
+        {label:'Total dépensé',val:appState.reservations.filter(r=>r.status==='confirmée'||r.status==='terminée').reduce((s,r)=>s+r.total,0).toLocaleString()+'€',icon:'💶',color:'var(--blue)'},
+        {label:'Nuits réservées',val:appState.reservations.filter(r=>r.status==='confirmée'||r.status==='terminée').reduce((s,r)=>s+r.nights,0),icon:'🌙',color:'#8e44ad'},
         {label:'Confirmées',val:appState.reservations.filter(r=>r.status==='confirmée').length,icon:'✅',color:'var(--green)'},
         {label:'Terminées',val:appState.reservations.filter(r=>r.status==='terminée').length,icon:'🏁',color:'var(--gray-600)'},
       ].map(s=>`<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:16px 18px;">
@@ -4124,7 +4124,7 @@ function buildProfil(){
   const totalResa = appState.reservations.length;
   const totalFavs = appState.favorites.length;
   const totalAnns = appState.myAnnonces.length;
-  const totalDep  = appState.reservations.filter(r=>r.status!=='annulée').reduce((s,r)=>s+r.total,0);
+  const totalDep  = appState.reservations.filter(r=>r.status==='confirmée'||r.status==='terminée').reduce((s,r)=>s+r.total,0);
 
   // Edit mode state
   const editing = appState.profilEditing || false;
