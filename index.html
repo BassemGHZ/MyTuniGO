@@ -1797,13 +1797,19 @@ function buildHome(){
 }
 
 function hotelCardHTML(h){
+  const hasDiscount = h.discount>0;
+  const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : h.price;
   return `<div class="hotel-card" onclick="navigate('detail',{selectedHotelId:${h.id}})">
-    <div class="hc-img" style="background:linear-gradient(135deg,#e8f4ff,#cce0ff);overflow:hidden;">${photoOrEmoji(h)}</div>
+    <div class="hc-img" style="background:linear-gradient(135deg,#e8f4ff,#cce0ff);overflow:hidden;position:relative;">
+      ${photoOrEmoji(h)}
+      ${hasDiscount?`<div style="position:absolute;top:10px;left:0;background:linear-gradient(90deg,#d40000,#ff4444);color:#fff;font-size:12px;font-weight:800;padding:5px 14px 5px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🔥 -${h.discount}%</div>`:''}
+    </div>
     <div class="hc-body">
       <div class="hc-name">${h.name}</div>
       <div class="hc-loc">📍 ${h.city}, ${h.country}</div>
       <div class="hc-rating"><div class="r-badge">${h.rating}★</div><span class="r-count">${h.reviews.toLocaleString()} avis</span></div>
-      <div class="hc-price">${h.price}€<span style="font-size:13px;color:var(--gray-500);font-weight:400">/nuit</span></div>
+      ${hasDiscount?`<div style="font-size:13px;color:var(--gray-400);text-decoration:line-through;">${h.price}€</div>`:''}
+      <div class="hc-price" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€<span style="font-size:13px;color:var(--gray-500);font-weight:400">/nuit</span></div>
       ${h.freeCancellation?'<div class="hc-free">✓ Annulation gratuite</div>':''}
     </div>
   </div>`;
@@ -1917,6 +1923,11 @@ function photoOrEmoji(h){
     return `<img src="${h.photos[0]}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">`;
   }
   return h.emoji||'🏠';
+}
+
+// Prix réellement facturé (tient compte d'une promotion flash active).
+function effectivePrice(h){
+  return (h && h.discount>0) ? Math.round(h.price*(1-h.discount/100)) : (h?h.price:0);
 }
 
 function galleryHtml(h){
@@ -2136,8 +2147,13 @@ function buildResults(){
 }
 
 function resultCardHTML(h){
+  const hasDiscount = h.discount>0;
+  const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : h.price;
   return `<div class="result-card" onclick="navigate('detail',{selectedHotelId:${h.id}})" style="cursor:pointer;">
-    <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;">${photoOrEmoji(h)}</div>
+    <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;position:relative;">
+      ${photoOrEmoji(h)}
+      ${hasDiscount?`<div style="position:absolute;top:12px;left:0;background:linear-gradient(90deg,#d40000,#ff4444);color:#fff;font-size:13px;font-weight:800;padding:6px 16px 6px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🔥 OFFRE -${h.discount}%</div>`:''}
+    </div>
     <div class="rc-body">
       <div class="rc-info">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px;">
@@ -2154,12 +2170,15 @@ function resultCardHTML(h){
         <div class="rc-badges">
           ${h.freeCancellation?'<span class="badge-green">✓ Annulation gratuite</span>':''}
           ${h.payLater?'<span class="badge-green">✓ Payez sur place</span>':''}
-          ${h.discount>0?`<span style="font-size:12px;background:#fff0f0;color:var(--red);padding:2px 8px;border-radius:20px;font-weight:600;">-${h.discount}%</span>`:''}
         </div>
         <div>
-          <div class="rc-amount">${h.price}€</div>
+          ${hasDiscount?`<div style="display:flex;align-items:center;gap:7px;margin-bottom:1px;">
+            <span style="font-size:14px;color:var(--gray-400);text-decoration:line-through;">${h.price}€</span>
+            <span style="background:#d40000;color:#fff;font-size:11px;font-weight:800;padding:1px 7px;border-radius:10px;">-${h.discount}%</span>
+          </div>`:''}
+          <div class="rc-amount" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€</div>
           <div class="rc-excl">par nuit, taxes incluses</div>
-          <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})">Voir dispo</button>
+          <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})" style="${hasDiscount?'background:#d40000;':''}">Voir dispo</button>
         </div>
       </div>
     </div>
@@ -2346,7 +2365,7 @@ function buildDetail(){
       </div>
       <div>
         <div class="bk-box" id="bk-box">
-          <div class="bk-price">${h.price}€ <span>/ nuit</span></div>
+          <div class="bk-price">${h.discount>0?`<span style="font-size:16px;color:var(--gray-400);text-decoration:line-through;font-weight:400;">${h.price}€</span> <span style="color:#d40000;">${effectivePrice(h)}€</span>`:h.price+'€'} <span>/ nuit</span>${h.discount>0?` <span style="background:#d40000;color:#fff;font-size:12px;font-weight:800;padding:2px 8px;border-radius:10px;vertical-align:middle;">-${h.discount}%</span>`:''}</div>
           <!-- Custom date picker with blocked dates -->
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Arrivée</label>
@@ -2432,8 +2451,9 @@ function calcBkHTML(h){
   const n=calcNights();
   const rooms=parseInt(document.getElementById('bk-rooms')?.value||appState.rooms||1);
   if(n<=0)return `<div style="font-size:13px;color:var(--gray-500);text-align:center;padding:8px 0;">Sélectionnez vos dates pour voir le total</div>`;
-  const sub=h.price*n*rooms, taxes=Math.round(sub*.1), total=sub+taxes;
-  return `<div class="bk-row"><span>${h.price}€ × ${n} nuit${n>1?'s':''} × ${rooms} ch.</span><span>${sub}€</span></div>
+  const unitPrice = effectivePrice(h);
+  const sub=unitPrice*n*rooms, taxes=Math.round(sub*.1), total=sub+taxes;
+  return `<div class="bk-row"><span>${unitPrice}€ × ${n} nuit${n>1?'s':''} × ${rooms} ch.</span><span>${sub}€</span></div>
     <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
     <div class="bk-row total"><span>Total</span><span>${total}€</span></div>`;
 }
@@ -2582,7 +2602,8 @@ function buildConfirm(){
   if(!h){navigate('home');return document.createElement('div');}
   const nights=calcNights();
   const nights_calc=calcNights();
-  const total=nights_calc>0?h.price*nights_calc*(appState.rooms||1)+Math.round(h.price*nights_calc*(appState.rooms||1)*.1):h.price;
+  const unitPrice = effectivePrice(h);
+  const total=nights_calc>0?unitPrice*nights_calc*(appState.rooms||1)+Math.round(unitPrice*nights_calc*(appState.rooms||1)*.1):unitPrice;
   const canPayLater=h.payLater;
 
   const d=document.createElement('div');
@@ -7041,7 +7062,7 @@ async function submitBookingRequest(hId){
     return;
   }
   const nights = Math.max(1,Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
-  const total = h ? h.price*nights : 0;
+  const total = h ? effectivePrice(h)*nights : 0;
   const u = auth.currentUser;
   const guestName = (u.firstName+' '+u.lastName).trim();
   const ref = 'REQ-'+Math.random().toString(36).substr(2,6).toUpperCase();
