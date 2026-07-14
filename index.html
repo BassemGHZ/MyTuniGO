@@ -813,6 +813,7 @@ let appState = {
   myExcursions:[],
   mesAnnoncesTab:'logements',
   resultsView:'list',
+  resultsPage:1,
   excCalYear:null, excCalMonth:null,
   excBookingDate:null, excBookCalYear:null, excBookCalMonth:null,
   profilEditing:false,
@@ -935,6 +936,15 @@ function navigate(page, extra){
   if(extra) Object.assign(appState, extra);
   if(page !== 'annonce') appState.annoncePage = 0;
   appState.page = page;
+  if(page === 'home'){
+    // La page d'accueil repart toujours d'une recherche vierge, pour éviter
+    // qu'un ancien critère de recherche (ville, dates) reste collé sans
+    // que l'utilisateur s'en rende compte.
+    appState.searchDest = '';
+    appState.searchCheckIn = '';
+    appState.searchCheckOut = '';
+    appState.searchGuests = 2;
+  }
   window.scrollTo(0,0);
   if(page==='detail' && extra?.selectedHotelId){
     logAnnonceView(extra.selectedHotelId);
@@ -1829,10 +1839,11 @@ function doSearch(){
   appState.searchGuests=parseInt(document.getElementById('s-guests').value)||2;
   appState.filters={minPrice:0,maxPrice:410,minRating:0,types:[],amenities:[]};
   appState.sort='recommended';
+  appState.resultsPage=1;
   navigate('results');
 }
 
-function searchByDest(dest){appState.searchDest=dest;navigate('results');}
+function searchByDest(dest){appState.searchDest=dest;appState.resultsPage=1;navigate('results');}
 
 /* ===================== RESULTS ===================== */
 function getFiltered(){
@@ -1931,8 +1942,35 @@ function galleryHtml(h){
   `;
 }
 
+function paginationNumbers(current, total){
+  let pages = [];
+  if(total <= 7){
+    for(let i=1;i<=total;i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if(current > 3) pages.push('…');
+    for(let i=Math.max(2,current-1); i<=Math.min(total-1,current+1); i++) pages.push(i);
+    if(current < total-2) pages.push('…');
+    pages.push(total);
+  }
+  return pages;
+}
+
+function goToResultsPage(n){
+  appState.resultsPage = n;
+  refreshResults();
+  const el = document.querySelector('.results-list');
+  if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
 function buildResults(){
   const filtered = getFiltered();
+  const PAGE_SIZE = 12;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if(!appState.resultsPage || appState.resultsPage < 1) appState.resultsPage = 1;
+  if(appState.resultsPage > totalPages) appState.resultsPage = totalPages;
+  const pageStart = (appState.resultsPage-1)*PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageStart+PAGE_SIZE);
   const w=document.createElement('div');
   w.innerHTML=`
   <div class="breadcrumb">
@@ -2085,9 +2123,16 @@ function buildResults(){
       <div class="results-list">
         ${filtered.length===0
           ?`<div class="no-results"><div style="font-size:52px;margin-bottom:14px;">🔍</div><h3>Aucun résultat</h3><p>Modifiez vos critères ou explorez d'autres destinations.</p><button onclick="resetFilters()" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Réinitialiser les filtres</button></div>`
-          :filtered.map(h=>resultCardHTML(h)).join('')}
+          :pageItems.map(h=>resultCardHTML(h)).join('')}
       </div>
-      ${filtered.length>0?`<div class="pagination"><button class="pg-btn active">1</button><button class="pg-btn">2</button><button class="pg-btn">3</button><button class="pg-btn" style="width:auto;padding:0 12px;">›</button></div>`:''}
+      ${filtered.length>0 && totalPages>1 ? `<div class="pagination">
+        <button class="pg-btn" onclick="goToResultsPage(${appState.resultsPage-1})" ${appState.resultsPage<=1?'disabled style="opacity:.35;cursor:not-allowed;"':''}>‹</button>
+        ${paginationNumbers(appState.resultsPage, totalPages).map(p=>
+          p==='…' ? '<span style="padding:0 4px;color:var(--gray-400);">…</span>'
+          : `<button class="pg-btn ${p===appState.resultsPage?'active':''}" onclick="goToResultsPage(${p})">${p}</button>`
+        ).join('')}
+        <button class="pg-btn" onclick="goToResultsPage(${appState.resultsPage+1})" ${appState.resultsPage>=totalPages?'disabled style="opacity:.35;cursor:not-allowed;"':''} style="width:auto;padding:0 12px;">›</button>
+      </div>` : ''}
     </div>
   </div>`;
   return w;
@@ -2131,6 +2176,7 @@ function resultCardHTML(h){
 function priceMin(v, skipRefresh){
   v = Math.max(0, Math.min(+v, (appState.filters.maxPrice||410) - 5));
   appState.filters.minPrice = v;
+  appState.resultsPage = 1;
   const f = document.getElementById('pr-min');
   if(f) f.value = v;
   priceDrawThumbs();
@@ -2140,6 +2186,7 @@ function priceMin(v, skipRefresh){
 function priceMax(v, skipRefresh){
   v = Math.min(410, Math.max(+v, (appState.filters.minPrice||0) + 5));
   appState.filters.maxPrice = v;
+  appState.resultsPage = 1;
   const f = document.getElementById('pr-max');
   if(f) f.value = v;
   priceDrawThumbs();
@@ -2163,8 +2210,8 @@ function updatePriceF(v){
 
 
 
-function updateRatingF(v){appState.filters.minRating=v;refreshResults();}
-function toggleTypeF(t,c){if(c){if(!appState.filters.types.includes(t))appState.filters.types.push(t);}else{appState.filters.types=appState.filters.types.filter(x=>x!==t);}refreshResults();}
+function updateRatingF(v){appState.filters.minRating=v;appState.resultsPage=1;refreshResults();}
+function toggleTypeF(t,c){if(c){if(!appState.filters.types.includes(t))appState.filters.types.push(t);}else{appState.filters.types=appState.filters.types.filter(x=>x!==t);}appState.resultsPage=1;refreshResults();}
 
 function toggleFilterExpand(section){
   if(!appState.filterExpanded) appState.filterExpanded = {types:false,amenities:false,ratings:false};
@@ -2182,9 +2229,10 @@ function toggleFilter(section){
   el.style.display = collapsed ? 'block' : 'none';
   if(arrow) arrow.style.transform = collapsed ? '' : 'rotate(-90deg)';
 }
-function toggleAmenF(a,c){if(c)appState.filters.amenities.push(a);else appState.filters.amenities=appState.filters.amenities.filter(x=>x!==a);refreshResults();}
-function updateSort(v){appState.sort=v;refreshResults();}
+function toggleAmenF(a,c){if(c)appState.filters.amenities.push(a);else appState.filters.amenities=appState.filters.amenities.filter(x=>x!==a);appState.resultsPage=1;refreshResults();}
+function updateSort(v){appState.sort=v;appState.resultsPage=1;refreshResults();}
 function resetFilters(){
+  appState.resultsPage=1;
   appState.filters = {minPrice:0, maxPrice:410, minRating:0, types:[], amenities:[]};
   appState.filterExpanded = {types:false, amenities:false, ratings:false};
   // Reset input fields
