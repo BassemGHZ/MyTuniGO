@@ -5761,6 +5761,11 @@ async function applyPromo(annonceId){
   document.getElementById('modal-root').innerHTML = '';
   showToast('🔥 Offre de dernière minute activée ! -'+pct+'%','#d40000');
 
+  // Met à jour immédiatement la copie en mémoire (hotels[]) pour que la
+  // promo soit visible sans avoir à recharger toute la page.
+  const hEntry = hotels.find(x=>x.annonceId===annonceId);
+  if(hEntry) hEntry.discount = pct;
+
   // Email de confirmation à l'hôte lui-même
   try{
     if(auth.currentUser?.email){
@@ -5802,6 +5807,9 @@ async function removePromo(annonceId){
   }
   document.getElementById('modal-root').innerHTML = '';
   showToast('Promotion retirée','var(--gray-700)');
+
+  const hEntry = hotels.find(x=>x.annonceId===annonceId);
+  if(hEntry) hEntry.discount = 0;
   navigate('mesannonces');
 }
 
