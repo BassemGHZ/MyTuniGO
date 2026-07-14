@@ -926,7 +926,12 @@ document.addEventListener('click', function(e){
   if(el4){ excBookCalNav(parseInt(el4.dataset.excbokcalnav), el4.dataset.excid); e.stopPropagation(); }
 });
 
+const NAV_ID_KEYS = ['selectedHotelId','selectedAnnonceId','selectedConvId','selectedExcursionId','selectedHostId'];
+
 function navigate(page, extra){
+  const prevPage = appState.page;
+  const prevIds = NAV_ID_KEYS.map(k=>appState[k]);
+
   if(extra) Object.assign(appState, extra);
   if(page !== 'annonce') appState.annoncePage = 0;
   appState.page = page;
@@ -934,8 +939,32 @@ function navigate(page, extra){
   if(page==='detail' && extra?.selectedHotelId){
     logAnnonceView(extra.selectedHotelId);
   }
+
+  // Historique navigateur : une nouvelle page ou un nouvel élément consulté
+  // crée une entrée d'historique (bouton Retour fonctionnel). Un simple
+  // changement d'onglet/filtre sur la MÊME page remplace l'entrée en cours,
+  // pour ne pas polluer l'historique avec des micro-changements.
+  const newIds = NAV_ID_KEYS.map(k=>appState[k]);
+  const samePlace = page===prevPage && NAV_ID_KEYS.every((k,i)=>prevIds[i]===newIds[i]);
+  const histState = { page, ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) };
+  try{
+    if(samePlace) history.replaceState(histState, '', '#'+page);
+    else history.pushState(histState, '', '#'+page);
+  }catch(e){ /* ignore (ex: sandbox sans accès à l'historique) */ }
+
   render();
 }
+
+window.addEventListener('popstate', function(e){
+  if(e.state){
+    if(e.state.ids) Object.assign(appState, e.state.ids);
+    appState.page = e.state.page || 'home';
+  } else {
+    appState.page = 'home';
+  }
+  window.scrollTo(0,0);
+  render();
+});
 
 async function logAnnonceView(hId){
   const h = hotels.find(x=>x.id===hId);
@@ -8810,6 +8839,15 @@ _sb.auth.onAuthStateChange((event, session) => {
     });
   }
 })();
+
+// Première entrée d'historique (page d'accueil), pour que le bouton
+// Retour du navigateur ait un point de départ valide dès le premier clic.
+try{
+  history.replaceState(
+    { page: appState.page, ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
+    '', '#'+appState.page
+  );
+}catch(e){}
 
 render();
 
