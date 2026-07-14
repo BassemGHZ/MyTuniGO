@@ -3643,6 +3643,27 @@ async function cancelReservation(dbId){
 }
 
 /* ===================== FAVORIS PAGE ===================== */
+async function activatePriceAlerts(){
+  if(!auth.currentUser){openModal('login');return;}
+  const favHotels = hotels.filter(h=>appState.favorites.includes(h.id) && h.annonceId);
+  if(favHotels.length===0){
+    showToast('Ajoutez des favoris parmi les vraies annonces pour activer les alertes.','var(--red)');
+    return;
+  }
+  const rows = favHotels.map(h=>({
+    user_id: auth.currentUser.id,
+    annonce_id: h.annonceId,
+    tracked_price: h.price
+  }));
+  const { error } = await _sb.from('price_alerts').upsert(rows, { onConflict: 'user_id,annonce_id', ignoreDuplicates: true });
+  if(error){
+    console.error('activatePriceAlerts error:', error.message);
+    showToast('Erreur : '+error.message,'var(--red)');
+    return;
+  }
+  showToast('🔔 Alertes de prix activées pour '+favHotels.length+' favori'+(favHotels.length>1?'s':'')+' !','var(--green)');
+}
+
 function buildFavoris(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
   const favHotels=hotels.filter(h=>appState.favorites.includes(h.id));
@@ -3702,7 +3723,7 @@ function buildFavoris(){
         <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">💡 Activez les alertes de prix</div>
         <div style="font-size:13px;color:rgba(255,255,255,.8);">Soyez notifié quand le prix de vos favoris baisse.</div>
       </div>
-      <button style="background:var(--yellow);color:var(--gray-900);padding:9px 20px;border-radius:var(--r-md);font-size:14px;font-weight:800;border:none;cursor:pointer;">Activer les alertes</button>
+      <button onclick="activatePriceAlerts()" style="background:var(--yellow);color:var(--gray-900);padding:9px 20px;border-radius:var(--r-md);font-size:14px;font-weight:800;border:none;cursor:pointer;">Activer les alertes</button>
     </div>
     `}
   </div>`;
