@@ -7120,11 +7120,13 @@ async function applyDatePromo(){
   if(!annId){ showToast('Aucune annonce sélectionnée','var(--red)'); return; }
   const dates = [..._calPromoSelection];
 
+  let action = '';
   if(pct<=0){
     const { error } = await _sb.from('date_discounts').delete().eq('annonce_id', annId).in('date', dates);
     if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
     dates.forEach(d=>delete _hostCalPromoMap[d]);
     showToast('Promotion retirée sur '+dates.length+' date'+(dates.length>1?'s':''),'var(--gray-700)');
+    action = 'removed';
   } else {
     if(pct>90){ showToast('Réduction maximum : 90%','var(--red)'); return; }
     const rows = dates.map(d=>({ annonce_id: annId, date: d, discount_percent: pct }));
@@ -7132,7 +7134,34 @@ async function applyDatePromo(){
     if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
     dates.forEach(d=>_hostCalPromoMap[d]=pct);
     showToast('🏷️ Promotion -'+pct+'% appliquée sur '+dates.length+' date'+(dates.length>1?'s':''),'#ea580c');
+    action = 'applied';
   }
+
+  // Email récapitulatif à l'hôte
+  try{
+    if(auth.currentUser?.email){
+      const annonceRow = appState.myAnnonces.find(a=>a.id===annId);
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-price-drop', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({
+          type: 'date_promo_activated',
+          recipient_email: auth.currentUser.email,
+          guest_name: auth.currentUser.firstName || 'vous',
+          property_name: annonceRow?.name || 'votre hébergement',
+          discount_percent: pct,
+          dates: dates.sort(),
+          action
+        })
+      });
+    }
+  } catch(efErr){
+    console.error('notify-price-drop (date promo) error:', efErr.message);
+  }
+
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
   refreshHostCalendarLight();
