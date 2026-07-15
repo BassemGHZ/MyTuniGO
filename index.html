@@ -7456,11 +7456,14 @@ async function initBlockedDatesPicker(hId){
 
   function refresh(){
     const months = getCalMonths();
+    const hasDatePromo = Object.keys(appState._bkDatePromos||{}).length>0;
     miniCal.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:8px;">📅 Cliquez pour choisir vos dates</div>'
+      + (hasDatePromo?'<div style="background:#fdead9;border:1px solid #ea580c;border-radius:var(--r-sm);padding:8px 12px;margin-bottom:10px;font-size:12px;color:#ea580c;font-weight:700;">🏷️ Certaines dates sont en promotion — repérez-les en orange ci-dessous !</div>':'')
       + months.map(({year,month})=>renderBookingMonth(year, month, unavailable, today)).join('')
       + '<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">'
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;display:inline-block;"></span>Disponible</span>'
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#ffdddd;border:1px solid #ffaaaa;display:inline-block;"></span>Indisponible</span>'
+      + (hasDatePromo?'<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#fdead9;border:1px solid #ea580c;display:inline-block;"></span>Promotion</span>':'')
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:var(--blue);display:inline-block;"></span>Votre séjour sélectionné</span>'
       + '</div>';
   }
@@ -7500,16 +7503,20 @@ function renderBookingMonth(year, month, unavailable, today){
     const isCi = ds===ci, isCo = ds===co;
     const inRange = ci && co && ds>ci && ds<co;
     const clickable = !isUnavail && !isPast;
+    const promoPct = (appState._bkDatePromos||{})[ds];
     let bg='#e8f9f0', border='1px solid #6bcf9e', color='var(--gray-700)';
     if(isPast){ bg='#f5f5f5'; border='1px solid #eeeeee'; color='#cccccc'; }
     else if(isUnavail){ bg='#ffdddd'; border='1px solid #ffaaaa'; color='#cc0000'; }
+    else if(promoPct){ bg='#fdead9'; border='1px solid #ea580c'; color='#ea580c'; }
     if(isCi||isCo){ bg='var(--blue)'; border='1px solid var(--blue)'; color='#fff'; }
     else if(inRange){ bg='#cce0ff'; border='1px solid #99c2ff'; color='var(--blue)'; }
     const fw = ds===todayStr ? '800':'500';
     html += '<div '+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
-      +'text-align:center;padding:5px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;"'
+      +'text-align:center;padding:5px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;position:relative;"'
       +(clickable?' onmouseover="this.style.transform=\'scale(1.1)\'" onmouseout="this.style.transform=\'\'"':'')
-      +'>'+(isUnavail&&!isCi&&!isCo?'<s>'+day+'</s>':day)+'</div>';
+      +'>'+(isUnavail&&!isCi&&!isCo?'<s>'+day+'</s>':day)
+      +(promoPct&&!isCi&&!isCo?'<div style="font-size:6px;font-weight:800;line-height:1;">-'+promoPct+'%</div>':'')
+      +'</div>';
   }
   html += '</div></div>';
   return html;
