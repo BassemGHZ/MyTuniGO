@@ -1864,6 +1864,8 @@ function getFiltered(){
       if(!tMatch) return false;
     }
     if(appState.filters.amenities.length>0 && !appState.filters.amenities.every(a=>h.features.includes(a))) return false;
+    // Exclut les logements dont la capacité est inférieure au nombre de voyageurs recherché
+    if(appState.searchGuests && (h.capacity||99) < appState.searchGuests) return false;
     // Exclut les annonces déjà réservées (confirmée/en attente) sur les dates recherchées
     if(appState.searchCheckIn && appState.searchCheckOut && h.annonceId
        && (appState._resultsUnavailableAnnonceIds||new Set()).has(h.annonceId)) return false;
@@ -6637,6 +6639,7 @@ async function loadBookingRequests(container){
       propertyEmoji: annMap[r.logement_id]?.emoji || '🏨',
       guestName, guestAvatar: guestName.slice(0,2).toUpperCase(),
       checkIn: r.check_in, checkOut: r.check_out,
+      guestsCount: r.guests_count || 1,
       total: r.total||0, message: r.notes||'',
       status: r.status // 'en attente' | 'confirmée' | 'refusée'
     };
@@ -6690,6 +6693,7 @@ async function loadBookingRequests(container){
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Arrivée</div><div style="font-size:13px;font-weight:600;">${ci}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Départ</div><div style="font-size:13px;font-weight:600;">${co}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Durée</div><div style="font-size:13px;font-weight:600;">${nights} nuit${nights>1?'s':''}</div></div>
+                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Voyageurs</div><div style="font-size:13px;font-weight:600;">👥 ${req.guestsCount}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
               </div>
               ${req.message?`<div style="background:#f9f9ff;border-left:3px solid var(--blue-l);padding:10px 14px;border-radius:0 var(--r-md) var(--r-md) 0;font-size:13px;color:var(--gray-700);font-style:italic;line-height:1.6;">"${req.message}"</div>`:''}
@@ -9063,6 +9067,8 @@ async function loadPublishedAnnonces(){
         country: a.country || 'Tunisie',
         type: a.type_label || a.type || 'Hébergement',
         stars: a.stars || 3,
+        capacity: a.capacity || 2,
+        rooms: a.rooms || 1,
         rating: 0,
         ratingLabel: 'Nouveau',
         reviews: 0,
