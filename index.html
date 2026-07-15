@@ -2847,7 +2847,7 @@ async function payOnSite(hId, total){
     const propertyName = ann?.name || h.name;
     const payload = {
       property_name: propertyName,
-      guest_name: name,
+      guest_name: name.trim().split(' ')[0] || name,
       check_in: appState.checkIn, check_out: appState.checkOut,
       guests_count: guestsCount, total, message: notes
     };
@@ -6829,7 +6829,7 @@ function buildHostCalendar(){
     <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:16px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
       <div style="flex:1;min-width:160px;">
         <span id="promo-selection-bar" style="font-size:14px;font-weight:700;color:var(--gray-800);">${_calPromoSelection.size} date(s) sélectionnée(s)</span>
-        <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez sur des dates disponibles ci-dessous pour les ajouter/retirer de la sélection.</div>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez une date de <strong>début</strong>, puis une date de <strong>fin</strong> pour sélectionner toute la période (ou une seule date pour la cibler seule).</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <input type="number" id="promo-date-pct" min="1" max="90" value="30" style="width:70px;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;text-align:center;">
@@ -7042,25 +7042,45 @@ function navCalendar(dir){
 function setCalMode(mode){
   _calMode = mode;
   _calPromoSelection = new Set();
+  _calPromoRangeStart = null;
   navigate('host-calendar');
 }
 
+let _calPromoRangeStart = null;
+
 function togglePromoSelection(dateStr){
-  if(_calPromoSelection.has(dateStr)) _calPromoSelection.delete(dateStr);
-  else _calPromoSelection.add(dateStr);
-  const cell = document.querySelector('[data-date="'+dateStr+'"]');
-  if(cell) cell.style.boxShadow = _calPromoSelection.has(dateStr) ? 'inset 0 0 0 3px var(--blue)' : 'none';
-  const bar = document.getElementById('promo-selection-bar');
-  if(bar) bar.textContent = _calPromoSelection.size+' date(s) sélectionnée(s)';
-  const applyBtn = document.getElementById('promo-apply-btn');
-  if(applyBtn){
-    applyBtn.disabled = _calPromoSelection.size===0;
-    applyBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
+  if(!_calPromoRangeStart){
+    // Premier clic : démarre une nouvelle sélection à cette date
+    _calPromoRangeStart = dateStr;
+    _calPromoSelection = new Set([dateStr]);
+  } else {
+    const start = _calPromoRangeStart;
+    if(dateStr === start){
+      // Reclic sur la même date : confirme cette date seule et referme la sélection
+      _calPromoRangeStart = null;
+    } else {
+      // Deuxième clic : sélectionne toute la plage entre les deux dates
+      const from = start < dateStr ? start : dateStr;
+      const to   = start < dateStr ? dateStr : start;
+      const cal = getCalForAnnonce(_hostCalAnnonceId || 'ANN-K7L8M9N0');
+      const sel = new Set();
+      let d = new Date(from);
+      const end = new Date(to);
+      while(d <= end){
+        const ds = d.toISOString().split('T')[0];
+        if(!_hostCalReservedSet.has(ds) && !cal.blocked.includes(ds)) sel.add(ds);
+        d.setDate(d.getDate()+1);
+      }
+      _calPromoSelection = sel;
+      _calPromoRangeStart = null; // prêt pour une nouvelle sélection au prochain clic
+    }
   }
+  navigate('host-calendar');
 }
 
 function cancelPromoSelection(){
   _calPromoSelection = new Set();
+  _calPromoRangeStart = null;
   navigate('host-calendar');
 }
 
@@ -7085,6 +7105,7 @@ async function applyDatePromo(){
     showToast('🏷️ Promotion -'+pct+'% appliquée sur '+dates.length+' date'+(dates.length>1?'s':''),'#d40000');
   }
   _calPromoSelection = new Set();
+  _calPromoRangeStart = null;
   navigate('host-calendar');
 }
 
