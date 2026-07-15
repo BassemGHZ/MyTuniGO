@@ -1958,6 +1958,27 @@ function effectivePrice(h){
   return (h && h.discount>0) ? Math.round(h.price*(1-h.discount/100)) : (h?h.price:0);
 }
 
+// Calcule le total d'un séjour nuit par nuit : une promotion sur une date
+// précise (date_discounts) prévaut sur la promo globale de l'annonce pour
+// cette nuit-là ; les autres nuits utilisent la promo globale si active,
+// sinon le plein tarif.
+function computeNightlyTotal(h, checkIn, checkOut, rooms){
+  rooms = rooms||1;
+  if(!h || !checkIn || !checkOut) return 0;
+  const promos = appState._bkDatePromos || {};
+  let total = 0;
+  let d = new Date(checkIn);
+  const end = new Date(checkOut);
+  while(d < end){
+    const ds = d.toISOString().split('T')[0];
+    const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
+    const nightPrice = pct>0 ? Math.round(h.price*(1-pct/100)) : h.price;
+    total += nightPrice;
+    d.setDate(d.getDate()+1);
+  }
+  return total*rooms;
+}
+
 function galleryHtml(h){
   if(h.photos && h.photos.length && typeof h.photos[0]==='string' && h.photos[0].startsWith('http')){
     const thumbBgs = ['#fff4e0,#ffe0a0','#e0ffe8,#a0f0b8','#f0e8ff,#d4b0f8','#ffe8e8,#f8c0c0'];
@@ -2482,12 +2503,15 @@ function calcNights(){
 }
 
 function calcBkHTML(h){
+  const ci = document.getElementById('bk-ci')?.value || appState.checkIn;
+  const co = document.getElementById('bk-co')?.value || appState.checkOut;
   const n=calcNights();
   const rooms=parseInt(document.getElementById('bk-rooms')?.value||appState.rooms||1);
   if(n<=0)return `<div style="font-size:13px;color:var(--gray-500);text-align:center;padding:8px 0;">Sélectionnez vos dates pour voir le total</div>`;
-  const unitPrice = effectivePrice(h);
-  const sub=unitPrice*n*rooms, taxes=Math.round(sub*.1), total=sub+taxes;
-  return `<div class="bk-row"><span>${unitPrice}€ × ${n} nuit${n>1?'s':''} × ${rooms} ch.</span><span>${sub}€</span></div>
+  const sub = computeNightlyTotal(h, ci, co, rooms);
+  const avgUnit = Math.round(sub/(n*rooms));
+  const taxes=Math.round(sub*.1), total=sub+taxes;
+  return `<div class="bk-row"><span>${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.</span><span>${sub}€</span></div>
     <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
     <div class="bk-row total"><span>Total</span><span>${total}€</span></div>`;
 }
@@ -2636,8 +2660,8 @@ function buildConfirm(){
   if(!h){navigate('home');return document.createElement('div');}
   const nights=calcNights();
   const nights_calc=calcNights();
-  const unitPrice = effectivePrice(h);
-  const total=nights_calc>0?unitPrice*nights_calc*(appState.rooms||1)+Math.round(unitPrice*nights_calc*(appState.rooms||1)*.1):unitPrice;
+  const sub = computeNightlyTotal(h, appState.checkIn, appState.checkOut, appState.rooms||1);
+  const total = sub>0 ? sub+Math.round(sub*.1) : effectivePrice(h);
   const canPayLater=h.payLater;
 
   const d=document.createElement('div');
@@ -6769,6 +6793,9 @@ async function handleBookingRequest(reqId, decision, hostMessage){
 ══════════════════════════════════════════════════════════════════ */
 let _hostCalReservedSet = new Set();
 let _hostCalAnnonceId = null;
+let _hostCalPromoMap = {}; // date -> discount_percent (promotions par date précise)
+let _calMode = 'block'; // 'block' | 'promo'
+let _calPromoSelection = new Set();
 
 function buildHostCalendar(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
@@ -6790,7 +6817,31 @@ function buildHostCalendar(){
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('mesannonces')">Mes annonces</span><span class="bc-sep">›</span><span>Calendrier</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">📅 Calendrier de disponibilité</h1>
-    <p style="font-size:15px;color:var(--gray-500);margin-bottom:20px;">Cliquez sur une date pour la bloquer ou la débloquer.</p>
+    <p style="font-size:15px;color:var(--gray-500);margin-bottom:16px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':'Sélectionnez une ou plusieurs dates, puis appliquez une réduction précise.'}</p>
+
+    <!-- Sélecteur de mode -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <button onclick="setCalMode('block')" style="flex:1;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid ${_calMode==='block'?'var(--blue)':'var(--gray-300)'};background:${_calMode==='block'?'var(--blue)':'#fff'};color:${_calMode==='block'?'#fff':'var(--gray-700)'};">🔒 Bloquer / débloquer</button>
+      <button onclick="setCalMode('promo')" style="flex:1;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid ${_calMode==='promo'?'#d40000':'var(--gray-300)'};background:${_calMode==='promo'?'#d40000':'#fff'};color:${_calMode==='promo'?'#fff':'var(--gray-700)'};">🏷️ Promotion par date</button>
+    </div>
+
+    ${_calMode==='promo' ? `
+    <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:16px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:160px;">
+        <span id="promo-selection-bar" style="font-size:14px;font-weight:700;color:var(--gray-800);">${_calPromoSelection.size} date(s) sélectionnée(s)</span>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez sur des dates disponibles ci-dessous pour les ajouter/retirer de la sélection.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="number" id="promo-date-pct" min="1" max="90" value="30" style="width:70px;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;text-align:center;">
+        <span style="font-size:14px;font-weight:700;color:var(--gray-600);">%</span>
+      </div>
+      <button id="promo-apply-btn" onclick="applyDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:#d40000;color:#fff;padding:10px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;opacity:${_calPromoSelection.size===0?'.5':'1'};">Appliquer</button>
+      <button onclick="cancelPromoSelection()" style="background:#fff;color:var(--gray-600);padding:10px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">Annuler la sélection</button>
+    </div>
+    <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);">
+      💡 Astuce : entrez <strong>0%</strong> puis "Appliquer" sur des dates déjà en promo pour retirer leur réduction.
+    </div>
+    ` : ''}
 
     ${annonce ? `
     <!-- Fiche du bien concerné -->
@@ -6830,6 +6881,7 @@ function buildHostCalendar(){
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;"></div>Disponible (clic pour bloquer)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--red);"></div>Réservé (non modifiable)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--gray-400);"></div>Bloqué par vous (clic pour débloquer)</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#d40000;"></div>Promotion active</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#fff;border:2px solid var(--blue);"></div>Aujourd'hui</div>
         </div>
       </div>
@@ -6856,6 +6908,11 @@ function buildHostCalendar(){
     if(annId !== _hostCalAnnonceId){
       _hostCalAnnonceId = annId;
       _hostCalReservedSet = annId ? new Set(await loadReservedDatesForAnnonce(annId)) : new Set();
+      _hostCalPromoMap = {};
+      if(annId){
+        const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', annId);
+        (promoRows||[]).forEach(r=>{ _hostCalPromoMap[r.date] = r.discount_percent; });
+      }
     }
     renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
     updateCalStats(cal, daysInMonth);
@@ -6884,13 +6941,16 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     const isToday   = dateStr === today;
     const isPast    = dateStr < today;
     const price     = cal.priceOverrides[dateStr];
-    const clickable = !isPast && !isReserved;
+    const promoPct  = _hostCalPromoMap[dateStr];
+    const isSelected = _calMode==='promo' && _calPromoSelection.has(dateStr);
+    const clickable = !isPast && !isReserved && (_calMode==='block' || !isBlocked);
 
     const cell = document.createElement('div');
     let bg, color, border;
     if(isPast){ bg='var(--gray-100)'; color='var(--gray-300)'; border='1px solid var(--gray-100)'; }
     else if(isReserved){ bg='var(--red)'; color='#fff'; border='1px solid var(--red)'; }
     else if(isBlocked){ bg='var(--gray-400)'; color='#fff'; border='1px solid var(--gray-400)'; }
+    else if(promoPct){ bg='#d40000'; color='#fff'; border='1px solid #d40000'; }
     else { bg='#e8f9f0'; color='var(--gray-900)'; border='1px solid #6bcf9e'; }
 
     cell.style.cssText =
@@ -6898,6 +6958,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
       ';transition:background .15s,transform .1s;'+
       'background:'+bg+';color:'+color+';'+
       'border:'+(isToday?'2px solid var(--blue)':border)+';'+
+      'box-shadow:'+(isSelected?'inset 0 0 0 3px var(--blue)':'none')+';'+
       'cursor:'+(clickable?'pointer':'not-allowed')+';';
 
     cell.textContent = day;
@@ -6905,7 +6966,12 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     if(isReserved) cell.classList.add('cal-reserved');
     cell.dataset.date = dateStr;
 
-    if(price){
+    if(promoPct){
+      const pctEl = document.createElement('div');
+      pctEl.style.cssText = 'font-size:9px;color:#fff;font-weight:800;margin-top:1px;';
+      pctEl.textContent = '-'+promoPct+'%';
+      cell.appendChild(pctEl);
+    } else if(price){
       const priceEl = document.createElement('div');
       priceEl.style.cssText = 'font-size:9px;color:'+((isBlocked||isReserved)?'#fff':'var(--blue)')+';font-weight:700;margin-top:2px;';
       priceEl.textContent = price+'€';
@@ -6914,18 +6980,23 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
 
     if(clickable){
       cell.addEventListener('click', function(){
-        toggleBlockDay(this.dataset.date);
+        if(_calMode==='promo') togglePromoSelection(this.dataset.date);
+        else toggleBlockDay(this.dataset.date);
       });
-      cell.addEventListener('mouseenter', function(){
-        if(!this.classList.contains('cal-blocked'))
-          this.style.background='#c8f0d8';
-      });
-      cell.addEventListener('mouseleave', function(){
-        if(!this.classList.contains('cal-blocked'))
-          this.style.background='#e8f9f0';
-      });
+      if(_calMode==='block'){
+        cell.addEventListener('mouseenter', function(){
+          if(!this.classList.contains('cal-blocked'))
+            this.style.background='#c8f0d8';
+        });
+        cell.addEventListener('mouseleave', function(){
+          if(!this.classList.contains('cal-blocked'))
+            this.style.background=promoPct?'#d40000':'#e8f9f0';
+        });
+      }
     } else if(isReserved){
       cell.title = 'Date réservée — non modifiable';
+    } else if(isBlocked && _calMode==='promo'){
+      cell.title = 'Date bloquée — débloquez-la avant d\'y appliquer une promotion';
     }
 
     grid.appendChild(cell);
@@ -6966,6 +7037,55 @@ function navCalendar(dir){
   updateCalStats(cal, daysInMonth);
   // Fallback: if label not found, full re-render
   if(!document.getElementById('cal-grid')) navigate('host-calendar');
+}
+
+function setCalMode(mode){
+  _calMode = mode;
+  _calPromoSelection = new Set();
+  navigate('host-calendar');
+}
+
+function togglePromoSelection(dateStr){
+  if(_calPromoSelection.has(dateStr)) _calPromoSelection.delete(dateStr);
+  else _calPromoSelection.add(dateStr);
+  const cell = document.querySelector('[data-date="'+dateStr+'"]');
+  if(cell) cell.style.boxShadow = _calPromoSelection.has(dateStr) ? 'inset 0 0 0 3px var(--blue)' : 'none';
+  const bar = document.getElementById('promo-selection-bar');
+  if(bar) bar.textContent = _calPromoSelection.size+' date(s) sélectionnée(s)';
+  const applyBtn = document.getElementById('promo-apply-btn');
+  if(applyBtn){
+    applyBtn.disabled = _calPromoSelection.size===0;
+    applyBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
+  }
+}
+
+function cancelPromoSelection(){
+  _calPromoSelection = new Set();
+  navigate('host-calendar');
+}
+
+async function applyDatePromo(){
+  if(_calPromoSelection.size===0){ showToast('Sélectionnez au moins une date','var(--red)'); return; }
+  const pct = parseInt(document.getElementById('promo-date-pct')?.value||0);
+  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id);
+  if(!annId){ showToast('Aucune annonce sélectionnée','var(--red)'); return; }
+  const dates = [..._calPromoSelection];
+
+  if(pct<=0){
+    const { error } = await _sb.from('date_discounts').delete().eq('annonce_id', annId).in('date', dates);
+    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+    dates.forEach(d=>delete _hostCalPromoMap[d]);
+    showToast('Promotion retirée sur '+dates.length+' date'+(dates.length>1?'s':''),'var(--gray-700)');
+  } else {
+    if(pct>90){ showToast('Réduction maximum : 90%','var(--red)'); return; }
+    const rows = dates.map(d=>({ annonce_id: annId, date: d, discount_percent: pct }));
+    const { error } = await _sb.from('date_discounts').upsert(rows, { onConflict: 'annonce_id,date' });
+    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+    dates.forEach(d=>_hostCalPromoMap[d]=pct);
+    showToast('🏷️ Promotion -'+pct+'% appliquée sur '+dates.length+' date'+(dates.length>1?'s':''),'#d40000');
+  }
+  _calPromoSelection = new Set();
+  navigate('host-calendar');
 }
 
 function toggleBlockDay(dateStr){
@@ -7098,7 +7218,7 @@ async function submitBookingRequest(hId){
     return;
   }
   const nights = Math.max(1,Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
-  const total = h ? effectivePrice(h)*nights : 0;
+  const total = h ? computeNightlyTotal(h, checkIn, checkOut, 1) : 0;
   const u = auth.currentUser;
   const guestName = u.firstName || 'Voyageur';
   const ref = 'REQ-'+Math.random().toString(36).substr(2,6).toUpperCase();
@@ -7224,6 +7344,13 @@ async function initBlockedDatesPicker(hId){
   const unavailable = new Set([...localBlocked, ...reserved]);
   appState._bkUnavailable = unavailable;
   appState._bkHotelId = hId;
+
+  // Promotions par date précise (en plus de la promo globale h.discount)
+  appState._bkDatePromos = {};
+  if(h.annonceId){
+    const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', h.annonceId);
+    (promoRows||[]).forEach(r=>{ appState._bkDatePromos[r.date] = r.discount_percent; });
+  }
 
   miniCal.style.display = 'block';
   const today = new Date();
