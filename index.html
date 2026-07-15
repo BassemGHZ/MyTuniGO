@@ -6905,21 +6905,27 @@ function buildHostCalendar(){
     </div>
   </div>`;
 
-  // Build grid and stats AFTER innerHTML is set, using real DOM elements
-  (async ()=>{
-    const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || null;
-    if(annId !== _hostCalAnnonceId){
-      _hostCalAnnonceId = annId;
-      _hostCalReservedSet = annId ? new Set(await loadReservedDatesForAnnonce(annId)) : new Set();
-      _hostCalPromoMap = {};
-      if(annId){
-        const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', annId);
-        (promoRows||[]).forEach(r=>{ _hostCalPromoMap[r.date] = r.discount_percent; });
-      }
-    }
+  // Si les données de cette annonce sont déjà en cache, on peuple la grille
+  // TOUT DE SUITE (synchrone) pour éviter un aller-retour async inutile qui
+  // laisse la grille vide un instant (effet de "pliage" du calendrier).
+  // On ne passe par l'async que la toute première fois pour une annonce donnée.
+  const _annIdNow = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || null;
+  if(_annIdNow === _hostCalAnnonceId){
     renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
     updateCalStats(cal, daysInMonth);
-  })();
+  } else {
+    (async ()=>{
+      _hostCalAnnonceId = _annIdNow;
+      _hostCalReservedSet = _annIdNow ? new Set(await loadReservedDatesForAnnonce(_annIdNow)) : new Set();
+      _hostCalPromoMap = {};
+      if(_annIdNow){
+        const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', _annIdNow);
+        (promoRows||[]).forEach(r=>{ _hostCalPromoMap[r.date] = r.discount_percent; });
+      }
+      renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
+      updateCalStats(cal, daysInMonth);
+    })();
+  }
 
   return d;
 }
@@ -7042,6 +7048,26 @@ function navCalendar(dir){
   if(!document.getElementById('cal-grid')) navigate('host-calendar');
 }
 
+// Rafraîchit uniquement la grille du calendrier + la barre de sélection,
+// sans reconstruire toute la page (en-tête, pied de page...) — évite tout
+// effet de clignotement/pliage lors d'un simple clic sur une date.
+function refreshHostCalendarLight(){
+  const {year,month} = appState.calendarView;
+  const cal = getCalForAnnonce(_hostCalAnnonceId || 'ANN-K7L8M9N0');
+  const firstDay = new Date(year,month-1,1).getDay();
+  const daysInMonth = new Date(year,month,0).getDate();
+  const today = new Date().toISOString().split('T')[0];
+  renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
+  updateCalStats(cal, daysInMonth);
+  const bar = document.getElementById('promo-selection-bar');
+  if(bar) bar.textContent = _calPromoSelection.size+' date(s) sélectionnée(s)';
+  const applyBtn = document.getElementById('promo-apply-btn');
+  if(applyBtn){
+    applyBtn.disabled = _calPromoSelection.size===0;
+    applyBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
+  }
+}
+
 function setCalMode(mode){
   _calMode = mode;
   _calPromoSelection = new Set();
@@ -7078,13 +7104,13 @@ function togglePromoSelection(dateStr){
       _calPromoRangeStart = null; // prêt pour une nouvelle sélection au prochain clic
     }
   }
-  render();
+  refreshHostCalendarLight();
 }
 
 function cancelPromoSelection(){
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
-  render();
+  refreshHostCalendarLight();
 }
 
 async function applyDatePromo(){
@@ -7109,7 +7135,7 @@ async function applyDatePromo(){
   }
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
-  render();
+  refreshHostCalendarLight();
 }
 
 function toggleBlockDay(dateStr){
