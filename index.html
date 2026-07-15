@@ -2127,12 +2127,12 @@ function buildResults(){
       <!-- 4. Note (expandable) -->
       <div class="f-section">
         <div class="f-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleFilter('ratings')">
-          <span>⭐ Note minimum</span>
+          <span>⭐ Note</span>
           <span id="arrow-ratings" style="font-size:11px;transition:transform .2s;color:var(--gray-400);">▼</span>
         </div>
         <div id="filter-ratings">
           ${(()=>{
-            const allRatings = [{v:0,l:'Toutes'},{v:2,l:'2★ et +'},{v:3,l:'3★ et +'},{v:4,l:'4★ et +'},{v:5,l:'5★'}];
+            const allRatings = [{v:0,l:'Toutes'},{v:5,l:'5★'},{v:4,l:'4★ et +'},{v:3,l:'3★ et +'},{v:2,l:'2★ et +'}];
             const visibleCount = appState.filterExpanded?.ratings ? allRatings.length : 3;
             return allRatings.slice(0, visibleCount).map(r=>'<div class="f-opt">'
               +'<input type="radio" name="rat" value="'+r.v+'" '+(appState.filters.minRating==r.v?'checked':'')+' onchange="updateRatingF('+r.v+')">'
