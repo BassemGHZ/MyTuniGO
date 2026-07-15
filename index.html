@@ -3702,7 +3702,7 @@ async function cancelReservation(dbId){
       _sb.from('annonces').select('name,contact_email').eq('id', resa.logement_id).maybeSingle(),
       _sb.from('profiles').select('email,first_name,last_name').eq('id', resa.guest_id).maybeSingle()
     ]);
-    const guestName = guestProf ? `${guestProf.first_name||''} ${guestProf.last_name||''}`.trim() : 'Un voyageur';
+    const guestName = guestProf ? (guestProf.first_name||'Un voyageur') : 'Un voyageur';
     const propertyName = ann?.name || 'votre hébergement';
     const headers = {
       'Content-Type': 'application/json',
@@ -4144,7 +4144,7 @@ async function loadAnnonceDetail(container){
     realReservations = resaRows.map(r=>{
       const p = profMap[r.guest_id];
       return {
-        guestName: p ? `${p.first_name||''} ${p.last_name||''}`.trim() : 'Voyageur',
+        guestName: p ? (p.first_name||'Voyageur') : 'Voyageur',
         checkIn: r.check_in, checkOut: r.check_out,
         total: r.total||0, status: r.status||'confirmée'
       };
@@ -5662,7 +5662,7 @@ async function excFormPublish(){
     duration: durationStr,
     photos: photoUrls,
     status:'en attente', rating:0, reviews:0,
-    host:fd.firstname+' '+fd.lastname, hostAvatar:(fd.firstname[0]||'?')+(fd.lastname[0]||'?'),
+    host:fd.firstname, hostAvatar:(fd.firstname||'??').slice(0,2).toUpperCase(),
     hostRating:0, hostTrips:0, featured:false, available:true,
     createdAt:new Date().toISOString().split('T')[0],
   };
@@ -6436,8 +6436,8 @@ async function loadMessagesList(container){
     ${list.map(conv=>{
       const otherId = conv.participant_a===uid?conv.participant_b:conv.participant_a;
       const other = profMap[otherId];
-      const otherName = other ? `${other.first_name||''} ${other.last_name||''}`.trim() : 'Utilisateur';
-      const avatar = otherName.split(' ').filter(Boolean).map(n=>n[0]).join('').slice(0,2).toUpperCase() || '?';
+      const otherName = other ? (other.first_name||'Utilisateur') : 'Utilisateur';
+      const avatar = otherName.slice(0,2).toUpperCase();
       const ann = annMap[conv.logement_id];
       const annHotel = hotels.find(x=>x.annonceId===conv.logement_id);
       const lastMsg = lastMsgMap[conv.id];
@@ -6489,8 +6489,8 @@ async function loadConversation(container){
     return;
   }
 
-  const otherName = otherProf ? `${otherProf.first_name||''} ${otherProf.last_name||''}`.trim() : 'Utilisateur';
-  const otherAvatar = otherName.split(' ').filter(Boolean).map(n=>n[0]).join('').slice(0,2).toUpperCase() || '?';
+  const otherName = otherProf ? (otherProf.first_name||'Utilisateur') : 'Utilisateur';
+  const otherAvatar = otherName.slice(0,2).toUpperCase();
   const h = hotels.find(x=>x.annonceId===conv.logement_id);
 
   container.innerHTML = `
@@ -6567,7 +6567,7 @@ async function sendMessage(convId){
       _sb.from('profiles').select('first_name,last_name').eq('id', uid).maybeSingle(),
       _sb.from('annonces').select('name').eq('id', conv.logement_id).maybeSingle()
     ]);
-    const senderName = myProf ? `${myProf.first_name||''} ${myProf.last_name||''}`.trim() : 'Un utilisateur';
+    const senderName = myProf ? (myProf.first_name||'Un utilisateur') : 'Un utilisateur';
 
     if(otherProf?.email){
       await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-message', {
@@ -6627,7 +6627,7 @@ async function loadBookingRequests(container){
 
   const all = resaRows.map(r=>{
     const p = profMap[r.guest_id];
-    const guestName = p ? `${p.first_name||''} ${p.last_name||''}`.trim() : 'Voyageur';
+    const guestName = p ? (p.first_name||'Voyageur') : 'Voyageur';
     return {
       id: r.id, ref: r.reference,
       annonceId: r.logement_id,
@@ -6635,7 +6635,7 @@ async function loadBookingRequests(container){
       hotelId: (hotels.find(x=>x.annonceId===r.logement_id)||{}).id || null,
       propertyName: annMap[r.logement_id]?.name || 'Hébergement',
       propertyEmoji: annMap[r.logement_id]?.emoji || '🏨',
-      guestName, guestAvatar: guestName.split(' ').filter(Boolean).map(n=>n[0]).join('').slice(0,2).toUpperCase()||'?',
+      guestName, guestAvatar: guestName.slice(0,2).toUpperCase(),
       checkIn: r.check_in, checkOut: r.check_out,
       total: r.total||0, message: r.notes||'',
       status: r.status // 'en attente' | 'confirmée' | 'refusée'
@@ -6739,7 +6739,7 @@ async function handleBookingRequest(reqId, decision, hostMessage){
           type: 'decision',
           decision: decision==='confirmée' ? 'accepted' : 'declined',
           recipient_email: guestProf.email,
-          guest_name: `${guestProf.first_name||''} ${guestProf.last_name||''}`.trim(),
+          guest_name: guestProf.first_name || 'Voyageur',
           property_name: ann?.name || 'Hébergement',
           check_in: resa.check_in, check_out: resa.check_out,
           guests_count: resa.guests_count, total: resa.total,
@@ -6999,7 +6999,7 @@ function buildHostCardHTML(hId){
         ${host.superhost?'<div style="position:absolute;bottom:-2px;right:-2px;background:#FF385C;color:#fff;font-size:9px;font-weight:800;padding:2px 5px;border-radius:10px;border:2px solid #fff;">SUPER</div>':''}
       </div>
       <div style="flex:1;">
-        <div style="font-size:17px;font-weight:800;margin-bottom:3px;">${host.firstName} ${host.lastName}</div>
+        <div style="font-size:17px;font-weight:800;margin-bottom:3px;">${host.firstName}</div>
         <div style="font-size:13px;color:var(--gray-500);margin-bottom:5px;">Membre depuis ${new Date(host.memberSince).toLocaleDateString('fr-FR',{year:'numeric'})}</div>
         <div style="display:flex;gap:12px;font-size:13px;color:var(--gray-600);">
           <span>⭐ ${host.rating}</span>
@@ -7090,7 +7090,7 @@ async function submitBookingRequest(hId){
   const nights = Math.max(1,Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
   const total = h ? effectivePrice(h)*nights : 0;
   const u = auth.currentUser;
-  const guestName = (u.firstName+' '+u.lastName).trim();
+  const guestName = u.firstName || 'Voyageur';
   const ref = 'REQ-'+Math.random().toString(36).substr(2,6).toUpperCase();
 
   const btn = document.querySelector('#modal-root .modal button[onclick^="submitBookingRequest"]');
