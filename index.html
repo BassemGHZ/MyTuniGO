@@ -3889,6 +3889,9 @@ function mapAnnonceRow(a, resaStats, viewStats){
     country: a.country || 'Tunisie',
     typeLabel: a.type_label || a.type || 'Hébergement',
     stars: a.stars || 3,
+    rooms: a.rooms || 1,
+    bathrooms: a.bathrooms || 1,
+    capacity: a.capacity || 2,
     price_night: a.price_night || 0,
     status: a.status || 'en attente',
     photos: a.photos || [],
@@ -6822,7 +6825,7 @@ function buildHostCalendar(){
     <!-- Sélecteur de mode -->
     <div style="display:flex;gap:8px;margin-bottom:20px;">
       <button onclick="setCalMode('block')" style="flex:1;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid ${_calMode==='block'?'var(--blue)':'var(--gray-300)'};background:${_calMode==='block'?'var(--blue)':'#fff'};color:${_calMode==='block'?'#fff':'var(--gray-700)'};">🔒 Bloquer / débloquer</button>
-      <button onclick="setCalMode('promo')" style="flex:1;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid ${_calMode==='promo'?'#d40000':'var(--gray-300)'};background:${_calMode==='promo'?'#d40000':'#fff'};color:${_calMode==='promo'?'#fff':'var(--gray-700)'};">🏷️ Promotion par date</button>
+      <button onclick="setCalMode('promo')" style="flex:1;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid ${_calMode==='promo'?'#ea580c':'var(--gray-300)'};background:${_calMode==='promo'?'#ea580c':'#fff'};color:${_calMode==='promo'?'#fff':'var(--gray-700)'};">🏷️ Promotion par date</button>
     </div>
 
     ${_calMode==='promo' ? `
@@ -6835,7 +6838,7 @@ function buildHostCalendar(){
         <input type="number" id="promo-date-pct" min="1" max="90" value="30" style="width:70px;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;text-align:center;">
         <span style="font-size:14px;font-weight:700;color:var(--gray-600);">%</span>
       </div>
-      <button id="promo-apply-btn" onclick="applyDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:#d40000;color:#fff;padding:10px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;opacity:${_calPromoSelection.size===0?'.5':'1'};">Appliquer</button>
+      <button id="promo-apply-btn" onclick="applyDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:#ea580c;color:#fff;padding:10px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;opacity:${_calPromoSelection.size===0?'.5':'1'};">Appliquer</button>
       <button onclick="cancelPromoSelection()" style="background:#fff;color:var(--gray-600);padding:10px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">Annuler la sélection</button>
     </div>
     <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);">
@@ -6881,7 +6884,7 @@ function buildHostCalendar(){
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;"></div>Disponible (clic pour bloquer)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--red);"></div>Réservé (non modifiable)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--gray-400);"></div>Bloqué par vous (clic pour débloquer)</div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#d40000;"></div>Promotion active</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#ea580c;"></div>Promotion active</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#fff;border:2px solid var(--blue);"></div>Aujourd'hui</div>
         </div>
       </div>
@@ -6950,7 +6953,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     if(isPast){ bg='var(--gray-100)'; color='var(--gray-300)'; border='1px solid var(--gray-100)'; }
     else if(isReserved){ bg='var(--red)'; color='#fff'; border='1px solid var(--red)'; }
     else if(isBlocked){ bg='var(--gray-400)'; color='#fff'; border='1px solid var(--gray-400)'; }
-    else if(promoPct){ bg='#d40000'; color='#fff'; border='1px solid #d40000'; }
+    else if(promoPct){ bg='#ea580c'; color='#fff'; border='1px solid #ea580c'; }
     else { bg='#e8f9f0'; color='var(--gray-900)'; border='1px solid #6bcf9e'; }
 
     cell.style.cssText =
@@ -6990,7 +6993,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
         });
         cell.addEventListener('mouseleave', function(){
           if(!this.classList.contains('cal-blocked'))
-            this.style.background=promoPct?'#d40000':'#e8f9f0';
+            this.style.background=promoPct?'#ea580c':'#e8f9f0';
         });
       }
     } else if(isReserved){
@@ -7043,7 +7046,7 @@ function setCalMode(mode){
   _calMode = mode;
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
-  navigate('host-calendar');
+  render();
 }
 
 let _calPromoRangeStart = null;
@@ -7075,13 +7078,13 @@ function togglePromoSelection(dateStr){
       _calPromoRangeStart = null; // prêt pour une nouvelle sélection au prochain clic
     }
   }
-  navigate('host-calendar');
+  render();
 }
 
 function cancelPromoSelection(){
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
-  navigate('host-calendar');
+  render();
 }
 
 async function applyDatePromo(){
@@ -7102,11 +7105,11 @@ async function applyDatePromo(){
     const { error } = await _sb.from('date_discounts').upsert(rows, { onConflict: 'annonce_id,date' });
     if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
     dates.forEach(d=>_hostCalPromoMap[d]=pct);
-    showToast('🏷️ Promotion -'+pct+'% appliquée sur '+dates.length+' date'+(dates.length>1?'s':''),'#d40000');
+    showToast('🏷️ Promotion -'+pct+'% appliquée sur '+dates.length+' date'+(dates.length>1?'s':''),'#ea580c');
   }
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
-  navigate('host-calendar');
+  render();
 }
 
 function toggleBlockDay(dateStr){
