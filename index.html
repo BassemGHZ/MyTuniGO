@@ -2177,6 +2177,11 @@ function buildResults(){
 function resultCardHTML(h){
   const hasDiscount = h.discount>0;
   const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : h.price;
+  let searchNights = 0;
+  if(appState.searchCheckIn && appState.searchCheckOut){
+    searchNights = Math.max(0, Math.round((new Date(appState.searchCheckOut)-new Date(appState.searchCheckIn))/86400000));
+  }
+  const totalForStay = searchNights>0 ? finalPrice*searchNights : 0;
   return `<div class="result-card" onclick="navigate('detail',{selectedHotelId:${h.id}})" style="cursor:pointer;">
     <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;position:relative;">
       ${photoOrEmoji(h)}
@@ -2206,6 +2211,7 @@ function resultCardHTML(h){
           </div>`:''}
           <div class="rc-amount" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€</div>
           <div class="rc-excl">par nuit, taxes incluses</div>
+          ${totalForStay>0?`<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-top:4px;padding-top:4px;border-top:1px dashed var(--gray-200);">${totalForStay}€ <span style="font-weight:400;color:var(--gray-500);">au total, ${searchNights} nuit${searchNights>1?'s':''}</span></div>`:''}
           <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})" style="${hasDiscount?'background:#d40000;':''}">Voir dispo</button>
         </div>
       </div>
