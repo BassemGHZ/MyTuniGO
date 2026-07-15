@@ -851,7 +851,7 @@ function render() {
   app.appendChild(buildHeader());
   const pg = appState.page;
   if(pg==='home') app.appendChild(buildHome());
-  else if(pg==='results'){ app.appendChild(buildResults()); setTimeout(priceDrawThumbs,80); setTimeout(initResultsMaps,100); }
+  else if(pg==='results'){ app.appendChild(buildResults()); setTimeout(priceDrawThumbs,80); setTimeout(initResultsMaps,100); loadResultsAvailability(); }
   else if(pg==='detail') app.appendChild(buildDetail());
   else if(pg==='confirm') app.appendChild(buildConfirm());
   else if(pg==='annonce'){ annAutoFill(); app.appendChild(buildAnnonce()); }
@@ -1864,11 +1864,37 @@ function getFiltered(){
       if(!tMatch) return false;
     }
     if(appState.filters.amenities.length>0 && !appState.filters.amenities.every(a=>h.features.includes(a))) return false;
+    // Exclut les annonces déjà réservées (confirmée/en attente) sur les dates recherchées
+    if(appState.searchCheckIn && appState.searchCheckOut && h.annonceId
+       && (appState._resultsUnavailableAnnonceIds||new Set()).has(h.annonceId)) return false;
     return true;
   });
   if(appState.sort==='price_asc') list.sort((a,b)=>a.price-b.price);
   else if(appState.sort==='rating') list.sort((a,b)=>b.rating-a.rating);
   return list;
+}
+
+let _resultsAvailKey = null; // 'checkin|checkout' déjà chargé, pour éviter de refetch inutilement
+async function loadResultsAvailability(){
+  const ci = appState.searchCheckIn, co = appState.searchCheckOut;
+  if(!ci || !co){
+    if(appState._resultsUnavailableAnnonceIds && appState._resultsUnavailableAnnonceIds.size){
+      appState._resultsUnavailableAnnonceIds = new Set();
+      refreshResults();
+    }
+    return;
+  }
+  const key = ci+'|'+co;
+  if(_resultsAvailKey === key) return;
+  const { data, error } = await _sb.from('reservations_availability')
+    .select('logement_id')
+    .lt('check_in', co)
+    .gt('check_out', ci);
+  if(error){ console.warn('loadResultsAvailability:', error.message); return; }
+  _resultsAvailKey = key;
+  appState._resultsUnavailableAnnonceIds = new Set((data||[]).map(r=>r.logement_id));
+  appState.resultsPage = 1;
+  refreshResults();
 }
 
 let _resultsMiniMap = null;
