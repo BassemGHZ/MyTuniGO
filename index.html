@@ -862,8 +862,8 @@ function render() {
   app.innerHTML = '';
   app.appendChild(buildHeader());
   const pg = appState.page;
-  if(pg==='home') app.appendChild(buildHome());
-  else if(pg==='results'){ app.appendChild(buildResults()); setTimeout(priceDrawThumbs,80); setTimeout(initResultsMaps,100); loadResultsAvailability(); }
+  if(pg==='home'){ app.appendChild(buildHome()); loadResultsDatePromos(); }
+  else if(pg==='results'){ app.appendChild(buildResults()); setTimeout(priceDrawThumbs,80); setTimeout(initResultsMaps,100); loadResultsAvailability(); loadResultsDatePromos(); }
   else if(pg==='detail') app.appendChild(buildDetail());
   else if(pg==='confirm') app.appendChild(buildConfirm());
   else if(pg==='annonce'){ annAutoFill(); app.appendChild(buildAnnonce()); }
@@ -1810,17 +1810,20 @@ function buildHome(){
 
 function hotelCardHTML(h){
   const hasDiscount = h.discount>0;
+  const hasDatePromo = !hasDiscount && h.annonceId && (appState._resultsDatePromoAnnonceIds||new Set()).has(h.annonceId);
   const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : h.price;
   return `<div class="hotel-card" onclick="navigate('detail',{selectedHotelId:${h.id}})">
     <div class="hc-img" style="background:linear-gradient(135deg,#e8f4ff,#cce0ff);overflow:hidden;position:relative;">
       ${photoOrEmoji(h)}
       ${hasDiscount?`<div style="position:absolute;top:10px;left:0;background:linear-gradient(90deg,#d40000,#ff4444);color:#fff;font-size:12px;font-weight:800;padding:5px 14px 5px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🔥 -${h.discount}%</div>`:''}
+      ${hasDatePromo?`<div style="position:absolute;top:10px;left:0;background:linear-gradient(90deg,#ea580c,#f59e0b);color:#fff;font-size:12px;font-weight:800;padding:5px 14px 5px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🏷️ PROMO</div>`:''}
     </div>
     <div class="hc-body">
       <div class="hc-name">${h.name}</div>
       <div class="hc-loc">📍 ${h.city}, ${h.country}</div>
       <div class="hc-rating"><div class="r-badge">${h.rating}★</div><span class="r-count">${h.reviews.toLocaleString()} avis</span></div>
       ${hasDiscount?`<div style="font-size:13px;color:var(--gray-400);text-decoration:line-through;">${h.price}€</div>`:''}
+      ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;">🏷️ Sur certaines dates</div>`:''}
       <div class="hc-price" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€<span style="font-size:13px;color:var(--gray-500);font-weight:400">/nuit</span></div>
       ${h.freeCancellation?'<div class="hc-free">✓ Annulation gratuite</div>':''}
     </div>
@@ -1909,6 +1912,18 @@ async function loadResultsAvailability(){
   appState._resultsUnavailableAnnonceIds = new Set((data||[]).map(r=>r.logement_id));
   appState.resultsPage = 1;
   refreshResults();
+}
+
+let _resultsDatePromosLoaded = false;
+async function loadResultsDatePromos(){
+  if(_resultsDatePromosLoaded) return;
+  const today = new Date().toISOString().split('T')[0];
+  const { data, error } = await _sb.from('date_discounts').select('annonce_id').gte('date', today);
+  if(error){ console.warn('loadResultsDatePromos:', error.message); return; }
+  _resultsDatePromosLoaded = true;
+  appState._resultsDatePromoAnnonceIds = new Set((data||[]).map(r=>r.annonce_id));
+  if(appState.page==='results') refreshResults();
+  else if(appState.page==='home') render();
 }
 
 let _resultsMiniMap = null;
@@ -2209,6 +2224,7 @@ function buildResults(){
 
 function resultCardHTML(h){
   const hasDiscount = h.discount>0;
+  const hasDatePromo = !hasDiscount && h.annonceId && (appState._resultsDatePromoAnnonceIds||new Set()).has(h.annonceId);
   const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : h.price;
   let searchNights = 0;
   if(appState.searchCheckIn && appState.searchCheckOut){
@@ -2219,6 +2235,7 @@ function resultCardHTML(h){
     <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;position:relative;">
       ${photoOrEmoji(h)}
       ${hasDiscount?`<div style="position:absolute;top:12px;left:0;background:linear-gradient(90deg,#d40000,#ff4444);color:#fff;font-size:13px;font-weight:800;padding:6px 16px 6px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🔥 OFFRE -${h.discount}%</div>`:''}
+      ${hasDatePromo?`<div style="position:absolute;top:12px;left:0;background:linear-gradient(90deg,#ea580c,#f59e0b);color:#fff;font-size:13px;font-weight:800;padding:6px 16px 6px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🏷️ PROMO SUR DATES</div>`:''}
     </div>
     <div class="rc-body">
       <div class="rc-info">
@@ -2242,10 +2259,11 @@ function resultCardHTML(h){
             <span style="font-size:14px;color:var(--gray-400);text-decoration:line-through;">${h.price}€</span>
             <span style="background:#d40000;color:#fff;font-size:11px;font-weight:800;padding:1px 7px;border-radius:10px;">-${h.discount}%</span>
           </div>`:''}
+          ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;margin-bottom:1px;">🏷️ Promo sur certaines dates</div>`:''}
           <div class="rc-amount" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€</div>
           <div class="rc-excl">par nuit, taxes incluses</div>
           ${totalForStay>0?`<div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-top:4px;padding-top:4px;border-top:1px dashed var(--gray-200);">${totalForStay}€ <span style="font-weight:400;color:var(--gray-500);">au total, ${searchNights} nuit${searchNights>1?'s':''}</span></div>`:''}
-          <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})" style="${hasDiscount?'background:#d40000;':''}">Voir dispo</button>
+          <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})" style="${hasDiscount?'background:#d40000;':hasDatePromo?'background:#ea580c;':''}">Voir dispo</button>
         </div>
       </div>
     </div>
