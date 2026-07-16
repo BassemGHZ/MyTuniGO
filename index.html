@@ -2421,6 +2421,7 @@ function buildDetail(){
       <div>
         <div class="bk-box" id="bk-box">
           <div class="bk-price">${h.discount>0?`<span style="font-size:16px;color:var(--gray-400);text-decoration:line-through;font-weight:400;">${h.price}€</span> <span style="color:#d40000;">${effectivePrice(h)}€</span>`:h.price+'€'} <span>/ nuit</span>${h.discount>0?` <span style="background:#d40000;color:#fff;font-size:12px;font-weight:800;padding:2px 8px;border-radius:10px;vertical-align:middle;">-${h.discount}%</span>`:''}</div>
+          <div id="bk-date-promo-banner"></div>
           <!-- Custom date picker with blocked dates -->
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Arrivée</label>
@@ -4116,7 +4117,9 @@ function buildMesAnnonces(){
           </div>
           <!-- Price + actions -->
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:4px;">
-            <div style="font-size:18px;font-weight:800;">${a.price_night}€ <span style="font-size:13px;font-weight:400;color:var(--gray-500);">/ nuit</span></div>
+            <div style="font-size:18px;font-weight:800;display:flex;align-items:center;gap:6px;">${a.price_night}€ <span style="font-size:13px;font-weight:400;color:var(--gray-500);">/ nuit</span>
+              <button onclick="openEditPriceModal('${a.id}')" title="Modifier le prix" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--blue-l);padding:2px;">✏️</button>
+            </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">📊 Statistiques</button>
               <button onclick="navigate('host-calendar',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📅 Calendrier</button>
@@ -5737,6 +5740,58 @@ function buildExcursionFormSuccess(){
 }
 
 /* ===================== PROMO MODAL ===================== */
+function openEditPriceModal(annonceId){
+  const a = appState.myAnnonces.find(x=>x.id===annonceId);
+  if(!a) return;
+
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-header" style="background:var(--blue);">
+        <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
+        <h2>✏️ Modifier le prix</h2>
+        <p>${a.name}</p>
+      </div>
+      <div class="modal-body">
+        <div style="background:#f0f7ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:var(--blue-l);margin-bottom:18px;line-height:1.6;">
+          💡 Le nouveau prix ne s'appliquera qu'aux <strong>futures réservations</strong>. Les réservations déjà confirmées ou passées gardent leur montant d'origine, inchangé.
+        </div>
+
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Prix par nuit</label>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">
+          <input type="number" id="edit-price-input" min="1" value="${a.price_night}"
+            style="flex:1;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:20px;font-weight:800;text-align:center;">
+          <span style="font-size:20px;font-weight:700;color:var(--gray-600);">€</span>
+        </div>
+
+        <button onclick="saveEditedPrice('${a.id}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Enregistrer le nouveau prix</button>
+      </div>
+    </div>`;
+  root.appendChild(overlay);
+}
+
+async function saveEditedPrice(annonceId){
+  const val = parseFloat(document.getElementById('edit-price-input')?.value);
+  if(!val || val<=0){ showToast('⚠️ Entrez un prix valide','var(--red)'); return; }
+
+  const { error } = await _sb.from('annonces').update({ price_night: val }).eq('id', annonceId);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  document.getElementById('modal-root').innerHTML = '';
+  showToast('✅ Prix mis à jour : '+val+'€ / nuit','var(--green)');
+
+  // Met à jour immédiatement la copie en mémoire (hotels[]), sans attendre un rechargement
+  const hEntry = hotels.find(x=>x.annonceId===annonceId);
+  if(hEntry) hEntry.price = val;
+
+  navigate('mesannonces');
+}
+
 function openPromoModal(annonceId){
   const a = appState.myAnnonces.find(x=>x.id===annonceId);
   if(!a) return;
@@ -7439,6 +7494,24 @@ async function initBlockedDatesPicker(hId){
   if(h.annonceId){
     const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', h.annonceId);
     (promoRows||[]).forEach(r=>{ appState._bkDatePromos[r.date] = r.discount_percent; });
+  }
+
+  // Bandeau visible et robuste près du prix : période + taux, sans dépendre
+  // uniquement des petites cases colorées du mini-calendrier.
+  const bannerEl = document.getElementById('bk-date-promo-banner');
+  if(bannerEl){
+    const promoDates = Object.keys(appState._bkDatePromos).sort();
+    if(promoDates.length > 0){
+      const pcts = Object.values(appState._bkDatePromos);
+      const minPct = Math.min(...pcts), maxPct = Math.max(...pcts);
+      const fmt = ds => new Date(ds+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
+      const rateLabel = minPct===maxPct ? `-${minPct}%` : `-${minPct}% à -${maxPct}%`;
+      bannerEl.innerHTML = `<div style="background:#fdead9;border:1.5px solid #ea580c;border-radius:var(--r-md);padding:10px 14px;margin-bottom:14px;font-size:13px;color:#9a3f00;font-weight:700;">
+        🏷️ Promo ${rateLabel} sur certaines dates entre le ${fmt(promoDates[0])} et le ${fmt(promoDates[promoDates.length-1])} — voir le calendrier ci-dessous.
+      </div>`;
+    } else {
+      bannerEl.innerHTML = '';
+    }
   }
 
   miniCal.style.display = 'block';
