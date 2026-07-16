@@ -799,7 +799,7 @@ let appState = {
   page:'home',
   searchDest:'', searchCheckIn:'', searchCheckOut:'', searchGuests:2,
   selectedHotelId:null,
-  filters:{minPrice:30,maxPrice:410,minRating:0,types:[],amenities:[]},filterExpanded:{types:false,amenities:false,ratings:false},
+  filters:{minPrice:30,maxPrice:410,minRating:0,types:[],amenities:[],promoOnly:false},filterExpanded:{types:false,amenities:false,ratings:false},
   sort:'recommended',
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
@@ -937,11 +937,21 @@ document.addEventListener('click', function(e){
   if(el3){ excFormCalNav(parseInt(el3.dataset.excformcalnav)); e.stopPropagation(); }
   const el4 = e.target.closest('[data-excbokcalnav]');
   if(el4){ excBookCalNav(parseInt(el4.dataset.excbokcalnav), el4.dataset.excid); e.stopPropagation(); }
+  // Ferme le calendrier de recherche (page d'accueil) si on clique en dehors
+  const heroField = e.target.closest('#s-dates-field');
+  const heroDD = e.target.closest('#hero-cal-dropdown');
+  if(!heroField && !heroDD){
+    const dd = document.getElementById('hero-cal-dropdown');
+    if(dd) dd.style.display = 'none';
+  }
 });
 
 const NAV_ID_KEYS = ['selectedHotelId','selectedAnnonceId','selectedConvId','selectedExcursionId','selectedHostId'];
 
 function navigate(page, extra){
+  const heroDD = document.getElementById('hero-cal-dropdown');
+  if(heroDD) heroDD.remove();
+
   const prevPage = appState.page;
   const prevIds = NAV_ID_KEYS.map(k=>appState[k]);
 
@@ -1636,6 +1646,139 @@ function getFeaturedHotels(){
   return real.slice(0,4);
 }
 
+/* ===================== CALENDRIER DE RECHERCHE (page d'accueil) ===================== */
+function toggleHeroCalendar(){
+  let dd = document.getElementById('hero-cal-dropdown');
+  const isOpen = dd && dd.style.display === 'block';
+  if(isOpen){ dd.style.display='none'; return; }
+
+  const field = document.getElementById('s-dates-field');
+  if(!field) return;
+
+  // Le calendrier est attaché directement au <body> (position:fixed), pour
+  // ne pas être rogné par le "overflow:hidden" de la section héro.
+  if(!dd){
+    dd = document.createElement('div');
+    dd.id = 'hero-cal-dropdown';
+    dd.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.25);padding:18px;min-width:340px;';
+    document.body.appendChild(dd);
+  }
+
+  const rect = field.getBoundingClientRect();
+  dd.style.top = (rect.bottom + 8) + 'px';
+  dd.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 360)) + 'px';
+
+  if(!appState._heroCalMonth){
+    const base = appState.searchCheckIn ? new Date(appState.searchCheckIn+'T00:00:00') : new Date();
+    appState._heroCalMonth = {year: base.getFullYear(), month: base.getMonth()};
+  }
+  dd.style.display='block';
+  renderHeroCalendar();
+}
+
+function navHeroCal(dir){
+  let {year,month} = appState._heroCalMonth;
+  month += dir;
+  if(month<0){month=11;year--;}
+  if(month>11){month=0;year++;}
+  appState._heroCalMonth = {year,month};
+  renderHeroCalendar();
+}
+
+function heroMonthLabel(year,month){
+  return new Date(year,month,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+}
+
+function renderHeroMonth(year,month){
+  const daysInMonth = new Date(year,month+1,0).getDate();
+  const firstDay = new Date(year,month,1).getDay();
+  const offset = firstDay===0?6:firstDay-1;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().split('T')[0];
+  const ci = appState.searchCheckIn||'', co = appState.searchCheckOut||'';
+  const days=['L','M','M','J','V','S','D'];
+  let html = '<div style="flex:1;min-width:130px;">';
+  html += '<div style="text-align:center;font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:6px;text-transform:capitalize;">'+heroMonthLabel(year,month)+'</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+  days.forEach(d=>{ html += '<div style="text-align:center;font-size:10px;font-weight:700;color:var(--gray-400);padding:2px 0;">'+d+'</div>'; });
+  for(let i=0;i<offset;i++) html+='<div></div>';
+  for(let day=1;day<=daysInMonth;day++){
+    const ds = year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    const isPast = ds<todayStr;
+    const isCi=ds===ci, isCo=ds===co;
+    const inRange = ci&&co&&ds>ci&&ds<co;
+    let bg='transparent', color='var(--gray-800)', fw='500';
+    if(isPast){ color='var(--gray-300)'; }
+    if(isCi||isCo){ bg='var(--blue)'; color='#fff'; fw='700'; }
+    else if(inRange){ bg='#e0ecff'; color='var(--blue)'; }
+    if(ds===todayStr && !isCi && !isCo) fw='800';
+    html += '<div '+(isPast?'':`onclick="heroSelectDate('${ds}')"`)+' style="text-align:center;padding:7px 2px;font-size:12px;font-weight:'+fw+';cursor:'+(isPast?'default':'pointer')+';background:'+bg+';color:'+color+';border-radius:6px;">'+day+'</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function renderHeroCalendar(){
+  const dd = document.getElementById('hero-cal-dropdown');
+  if(!dd) return;
+  const {year,month} = appState._heroCalMonth;
+  const nextM = new Date(year,month+1,1);
+  dd.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <button onclick="navHeroCal(-1)" style="background:var(--gray-100);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:13px;flex-shrink:0;">‹</button>
+      <div style="display:flex;gap:24px;flex:1;justify-content:space-around;"></div>
+      <button onclick="navHeroCal(1)" style="background:var(--gray-100);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:13px;flex-shrink:0;">›</button>
+    </div>
+    <div style="display:flex;gap:20px;">
+      ${renderHeroMonth(year,month)}
+      ${renderHeroMonth(nextM.getFullYear(),nextM.getMonth())}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--gray-200);">
+      <button onclick="clearHeroDates()" style="background:none;border:none;color:var(--gray-500);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;padding:0;">Effacer les dates</button>
+      <button onclick="document.getElementById('hero-cal-dropdown').style.display='none'" style="background:var(--blue);color:#fff;padding:8px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Terminé</button>
+    </div>`;
+}
+
+function heroSelectDate(ds){
+  const ci = appState.searchCheckIn, co = appState.searchCheckOut;
+  if(!ci || (ci && co)){
+    appState.searchCheckIn = ds; appState.searchCheckOut = '';
+  } else if(ds <= ci){
+    appState.searchCheckIn = ds; appState.searchCheckOut = '';
+  } else {
+    appState.searchCheckOut = ds;
+  }
+  updateHeroDatesDisplay();
+  renderHeroCalendar();
+  if(appState.searchCheckIn && appState.searchCheckOut){
+    setTimeout(()=>{ const dd=document.getElementById('hero-cal-dropdown'); if(dd) dd.style.display='none'; }, 350);
+  }
+}
+
+function clearHeroDates(){
+  appState.searchCheckIn=''; appState.searchCheckOut='';
+  updateHeroDatesDisplay();
+  renderHeroCalendar();
+}
+
+function updateHeroDatesDisplay(){
+  const el = document.getElementById('s-dates-display');
+  const ciEl = document.getElementById('s-in'); if(ciEl) ciEl.value = appState.searchCheckIn||'';
+  const coEl = document.getElementById('s-out'); if(coEl) coEl.value = appState.searchCheckOut||'';
+  if(!el) return;
+  const f = ds => new Date(ds+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+  if(appState.searchCheckIn && appState.searchCheckOut){
+    el.textContent = f(appState.searchCheckIn)+' → '+f(appState.searchCheckOut);
+    el.style.color = 'var(--gray-900)';
+  } else if(appState.searchCheckIn){
+    el.textContent = f(appState.searchCheckIn)+' → ?';
+    el.style.color = 'var(--gray-900)';
+  } else {
+    el.textContent = 'Ajouter des dates';
+    el.style.color = 'var(--gray-400)';
+  }
+}
+
 function buildHome(){
   const d=document.createElement('div');
   d.innerHTML=`
@@ -1645,8 +1788,16 @@ function buildHome(){
       <p style="text-transform:uppercase;letter-spacing:2px;font-weight:700;">Vivez le monde, comme chez vous</p>
       <div class="search-box">
         <div class="s-field" style="flex:2"><label>🔍 Destination</label><input type="text" id="s-dest" placeholder="Où allez-vous ?" value="${appState.searchDest}"></div>
-        <div class="s-field"><label>📅 Arrivée</label><input type="date" id="s-in" value="${appState.searchCheckIn}" onchange="validateSearchDates()"></div>
-        <div class="s-field"><label>📅 Départ</label><input type="date" id="s-out" value="${appState.searchCheckOut}" onchange="validateSearchDates()"></div>
+        <div class="s-field" style="position:relative;flex:1.6;" id="s-dates-field">
+          <label>📅 Dates</label>
+          <div id="s-dates-display" onclick="toggleHeroCalendar()" style="cursor:pointer;font-size:14px;font-weight:500;color:${appState.searchCheckIn?'var(--gray-900)':'var(--gray-400)'};padding:2px 0;">
+            ${appState.searchCheckIn && appState.searchCheckOut
+              ? new Date(appState.searchCheckIn+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' → '+new Date(appState.searchCheckOut+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
+              : 'Ajouter des dates'}
+          </div>
+          <input type="hidden" id="s-in" value="${appState.searchCheckIn}">
+          <input type="hidden" id="s-out" value="${appState.searchCheckOut}">
+        </div>
         <div class="s-field"><label>👥 Voyageurs</label><input type="number" id="s-guests" min="1" max="20" value="${appState.searchGuests}"></div>
         <button class="btn-search" onclick="doSearch()">🔎 Rechercher</button>
       </div>
@@ -1855,7 +2006,7 @@ function doSearch(){
   appState.searchCheckIn=document.getElementById('s-in').value;
   appState.searchCheckOut=document.getElementById('s-out').value;
   appState.searchGuests=parseInt(document.getElementById('s-guests').value)||2;
-  appState.filters={minPrice:0,maxPrice:410,minRating:0,types:[],amenities:[]};
+  appState.filters={minPrice:0,maxPrice:410,minRating:0,types:[],amenities:[],promoOnly:false};
   appState.sort='recommended';
   appState.resultsPage=1;
   navigate('results');
@@ -1879,6 +2030,11 @@ function getFiltered(){
       if(!tMatch) return false;
     }
     if(appState.filters.amenities.length>0 && !appState.filters.amenities.every(a=>h.features.includes(a))) return false;
+    // Filtre "Promotions uniquement" : promo globale OU promo par date active (future)
+    if(appState.filters.promoOnly){
+      const hasDatePromo = h.annonceId && (appState._resultsDatePromoAnnonceIds||new Set()).has(h.annonceId);
+      if(!(h.discount>0) && !hasDatePromo) return false;
+    }
     // Exclut les logements dont la capacité est inférieure au nombre de voyageurs recherché
     if(appState.searchGuests && (h.capacity||99) < appState.searchGuests) return false;
     // Exclut les annonces déjà réservées (confirmée/en attente) sur les dates recherchées
@@ -2096,6 +2252,14 @@ function buildResults(){
   <div class="results-layout">
     <aside class="filters-panel">
       <div style="font-size:16px;font-weight:800;margin-bottom:18px;">🔧 Filtres</div>
+      <!-- 0. Promotions -->
+      <div class="f-section">
+        <div class="f-title">🏷️ PROMOTIONS</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;">
+          <input type="checkbox" ${appState.filters.promoOnly?'checked':''} onchange="togglePromoFilter(this.checked)" style="width:16px;height:16px;cursor:pointer;">
+          <span style="font-size:13px;color:var(--gray-700);">Uniquement les annonces en promo</span>
+        </label>
+      </div>
       <!-- 1. Budget -->
       <div class="f-section">
         <div class="f-title">💰 BUDGET / NUIT</div>
@@ -2311,6 +2475,7 @@ function updatePriceF(v){
 
 
 
+function togglePromoFilter(checked){ appState.filters.promoOnly = checked; appState.resultsPage=1; refreshResults(); }
 function updateRatingF(v){appState.filters.minRating=v;appState.resultsPage=1;refreshResults();}
 function toggleTypeF(t,c){if(c){if(!appState.filters.types.includes(t))appState.filters.types.push(t);}else{appState.filters.types=appState.filters.types.filter(x=>x!==t);}appState.resultsPage=1;refreshResults();}
 
@@ -2334,7 +2499,7 @@ function toggleAmenF(a,c){if(c)appState.filters.amenities.push(a);else appState.
 function updateSort(v){appState.sort=v;appState.resultsPage=1;refreshResults();}
 function resetFilters(){
   appState.resultsPage=1;
-  appState.filters = {minPrice:0, maxPrice:410, minRating:0, types:[], amenities:[]};
+  appState.filters = {minPrice:0, maxPrice:410, minRating:0, types:[], amenities:[], promoOnly:false};
   appState.filterExpanded = {types:false, amenities:false, ratings:false};
   // Reset input fields
   const mn = document.getElementById('pr-min');
