@@ -201,6 +201,18 @@
   .btn-choose{background:var(--blue-l);color:#fff;padding:9px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;transition:background .2s;margin-top:6px;}
   .btn-choose:hover{background:var(--blue);}
   .pagination{display:flex;justify-content:center;gap:6px;margin-top:24px;}
+  .promo-cell{position:relative;}
+  .promo-cell:hover::after{
+    content:attr(data-tooltip);
+    position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:#ea580c; color:#fff; font-size:12px; font-weight:800;
+    padding:5px 10px; border-radius:6px; white-space:nowrap; z-index:50;
+    box-shadow:0 3px 10px rgba(0,0,0,.25);
+  }
+  .promo-cell:hover::before{
+    content:''; position:absolute; bottom:calc(100% + 1px); left:50%; transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:#ea580c; z-index:50;
+  }
   .pg-btn{width:36px;height:36px;border-radius:var(--r-md);background:#fff;border:1.5px solid var(--gray-300);font-size:14px;font-weight:600;color:var(--gray-700);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
   .pg-btn:hover{border-color:var(--blue-l);color:var(--blue-l);}
   .pg-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
@@ -7584,7 +7596,10 @@ function renderBookingMonth(year, month, unavailable, today){
     if(isCi||isCo){ bg='var(--blue)'; border='1px solid var(--blue)'; color='#fff'; }
     else if(inRange){ bg='#cce0ff'; border='1px solid #99c2ff'; color='var(--blue)'; }
     const fw = ds===todayStr ? '800':'500';
-    html += '<div '+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
+    const promoTooltip = (promoPct && !isCi && !isCo)
+      ? ` class="promo-cell" data-tooltip="🏷️ Promotion -${promoPct}%"`
+      : '';
+    html += '<div '+promoTooltip+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
       +'text-align:center;padding:5px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;position:relative;"'
       +(clickable?' onmouseover="this.style.transform=\'scale(1.1)\'" onmouseout="this.style.transform=\'\'"':'')
       +'>'+(isUnavail&&!isCi&&!isCo?'<s>'+day+'</s>':day)
