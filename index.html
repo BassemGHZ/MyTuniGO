@@ -924,6 +924,7 @@ function render() {
     const h = hotels.find(x=>x.id===appState.selectedHotelId);
     if(h) setTimeout(()=>initHotelMap(h.id), 200);
     if(h) setTimeout(()=>initBlockedDatesPicker(h.id), 150);
+    if(h) setTimeout(()=>loadDetailReviews(h.id), 150);
   }
   if(pg==='annonce' && appState.annoncePage===1) setTimeout(initAnnMap, 200);
 }
@@ -2596,8 +2597,8 @@ function buildDetail(){
             <div style="text-align:center;"><div style="font-size:44px;font-weight:800;color:var(--blue)">${h.rating}★</div></div>
             <div><div style="font-size:17px;font-weight:700;">${h.ratingLabel}</div><div style="font-size:13px;color:var(--gray-500)">${h.reviews.toLocaleString()} avis vérifiés</div></div>
           </div>
-          <div class="reviews">
-            ${reviewsData.map(r=>`<div class="rev-item">
+          <div class="reviews" id="detail-reviews-list">
+            ${h.annonceId ? '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px;">Chargement des avis…</div>' : reviewsData.map(r=>`<div class="rev-item">
               <div class="rev-head">
                 <div class="rev-av">${r.name[0]}</div>
                 <div class="rev-meta"><div class="rev-name">${r.name} — ${r.country}</div><div class="rev-date">${r.date}</div></div>
@@ -3775,6 +3776,12 @@ async function loadReservations(container){
     : { data: [] };
   const annMap = Object.fromEntries((anns||[]).map(a=>[a.id,a]));
 
+  // Mes avis déjà publiés sur ces logements (pour afficher "Modifier mon avis" au lieu de "Laisser un avis")
+  const { data: myReviews } = logementIds.length
+    ? await _sb.from('avis').select('id,logement_id,rating,comment').eq('author_id', uid).in('logement_id', logementIds)
+    : { data: [] };
+  appState._myReviewsByAnnonce = Object.fromEntries((myReviews||[]).map(r=>[r.logement_id, r]));
+
   appState.reservations = (data||[]).map(r=>{
     const h = hotels.find(x=>x.annonceId===r.logement_id);
     const ann = annMap[r.logement_id] || {};
@@ -3782,6 +3789,7 @@ async function loadReservations(container){
       id: r.reference || r.id,
       _dbId: r.id,
       hotelId: h ? h.id : null,
+      annonceId: r.logement_id,
       name: ((auth.currentUser.firstName||'')+' '+(auth.currentUser.lastName||'')).trim(),
       email: auth.currentUser.email||'',
       checkIn: r.check_in, checkOut: r.check_out,
@@ -3887,9 +3895,9 @@ function buildReservations(){
                   ${r.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir l'hôtel</button>`:''}
                   <button onclick="cancelReservation('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>
                 `:''}
-                ${r.status==='terminée'&&r.hotelId?`
-                  <button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--gray-100);color:var(--gray-700);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">Laisser un avis</button>
-                  <button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Réserver à nouveau</button>
+                ${r.status==='terminée'&&r.annonceId?`
+                  <button onclick="openReviewModal('${r.annonceId}')" style="background:${appState._myReviewsByAnnonce?.[r.annonceId]?'#fff8e0':'var(--gray-100)'};color:${appState._myReviewsByAnnonce?.[r.annonceId]?'#a07000':'var(--gray-700)'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid ${appState._myReviewsByAnnonce?.[r.annonceId]?'#f0d080':'var(--gray-300)'};cursor:pointer;">${appState._myReviewsByAnnonce?.[r.annonceId]?'✏️ Modifier mon avis':'⭐ Laisser un avis'}</button>
+                  ${r.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Réserver à nouveau</button>`:''}
                 `:''}
                 ${r.status==='annulée'?`
                   <span style="font-size:12px;color:var(--gray-400);">Annulée</span>
@@ -4070,10 +4078,12 @@ function computeOccupancyRate(resaList, windowDays){
   return Math.min(100, Math.round(bookedNights / windowDays * 100));
 }
 
-function mapAnnonceRow(a, resaStats, viewStats){
+function mapAnnonceRow(a, resaStats, viewStats, avisStats){
   const h = hotels.find(x=>x.annonceId===a.id);
   const s = (resaStats && resaStats[a.id]) || {count:0, revenue:0, occupancy:0};
   const v = (viewStats && viewStats[a.id]) || 0;
+  const ar = (avisStats && avisStats[a.id]) || null;
+  const noteMoyenne = ar ? Math.round((ar.sum/ar.count)*10)/10 : 0;
   return {
     id: a.id,
     ref: a.ref,
@@ -4098,7 +4108,7 @@ function mapAnnonceRow(a, resaStats, viewStats){
     // Réservations, revenus et vues = vraies données Supabase.
     // Clics/occupation/note : pas encore de table dédiée, restent à 0.
     stats: {
-      vues:v, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:s.occupancy||0, noteMoyenne:0, avis:0,
+      vues:v, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:s.occupancy||0, noteMoyenne:noteMoyenne, avis:(ar?ar.count:0),
       vuesMois: Array(12).fill(0), revenusMois: Array(12).fill(0)
     }
   };
@@ -4156,7 +4166,22 @@ async function loadMesAnnonces(container){
     }
   }
 
-  appState.myAnnonces = (data||[]).map(a=>mapAnnonceRow(a, resaStats, viewStats));
+  // Agrège la vraie note moyenne + nombre d'avis par annonce
+  const avisStats = {};
+  if(annIds.length){
+    const { data: avisRows, error: avisErr } = await _sb.from('avis').select('logement_id,rating').in('logement_id', annIds);
+    if(avisErr){
+      console.warn('Erreur chargement avis:', avisErr.message);
+    } else {
+      (avisRows||[]).forEach(r=>{
+        if(!avisStats[r.logement_id]) avisStats[r.logement_id] = {sum:0, count:0};
+        avisStats[r.logement_id].sum += r.rating;
+        avisStats[r.logement_id].count++;
+      });
+    }
+  }
+
+  appState.myAnnonces = (data||[]).map(a=>mapAnnonceRow(a, resaStats, viewStats, avisStats));
   const fresh = buildMesAnnonces();
   if(container && container.parentNode){ container.replaceWith(fresh); }
 }
@@ -5935,6 +5960,72 @@ function buildExcursionFormSuccess(){
 }
 
 /* ===================== PROMO MODAL ===================== */
+/* ===================== AVIS CLIENTS ===================== */
+function openReviewModal(annonceId){
+  if(!auth.currentUser){openModal('login');return;}
+  const existing = appState._myReviewsByAnnonce?.[annonceId];
+  const ann = hotels.find(h=>h.annonceId===annonceId);
+
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-header" style="background:var(--blue);">
+        <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
+        <h2>⭐ ${existing?'Modifier votre avis':'Laisser un avis'}</h2>
+        <p>${ann?.name || 'Votre séjour'}</p>
+      </div>
+      <div class="modal-body">
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:10px;">Votre note</label>
+        <div id="review-stars" style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;font-size:36px;"></div>
+
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Votre commentaire</label>
+        <textarea id="review-comment" rows="4" placeholder="Racontez votre séjour : l'accueil, le logement, l'emplacement…"
+          style="width:100%;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;margin-bottom:18px;">${existing?.comment||''}</textarea>
+
+        <button onclick="saveReview('${annonceId}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Publier mon avis</button>
+      </div>
+    </div>`;
+  root.appendChild(overlay);
+  renderReviewStars(existing?.rating || 0);
+}
+
+let _reviewRatingValue = 0;
+function renderReviewStars(selected){
+  _reviewRatingValue = selected;
+  const el = document.getElementById('review-stars');
+  if(!el) return;
+  el.innerHTML = [1,2,3,4,5].map(n =>
+    `<span onclick="renderReviewStars(${n})" style="cursor:pointer;color:${n<=selected?'#f5a623':'var(--gray-300)'};transition:transform .1s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''">★</span>`
+  ).join('');
+}
+
+async function saveReview(annonceId){
+  if(_reviewRatingValue<1){ showToast('⚠️ Choisissez une note de 1 à 5 étoiles','var(--red)'); return; }
+  const comment = document.getElementById('review-comment')?.value?.trim() || '';
+
+  const { error } = await _sb.from('avis').upsert([{
+    author_id: auth.currentUser.id,
+    logement_id: annonceId,
+    rating: _reviewRatingValue,
+    comment
+  }], { onConflict: 'author_id,logement_id' });
+
+  if(error){
+    console.error('saveReview error:', error.message);
+    showToast("Impossible d'enregistrer l'avis : "+error.message,'var(--red)');
+    return;
+  }
+
+  document.getElementById('modal-root').innerHTML = '';
+  showToast('✅ Merci pour votre avis !','var(--green)');
+  navigate('reservations');
+}
+
 function openEditPriceModal(annonceId){
   const a = appState.myAnnonces.find(x=>x.id===annonceId);
   if(!a) return;
@@ -7671,6 +7762,47 @@ async function loadReservedDatesForAnnonce(annonceId){
     }
   });
   return [...days];
+}
+
+async function loadDetailReviews(hId){
+  const container = document.getElementById('detail-reviews-list');
+  if(!container) return;
+  const h = hotels.find(x=>x.id===hId);
+  if(!h?.annonceId) return; // pas une vraie annonce, on garde les avis de démo déjà affichés
+
+  const { data: avisRows, error } = await _sb.from('avis')
+    .select('rating,comment,created_at,author_id')
+    .eq('logement_id', h.annonceId)
+    .order('created_at', {ascending:false});
+
+  if(error){
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);font-size:13px;">Erreur de chargement des avis.</div>';
+    return;
+  }
+  if(!avisRows || avisRows.length===0){
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--gray-500);font-size:14px;">Aucun avis pour le moment.</div>';
+    return;
+  }
+
+  const authorIds = [...new Set(avisRows.map(r=>r.author_id).filter(Boolean))];
+  const { data: profs } = authorIds.length
+    ? await _sb.from('profiles').select('id,first_name,country').in('id', authorIds)
+    : { data: [] };
+  const profMap = Object.fromEntries((profs||[]).map(p=>[p.id,p]));
+
+  container.innerHTML = avisRows.map(r=>{
+    const p = profMap[r.author_id];
+    const name = p?.first_name || 'Voyageur';
+    const date = new Date(r.created_at).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    return `<div class="rev-item">
+      <div class="rev-head">
+        <div class="rev-av">${name[0]?.toUpperCase()||'?'}</div>
+        <div class="rev-meta"><div class="rev-name">${name}${p?.country?' — '+p.country:''}</div><div class="rev-date">${date}</div></div>
+        <div class="rev-score">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div>
+      </div>
+      <div class="rev-text">${(r.comment||'').replace(/</g,'&lt;')}</div>
+    </div>`;
+  }).join('');
 }
 
 async function initBlockedDatesPicker(hId){
@@ -9548,8 +9680,33 @@ async function loadPublishedAnnonces(){
     const { data, error } = await _sb.from('annonces').select('*').eq('status','publiée').order('created_at',{ascending:false});
     if(error){ console.warn('Erreur chargement annonces publiées:', error.message); return; }
 
+    // Vraie moyenne + nombre d'avis par annonce (au lieu de 0 codé en dur)
+    const annIds = (data||[]).map(a=>a.id);
+    const ratingStats = {};
+    if(annIds.length){
+      const { data: avisRows, error: avisErr } = await _sb.from('avis').select('logement_id,rating').in('logement_id', annIds);
+      if(avisErr){
+        console.warn('Erreur chargement avis:', avisErr.message);
+      } else {
+        (avisRows||[]).forEach(r=>{
+          if(!ratingStats[r.logement_id]) ratingStats[r.logement_id] = {sum:0, count:0};
+          ratingStats[r.logement_id].sum += r.rating;
+          ratingStats[r.logement_id].count++;
+        });
+      }
+    }
+    function ratingLabelFor(avg){
+      if(avg>=4.7) return 'Exceptionnel';
+      if(avg>=4.3) return 'Excellent';
+      if(avg>=3.5) return 'Très bien';
+      if(avg>0) return 'Correct';
+      return 'Nouveau';
+    }
+
     (data||[]).forEach((a, i) => {
       if(hotels.some(h=>h.annonceId===a.id)) return; // évite les doublons si déjà fusionné
+      const rs = ratingStats[a.id];
+      const avgRating = rs ? Math.round((rs.sum/rs.count)*10)/10 : 0;
       hotels.push({
         id: 100000 + i,
         annonceId: a.id,
@@ -9569,9 +9726,9 @@ async function loadPublishedAnnonces(){
         stars: a.stars || 3,
         capacity: a.capacity || 2,
         rooms: a.rooms || 1,
-        rating: 0,
-        ratingLabel: 'Nouveau',
-        reviews: 0,
+        rating: avgRating,
+        ratingLabel: ratingLabelFor(avgRating),
+        reviews: rs ? rs.count : 0,
         price: a.price_night || 0,
         emoji: a.emoji || '🏠',
         features: a.amenities || [],
