@@ -931,6 +931,12 @@ function render() {
     app.appendChild(_eec);
     loadExcursionEdit(_eec);
   }
+  else if(pg==='annonce-edit-owner'){
+    const _aeoc = document.createElement('div');
+    _aeoc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de l\'annonce…</div>';
+    app.appendChild(_aeoc);
+    loadAnnonceEditOwner(_aeoc);
+  }
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
   else if(pg==='admin') app.appendChild(buildAdminDashboard());
   else if(pg==='about')     app.appendChild(buildAboutPage());
@@ -4568,6 +4574,7 @@ function buildMesAnnonces(){
               <button onclick="openEditPriceModal('${a.id}')" title="Modifier le prix" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--blue-l);padding:2px;">✏️</button>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button onclick="loadAnnonceEditOwner(null,'${a.id}')" style="background:#eef2f7;color:#003580;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #b3c9e0;cursor:pointer;">✏️ Modifier l'annonce</button>
               <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">📊 Statistiques</button>
               <button onclick="navigate('host-calendar',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📅 Calendrier</button>
               ${a.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${a.hotelId}})" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #6bcf9e;cursor:pointer;">👁️ Voir l'annonce</button>`:''}
@@ -6356,6 +6363,202 @@ async function saveEditedPrice(annonceId){
   const hEntry = hotels.find(x=>x.annonceId===annonceId);
   if(hEntry) hEntry.price = val;
 
+  navigate('mesannonces');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MODIFIER L'ANNONCE (hôte, tous les champs — au-delà du prix seul)
+══════════════════════════════════════════════════════════════════ */
+async function loadAnnonceEditOwner(container, id){
+  const annId = id || appState.selectedAnnonceEditId;
+  if(!annId){navigate('mesannonces');return;}
+  appState.selectedAnnonceEditId = annId;
+
+  const { data: a, error } = await _sb.from('annonces').select('*').eq('id', annId).maybeSingle();
+  if(error || !a){ showToast('Annonce introuvable','var(--red)'); navigate('mesannonces'); return; }
+  if(auth.currentUser && a.user_id && a.user_id!==auth.currentUser.id){ showToast("Cette annonce ne vous appartient pas",'var(--red)'); navigate('mesannonces'); return; }
+
+  appState.annEditData = {
+    id: a.id, type: a.type||'', name: a.name||'', stars: a.stars||3,
+    description: a.description||'', access: a.access||'',
+    rooms: a.rooms||1, bathrooms: a.bathrooms||1, capacity: a.capacity||2, size: a.size||'',
+    address: a.address||'', city: a.city||'', country: a.country||'Tunisie', zip: a.zip||'',
+    price_night: a.price_night||0, price_week: a.price_week||0, price_month: a.price_month||0,
+    cancellation: a.cancellation||'flexible',
+    checkin: a.checkin||'15:00', checkout: a.checkout||'11:00',
+    min_stay: a.min_stay||1, max_stay: a.max_stay||30,
+    amenities: a.amenities||[],
+    firstname: a.contact_firstname||'', lastname: a.contact_lastname||'',
+    email: a.contact_email||'', phone: a.contact_phone||'',
+    photos: a.photos||[]
+  };
+
+  if(container){
+    const fresh = buildAnnonceEditFormOwner();
+    if(container.parentNode){ container.replaceWith(fresh); }
+  } else {
+    navigate('annonce-edit-owner');
+  }
+}
+
+function aeSet(key,val){ appState.annEditData[key]=val; }
+function aeRefresh(){ const el=document.getElementById('ann-edit-form'); if(el) el.innerHTML=buildAnnonceEditFormOwnerInner(); }
+function aeToggleAmenity(id){ const arr=appState.annEditData.amenities||[]; appState.annEditData.amenities = arr.includes(id) ? arr.filter(x=>x!==id) : [...arr,id]; aeRefresh(); }
+
+function buildAnnonceEditFormOwner(){
+  const d=document.createElement('div');
+  d.innerHTML = `
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('mesannonces')">Mes annonces</span><span class="bc-sep">›</span><span>Modifier</span></div>
+  <div style="max-width:760px;margin:0 auto;padding:28px 20px 60px;">
+    <h1 style="font-size:22px;font-weight:800;margin-bottom:20px;">✏️ Modifier l'annonce</h1>
+    <div id="ann-edit-form">${buildAnnonceEditFormOwnerInner()}</div>
+  </div>`;
+  return d;
+}
+
+function buildAnnonceEditFormOwnerInner(){
+  const ed = appState.annEditData;
+  const field = (label, key, type) => `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label}</label>
+      <input type="${type||'text'}" value="${(ed[key]??'').toString().replace(/"/g,'&quot;')}" oninput="aeSet('${key}', this.${type==='number'?'valueAsNumber||0':'value'})"
+        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;box-sizing:border-box;">
+    </div>`;
+  const area = (label, key, rows) => `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label}</label>
+      <textarea rows="${rows||3}" oninput="aeSet('${key}', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${ed[key]||''}</textarea>
+    </div>`;
+
+  return `
+    <!-- Infos générales -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📋 Informations générales</div>
+      ${field("Nom de l'hébergement",'name')}
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Type</label>
+        <select onchange="aeSet('type', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+          ${TYPES_ANN.map(t=>`<option value="${t.id}" ${ed.type===t.id?'selected':''}>${t.icon} ${t.name}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${field('Ville','city')}
+        ${field('Pays','country')}
+        ${field('Adresse','address')}
+        ${field('Code postal','zip')}
+        ${field('Surface (m²)','size','number')}
+        ${field('Étoiles','stars','number')}
+        ${field('Chambres','rooms','number')}
+        ${field('Salles de bain','bathrooms','number')}
+        ${field('Capacité (voyageurs)','capacity','number')}
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📖 Description</div>
+      ${area('Description','description',5)}
+      ${area("🔑 Instructions d'accès",'access',3)}
+    </div>
+
+    <!-- Équipements -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">🛠️ Équipements</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
+        ${AMENITIES_ANN.map(am=>`
+          <div onclick="aeToggleAmenity('${am.id}')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1.5px solid ${(ed.amenities||[]).includes(am.id)?'var(--blue)':'var(--gray-300)'};border-radius:var(--r-md);cursor:pointer;background:${(ed.amenities||[]).includes(am.id)?'rgba(0,53,128,.05)':'#fff'};">
+            <span style="font-size:16px;">${am.icon}</span><span style="font-size:13px;font-weight:500;">${am.name}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Tarifs -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">💶 Tarifs</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        ${field('Prix / nuit (€)','price_night','number')}
+        ${field('Prix / semaine (€)','price_week','number')}
+        ${field('Prix / mois (€)','price_month','number')}
+      </div>
+      <div style="background:#f0f7ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:10px 14px;font-size:13px;color:var(--blue-l);">
+        💡 Le nouveau prix ne s'applique qu'aux futures réservations. Les réservations déjà confirmées ou passées gardent leur montant d'origine.
+      </div>
+    </div>
+
+    <!-- Politique & règles de séjour -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📜 Politique & règles de séjour</div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Politique d'annulation</label>
+        <select onchange="aeSet('cancellation', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+          ${[['flexible','Flexible'],['moderate','Modérée'],['strict','Stricte']].map(([v,l])=>`<option value="${v}" ${ed.cancellation===v?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${field('Heure arrivée','checkin','time')}
+        ${field('Heure départ','checkout','time')}
+        ${field('Séjour min (nuits)','min_stay','number')}
+        ${field('Séjour max (nuits)','max_stay','number')}
+      </div>
+    </div>
+
+    <!-- Contact -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📞 Contact</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${field('Prénom','firstname')}
+        ${field('Nom','lastname')}
+        ${field('Email','email','email')}
+        ${field('Téléphone','phone','tel')}
+      </div>
+    </div>
+
+    <!-- Photos (lecture seule) -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:24px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📷 Photos (${(ed.photos||[]).length}) <span style="font-size:12px;font-weight:400;color:var(--gray-400);">— lecture seule ici</span></div>
+      ${(ed.photos||[]).length ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+          ${ed.photos.map(url=>`<a href="${url}" target="_blank" rel="noopener"><img src="${url}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);"></a>`).join('')}
+        </div>` : `<div style="font-size:13px;color:var(--gray-500);">Aucune photo.</div>`}
+    </div>
+
+    <div style="display:flex;gap:12px;">
+      <button onclick="navigate('mesannonces')" style="flex:1;background:#fff;color:var(--gray-700);padding:13px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">Annuler</button>
+      <button onclick="saveAnnonceEditOwner()" style="flex:2;background:var(--blue);color:#fff;padding:13px;border-radius:var(--r-md);font-size:15px;font-weight:800;border:none;cursor:pointer;">💾 Enregistrer les modifications</button>
+    </div>
+  `;
+}
+
+async function saveAnnonceEditOwner(){
+  const ed = appState.annEditData;
+  if(!ed || !ed.id) return;
+  const updates = {
+    name: ed.name, type: ed.type,
+    type_label: (TYPES_ANN.find(t=>t.id===ed.type)||{}).name || '',
+    stars: ed.stars||3, description: ed.description||'', access: ed.access||'',
+    rooms: ed.rooms||1, bathrooms: ed.bathrooms||1, capacity: ed.capacity||2, size: ed.size||null,
+    address: ed.address||'', city: normalizeCityName(ed.city)||'', country: ed.country||'Tunisie', zip: ed.zip||'',
+    price_night: ed.price_night||0, price_week: ed.price_week||0, price_month: ed.price_month||0,
+    cancellation: ed.cancellation||'flexible',
+    checkin: ed.checkin||'15:00', checkout: ed.checkout||'11:00',
+    min_stay: ed.min_stay||1, max_stay: ed.max_stay||30,
+    amenities: ed.amenities||[],
+    contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
+    contact_email: ed.email||'', contact_phone: ed.phone||''
+  };
+
+  const { error } = await _sb.from('annonces').update(updates).eq('id', ed.id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  // Met à jour immédiatement la copie en mémoire (hotels[]), sans attendre un rechargement
+  const hEntry = hotels.find(x=>x.annonceId===ed.id);
+  if(hEntry){
+    hEntry.name=updates.name; hEntry.city=updates.city; hEntry.country=updates.country;
+    hEntry.price=updates.price_night; hEntry.capacity=updates.capacity; hEntry.rooms=updates.rooms;
+    hEntry.desc=updates.description; hEntry.features=updates.amenities;
+  }
+
+  showToast('✅ Annonce mise à jour','var(--green)');
   navigate('mesannonces');
 }
 
