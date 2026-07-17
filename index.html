@@ -6023,6 +6023,31 @@ async function saveReview(annonceId){
 
   document.getElementById('modal-root').innerHTML = '';
   showToast('✅ Merci pour votre avis !','var(--green)');
+
+  // Notifie l'hôte par email à chaque note/commentaire publié ou modifié
+  try{
+    const { data: ann } = await _sb.from('annonces').select('name,contact_email,contact_firstname').eq('id', annonceId).maybeSingle();
+    if(ann?.contact_email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({
+          recipient_email: ann.contact_email,
+          host_name: ann.contact_firstname || 'vous',
+          reviewer_name: auth.currentUser.firstName || 'Un voyageur',
+          property_name: ann.name || 'votre hébergement',
+          rating: _reviewRatingValue,
+          comment
+        })
+      });
+    }
+  } catch(efErr){
+    console.error('notify-review error:', efErr.message);
+  }
+
   navigate('reservations');
 }
 
