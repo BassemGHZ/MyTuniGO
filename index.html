@@ -6540,6 +6540,13 @@ function showPaymentSuccess(ref,title,total,method){
 function getHostForHotel(hId){
   const h = hotels.find(x=>x.id===hId);
   if(h && h.annonceId){
+    // Réutilise la vraie note/nb d'avis déjà calculés par loadPublishedAnnonces()
+    // (jusque-là ces champs étaient codés en dur à 0, d'où l'incohérence avec
+    // la section "Avis clients" juste en dessous qui, elle, affichait la vraie valeur).
+    const rating = h.rating || 0;
+    const reviews = h.reviews || 0;
+    // Superhost = seuil raisonnable sur données réelles (pas de champ dédié en base)
+    const isSuperhost = rating >= 4.8 && reviews >= 5;
     return {
       id: 'HOST-'+h.annonceId,
       authId: h.userId || null,
@@ -6548,14 +6555,16 @@ function getHostForHotel(hId){
       email: h.contactEmail || '',
       phone: h.contactPhone || '',
       avatar: (h.contactFirstname?.[0]||'H')+(h.contactLastname?.[0]||''),
-      superhost: false,
-      badges: ['verified'],
-      rating: 0,
-      reviews: 0,
+      superhost: isSuperhost,
+      badges: isSuperhost ? ['superhost','verified'] : ['verified'],
+      rating: rating,
+      reviews: reviews,
       totalStays: 0,
       responseRate: 0,
       responseTime: '—',
-      memberSince: new Date().toISOString(),
+      // Date de création de l'annonce = meilleure approximation dispo sans requête
+      // supplémentaire sur profiles (le vrai "membre depuis" nécessitera Niveau 2).
+      memberSince: h.createdAt || new Date().toISOString(),
       bio: '',
       languages: ['Français'],
       city: h.city || '',
@@ -7587,9 +7596,8 @@ function buildHostCardHTML(hId){
         <div style="font-size:17px;font-weight:800;margin-bottom:3px;">${host.firstName}</div>
         <div style="font-size:13px;color:var(--gray-500);margin-bottom:5px;">Membre depuis ${new Date(host.memberSince).toLocaleDateString('fr-FR',{year:'numeric'})}</div>
         <div style="display:flex;gap:12px;font-size:13px;color:var(--gray-600);">
-          <span>⭐ ${host.rating}</span>
-          <span>💬 ${host.reviews} avis</span>
-          <span>⚡ ${host.responseTime}</span>
+          ${host.reviews>0?`<span>⭐ ${host.rating}</span><span>💬 ${host.reviews} avis</span>`:`<span>🆕 Nouvel hôte</span>`}
+          ${host.responseTime && host.responseTime!=='—'?`<span>⚡ ${host.responseTime}</span>`:''}
         </div>
       </div>
       <button onclick="navigate('host-profile',{selectedHostId:'${host.id}', selectedHotelId:${hId}})" style="background:var(--gray-50);color:var(--blue-l);padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--gray-200);cursor:pointer;white-space:nowrap;">Voir profil</button>
@@ -7597,10 +7605,10 @@ function buildHostCardHTML(hId){
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
       ${host.badges.map(b=>{const bi=BADGE_INFO[b]||{label:b,icon:'•',color:'#666',bg:'#f5f5f5'};return`<span style="font-size:11px;background:${bi.bg};color:${bi.color};border:1px solid ${bi.color}33;padding:3px 9px;border-radius:20px;font-weight:600;">${bi.icon} ${bi.label}</span>`;}).join('')}
     </div>
-    <p style="font-size:13px;color:var(--gray-600);line-height:1.6;">${host.bio.substring(0,180)}…</p>
-    <div style="margin-top:12px;padding:10px 14px;background:var(--gray-50);border-radius:var(--r-md);font-size:13px;color:var(--gray-600);">
+    ${host.bio?`<p style="font-size:13px;color:var(--gray-600);line-height:1.6;">${host.bio.substring(0,180)}…</p>`:''}
+    ${host.languages && host.languages.length && host.responseTime && host.responseTime!=='—'?`<div style="margin-top:12px;padding:10px 14px;background:var(--gray-50);border-radius:var(--r-md);font-size:13px;color:var(--gray-600);">
       🗣️ Parle ${host.languages.join(', ')} · 📅 Répond ${host.responseTime}
-    </div>
+    </div>`:''}
   </div>`;
 }
 
