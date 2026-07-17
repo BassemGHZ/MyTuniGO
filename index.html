@@ -9240,6 +9240,17 @@ function renderAdminAnnonceModal(id){
       <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">🔑 Instructions d'accès</label>
       <textarea id="am-access" rows="3" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.access||''}</textarea>
     </div>
+    <div style="margin-top:14px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:6px;">Photos (${(a.photos&&a.photos.length)||0}) <span style="text-transform:none;font-weight:400;color:var(--gray-400);">— lecture seule ici</span></div>
+      ${(a.photos&&a.photos.length) ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+          ${a.photos.map(url=>`
+            <a href="${url}" target="_blank" rel="noopener">
+              <img src="${url}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);">
+            </a>`).join('')}
+        </div>
+      ` : `<div style="font-size:13px;color:var(--gray-500);">Aucune photo n'a été ajoutée pour cette annonce.</div>`}
+    </div>
   ` : `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
       ${field('Référence', a.ref)}
@@ -9501,6 +9512,17 @@ function renderAdminExcursionModal(id){
     <div style="margin-top:4px;">
       <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Description</label>
       <textarea id="ae-desc" rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:6px;">Photos (${(a.photos&&a.photos.length)||0}) <span style="text-transform:none;font-weight:400;color:var(--gray-400);">— lecture seule ici</span></div>
+      ${(a.photos&&a.photos.length) ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+          ${a.photos.map(url=>`
+            <a href="${url}" target="_blank" rel="noopener">
+              <img src="${url}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);">
+            </a>`).join('')}
+        </div>
+      ` : `<div style="font-size:13px;color:var(--gray-500);">Aucune photo n'a été ajoutée pour cette excursion.</div>`}
     </div>
   ` : `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
