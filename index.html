@@ -919,6 +919,18 @@ function render() {
     app.appendChild(_erc);
     loadExcursionBookingRequests(_erc);
   }
+  else if(pg==='manage-excursions'){
+    const _mec = document.createElement('div');
+    _mec.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de vos excursions…</div>';
+    app.appendChild(_mec);
+    loadManageExcursions(_mec);
+  }
+  else if(pg==='excursion-edit'){
+    const _eec = document.createElement('div');
+    _eec.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de l\'excursion…</div>';
+    app.appendChild(_eec);
+    loadExcursionEdit(_eec);
+  }
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
   else if(pg==='admin') app.appendChild(buildAdminDashboard());
   else if(pg==='about')     app.appendChild(buildAboutPage());
@@ -1087,6 +1099,7 @@ function toggleDropdown(){
     <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages</div>
     <div style="padding:4px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);border-top:1px solid var(--gray-100);margin-top:4px;padding-top:10px;">Espace hôte</div>
     <div class="ud-item" onclick="navigate('booking-requests');closeDropdown()">📨 Gérer les réservations</div>
+    <div class="ud-item" onclick="navigate('manage-excursions');closeDropdown()">🗂️ Gérer les excursions</div>
     <div class="ud-item" onclick="navigate('mesannonces');closeDropdown()">🏘️ Mes annonces</div>
     <div class="ud-item" onclick="checkAuthAndGo('annonce');closeDropdown()">📋 Déposer une annonce</div>
     <div class="ud-item" onclick="checkAuthAndGo('excursion-form');closeDropdown()">🗺️ Déposer une excursion</div>
@@ -1132,6 +1145,7 @@ function openMobileDrawer(){
     {icon:'❤️', label:'Mes favoris',             page:'favoris'},
     {icon:'💬', label:'Messages',                page:'messages'},
     {icon:'📨', label:'Gérer les réservations',    page:'booking-requests'},
+    {icon:'🗂️', label:'Gérer les excursions',     page:'manage-excursions'},
     {icon:'🏘️', label:'Mes annonces',           page:'mesannonces'},
     {icon:'📋', label:'Déposer une annonce',     page:'annonce', auth:true},
   ];
@@ -4473,6 +4487,10 @@ function buildMesAnnonces(){
                 style="background:${e.pendingCount?'#fff8e0':'var(--gray-50)'};color:${e.pendingCount?'#a07000':'var(--gray-600)'};padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid ${e.pendingCount?'#f0d080':'var(--gray-200)'};cursor:pointer;display:flex;align-items:center;gap:6px;">
                 📥 Demandes${e.pendingCount?` (${e.pendingCount})`:''}
               </button>
+              <button onclick="loadExcursionEdit(null,'${e.excursionId||e.id}')"
+                style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                ✏️ Modifier
+              </button>
               <button onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})"
                 style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 👁️ Voir la fiche
@@ -6098,7 +6116,7 @@ async function excFormPublish(){
     category_label: cat.label,
     description: fd.description||'',
     highlights: (fd.highlights||[]).filter(h=>h&&h.trim()),
-    included: fd.included||'',
+    includes: fd.includes||[],
     not_included: fd.notIncluded||'',
     what_to_bring: fd.whatToBring||'',
     meeting_point: fd.meetingPoint||'',
@@ -6114,7 +6132,7 @@ async function excFormPublish(){
     max_participants: fd.maxParticipants||10,
     min_age: fd.minAge||0,
     difficulty: fd.difficulty||'facile',
-    languages: fd.languages||['Français'],
+    languages: fd.language||['Français'],
     photos: photoUrls,
     availability: fd.availability||[],
     status: 'en attente',
@@ -7559,6 +7577,289 @@ async function handleExcursionBookingRequest(reqId, decision, hostMessage){
   }
 
   navigate('excursion-requests');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   GÉRER LES EXCURSIONS (liste + édition complète, prestataire)
+══════════════════════════════════════════════════════════════════ */
+async function loadManageExcursions(container){
+  if(!auth.currentUser){navigate('home');return;}
+  const { data, error } = await _sb.from('excursions')
+    .select('*').eq('owner_id', auth.currentUser.id).order('created_at',{ascending:false});
+  if(error){ if(container){container.innerHTML='<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';} return; }
+
+  appState._manageExcursions = data||[];
+  const fresh = buildManageExcursions();
+  if(container && container.parentNode){ container.replaceWith(fresh); }
+}
+
+function buildManageExcursions(){
+  const list = appState._manageExcursions||[];
+  const statusColor={'publiée':'#0d9e6e','en attente':'#e6a800','rejetée':'#cc0000',suspendue:'#6b7280'};
+  const statusBg={'publiée':'#e8f9f0','en attente':'#fff8e0','rejetée':'#fff0f0',suspendue:'#f1f3f5'};
+
+  const d=document.createElement('div');
+  d.innerHTML=`
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Gérer les excursions</span></div>
+  <div style="max-width:1000px;margin:0 auto;padding:28px 20px 60px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:28px;">
+      <div>
+        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">🗂️ Gérer les excursions</h1>
+        <p style="font-size:15px;color:var(--gray-500);">${list.length} excursion${list.length>1?'s':''}</p>
+      </div>
+      <button onclick="checkAuthAndGo('excursion-form')" style="background:var(--orange);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle excursion</button>
+    </div>
+
+    ${list.length===0?`<div style="text-align:center;padding:70px 20px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
+      <div style="font-size:56px;margin-bottom:16px;">✈️</div>
+      <h3 style="font-size:20px;font-weight:800;color:var(--gray-700);margin-bottom:8px;">Aucune excursion</h3>
+      <button onclick="checkAuthAndGo('excursion-form')" style="background:var(--orange);color:#fff;padding:12px 28px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">🗺️ Déposer une excursion</button>
+    </div>`:list.map(e=>`
+      <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;display:flex;flex-wrap:wrap;">
+        <div style="width:100px;min-height:100px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:44px;flex-shrink:0;">✈️</div>
+        <div style="flex:1;padding:16px 18px;min-width:200px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:16px;font-weight:800;color:var(--gray-900);margin-bottom:4px;">${e.title||'(Sans titre)'}</div>
+              <div style="font-size:13px;color:var(--gray-500);margin-bottom:8px;">📍 ${e.city||'—'}, ${e.country||'—'} · ${e.price||0}€ / ${e.price_type||'personne'}</div>
+              <span style="background:${statusBg[e.status]||'#f1f3f5'};color:${statusColor[e.status]||'#6c757d'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${e.status||'en attente'}</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              <button onclick="loadExcursionEdit(null,'${e.id}')" style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;">✏️ Modifier</button>
+              <button onclick="navigate('excursion-requests')" style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;">📥 Demandes</button>
+            </div>
+          </div>
+        </div>
+      </div>`).join('')}
+  </div>`;
+  return d;
+}
+
+async function loadExcursionEdit(container, id){
+  const excId = id || appState.selectedExcursionEditId;
+  if(!excId){navigate('manage-excursions');return;}
+  appState.selectedExcursionEditId = excId;
+
+  const { data: e, error } = await _sb.from('excursions').select('*').eq('id', excId).maybeSingle();
+  if(error || !e){ showToast('Excursion introuvable','var(--red)'); navigate('manage-excursions'); return; }
+
+  appState.excEditData = {
+    id: e.id,
+    title: e.title||'', category: e.category||'', duration: e.duration||'',
+    city: e.city||'', country: e.country||'Tunisie',
+    price: e.price||0, priceType: e.price_type||'personne',
+    maxParticipants: e.max_participants||10, minAge: e.min_age||0,
+    difficulty: e.difficulty||'facile',
+    language: e.languages||['Français'],
+    description: e.description||'',
+    highlights: (e.highlights&&e.highlights.length?e.highlights:['','','','']),
+    includes: e.includes||[],
+    notIncluded: e.not_included||'', whatToBring: e.what_to_bring||'', schedule: e.schedule||'',
+    meetingPoint: e.meeting_point||'', meetingTime: e.meeting_time||'', meetingTimeEnd: e.meeting_time_end||'',
+    availability: e.availability||[],
+    instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation,
+    firstname: e.contact_firstname||'', lastname: e.contact_lastname||'',
+    email: e.contact_email||'', phone: e.contact_phone||''
+  };
+
+  if(container){
+    const fresh = buildExcursionEditForm();
+    if(container.parentNode){ container.replaceWith(fresh); }
+  } else {
+    navigate('excursion-edit');
+  }
+}
+
+function edSet(key,val){ appState.excEditData[key]=val; }
+function edRefresh(){ const el=document.getElementById('exc-edit-form'); if(el) el.innerHTML=buildExcursionEditFormInner(); }
+function edToggleLang(l){ const arr=appState.excEditData.language||[]; appState.excEditData.language = arr.includes(l) ? arr.filter(x=>x!==l) : [...arr,l]; edRefresh(); }
+function edToggleInclude(id){ const arr=appState.excEditData.includes||[]; appState.excEditData.includes = arr.includes(id) ? arr.filter(x=>x!==id) : [...arr,id]; edRefresh(); }
+function edSetHighlight(i,v){ if(!appState.excEditData.highlights) appState.excEditData.highlights=['','','','']; appState.excEditData.highlights[i]=v; }
+function edAddDate(){
+  const val = document.getElementById('ed-new-date')?.value;
+  if(!val) return;
+  const arr = appState.excEditData.availability||[];
+  if(!arr.includes(val)){ arr.push(val); arr.sort(); appState.excEditData.availability=arr; }
+  edRefresh();
+}
+function edRemoveDate(dstr){
+  appState.excEditData.availability = (appState.excEditData.availability||[]).filter(x=>x!==dstr);
+  edRefresh();
+}
+
+function buildExcursionEditForm(){
+  const d=document.createElement('div');
+  d.innerHTML = `
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('manage-excursions')">Gérer les excursions</span><span class="bc-sep">›</span><span>Modifier</span></div>
+  <div style="max-width:760px;margin:0 auto;padding:28px 20px 60px;">
+    <h1 style="font-size:22px;font-weight:800;margin-bottom:20px;">✏️ Modifier l'excursion</h1>
+    <div id="exc-edit-form">${buildExcursionEditFormInner()}</div>
+  </div>`;
+  return d;
+}
+
+function buildExcursionEditFormInner(){
+  const ed = appState.excEditData;
+  const field = (label, key, type) => `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label}</label>
+      <input type="${type||'text'}" value="${(ed[key]??'').toString().replace(/"/g,'&quot;')}" oninput="edSet('${key}', this.${type==='number'?'valueAsNumber||0':'value'})"
+        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;box-sizing:border-box;">
+    </div>`;
+  const area = (label, key, rows) => `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label}</label>
+      <textarea rows="${rows||3}" oninput="edSet('${key}', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${ed[key]||''}</textarea>
+    </div>`;
+
+  return `
+    <!-- Infos générales -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📋 Informations générales</div>
+      ${field('Titre','title')}
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Catégorie</label>
+        <select onchange="edSet('category', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+          ${EXCURSION_CATS.map(c=>`<option value="${c.id}" ${ed.category===c.id?'selected':''}>${c.icon} ${c.label}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${field('Ville','city')}
+        ${field('Pays','country')}
+        ${field('Durée (ex: 3h, 1 jour)','duration')}
+        ${field('Âge minimum','minAge','number')}
+        ${field('Prix (€)','price','number')}
+        ${field('Participants max','maxParticipants','number')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Tarif par</label>
+          <select onchange="edSet('priceType', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            ${['personne','groupe'].map(v=>`<option value="${v}" ${ed.priceType===v?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Difficulté</label>
+          <select onchange="edSet('difficulty', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            ${['facile','intermédiaire','difficile'].map(v=>`<option value="${v}" ${ed.difficulty===v?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Langues proposées</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${['FR','EN','ES','AR','DE','IT'].map(l=>`
+            <div onclick="edToggleLang('${l}')" style="padding:6px 12px;border:1.5px solid ${(ed.language||[]).includes(l)?'var(--blue)':'var(--gray-300)'};border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;background:${(ed.language||[]).includes(l)?'rgba(0,53,128,.07)':'#fff'};color:${(ed.language||[]).includes(l)?'var(--blue)':'var(--gray-600)'};">${l}</div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Description & contenu -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📖 Description & contenu</div>
+      ${area('Description','description',5)}
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:6px;">Points forts (4 max)</label>
+      ${(ed.highlights||['','','','']).map((h,i)=>`
+        <input type="text" value="${(h||'').replace(/"/g,'&quot;')}" oninput="edSetHighlight(${i}, this.value)" placeholder="Point fort ${i+1}"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;box-sizing:border-box;">`).join('')}
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin:10px 0 8px;">Ce qui est inclus</label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:14px;">
+        ${EXCURSION_INCLUDES.map(inc=>`
+          <div onclick="edToggleInclude('${inc.id}')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1.5px solid ${(ed.includes||[]).includes(inc.id)?'var(--blue)':'var(--gray-300)'};border-radius:var(--r-md);cursor:pointer;background:${(ed.includes||[]).includes(inc.id)?'rgba(0,53,128,.05)':'#fff'};">
+            <span style="font-size:16px;">${inc.icon}</span><span style="font-size:13px;font-weight:500;">${inc.label}</span>
+          </div>`).join('')}
+      </div>
+      ${area("Non inclus","notIncluded",2)}
+      ${area("À apporter","whatToBring",2)}
+      ${area("Déroulé / programme","schedule",3)}
+    </div>
+
+    <!-- Rendez-vous -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📍 Point de rendez-vous</div>
+      ${field('Adresse / lieu','meetingPoint')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${field('Heure début','meetingTime','time')}
+        ${field('Heure fin','meetingTimeEnd','time')}
+      </div>
+    </div>
+
+    <!-- Disponibilités -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📅 Dates disponibles</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+        ${(ed.availability||[]).length===0?'<span style="font-size:13px;color:var(--gray-400);">Aucune date pour l\'instant</span>':(ed.availability||[]).map(dt=>`
+          <span style="background:#f0f9ff;border:1px solid #d0e8ff;color:var(--blue);font-size:13px;font-weight:600;padding:5px 8px 5px 12px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;">
+            ${new Date(dt).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})}
+            <span onclick="edRemoveDate('${dt}')" style="cursor:pointer;font-weight:800;color:var(--red);">✕</span>
+          </span>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input type="date" id="ed-new-date" min="${new Date().toISOString().split('T')[0]}" style="flex:1;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+        <button onclick="edAddDate()" style="background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">+ Ajouter</button>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">⚙️ Options</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--gray-100);">
+        <div><div style="font-size:14px;font-weight:600;">Réservation instantanée</div><div style="font-size:12px;color:var(--gray-500);">Les participants peuvent réserver sans attendre votre confirmation</div></div>
+        <div onclick="edSet('instantBook', !appState.excEditData.instantBook); edRefresh();" style="width:44px;height:24px;border-radius:12px;background:${ed.instantBook?'var(--blue)':'var(--gray-300)'};cursor:pointer;position:relative;flex-shrink:0;">
+          <div style="position:absolute;top:2px;${ed.instantBook?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
+        <div><div style="font-size:14px;font-weight:600;">Annulation gratuite</div></div>
+        <div onclick="edSet('freeCancellation', !appState.excEditData.freeCancellation); edRefresh();" style="width:44px;height:24px;border-radius:12px;background:${ed.freeCancellation?'var(--blue)':'var(--gray-300)'};cursor:pointer;position:relative;flex-shrink:0;">
+          <div style="position:absolute;top:2px;${ed.freeCancellation?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contact -->
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:24px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📞 Contact</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${field('Prénom','firstname')}
+        ${field('Nom','lastname')}
+        ${field('Email','email','email')}
+        ${field('Téléphone','phone','tel')}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;">
+      <button onclick="navigate('manage-excursions')" style="flex:1;background:#fff;color:var(--gray-700);padding:13px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">Annuler</button>
+      <button onclick="saveExcursionEdit()" style="flex:2;background:var(--blue);color:#fff;padding:13px;border-radius:var(--r-md);font-size:15px;font-weight:800;border:none;cursor:pointer;">💾 Enregistrer les modifications</button>
+    </div>
+  `;
+}
+
+async function saveExcursionEdit(){
+  const ed = appState.excEditData;
+  if(!ed || !ed.id) return;
+  const updates = {
+    title: ed.title, category: ed.category,
+    category_label: (EXCURSION_CATS.find(c=>c.id===ed.category)||{}).label || '',
+    city: normalizeCityName(ed.city)||'', country: ed.country||'Tunisie',
+    duration: ed.duration, price: ed.price||0, base_price: ed.price||0, price_type: ed.priceType||'personne',
+    max_participants: ed.maxParticipants||10, min_age: ed.minAge||0, difficulty: ed.difficulty||'facile',
+    languages: ed.language||['Français'],
+    description: ed.description||'',
+    highlights: (ed.highlights||[]).filter(h=>h&&h.trim()),
+    includes: ed.includes||[],
+    not_included: ed.notIncluded||'', what_to_bring: ed.whatToBring||'', schedule: ed.schedule||'',
+    meeting_point: ed.meetingPoint||'', meeting_time: ed.meetingTime||'', meeting_time_end: ed.meetingTimeEnd||'',
+    availability: ed.availability||[],
+    instant_book: !!ed.instantBook, free_cancellation: !!ed.freeCancellation,
+    contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
+    contact_email: ed.email||'', contact_phone: ed.phone||''
+  };
+
+  const { error } = await _sb.from('excursions').update(updates).eq('id', ed.id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast('✅ Excursion mise à jour','var(--green)');
+  navigate('manage-excursions');
 }
 
 function decideBookingRequest(reqId, decision){
@@ -10253,7 +10554,7 @@ async function loadPublishedExcursions(){
         reviews: 0,
         language: e.languages || ['Français'],
         difficulty: e.difficulty || 'facile',
-        includes: [],
+        includes: e.includes || [],
         description: e.description || '',
         highlights: e.highlights || [],
         meetingPoint: e.meeting_point || '',
