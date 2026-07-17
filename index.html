@@ -5345,6 +5345,21 @@ function buildExcursionDetail(){
           </div>
         </div>
 
+        ${e.meetingPoint?`
+        <!-- Point de rendez-vous -->
+        <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+          <div style="font-size:17px;font-weight:700;margin-bottom:14px;">📍 Point de rendez-vous</div>
+          <div style="font-size:15px;color:var(--gray-800);font-weight:600;margin-bottom:4px;word-break:break-word;overflow-wrap:anywhere;">${e.meetingPoint}</div>
+          ${(e.meetingTime||e.meetingTimeEnd)?`<div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">🕐 ${e.meetingTime||'—'}${e.meetingTimeEnd?' – '+e.meetingTimeEnd:''}</div>`:'<div style="margin-bottom:14px;"></div>'}
+          <div style="border-radius:var(--r-md);overflow:hidden;border:1px solid var(--gray-200);">
+            <iframe
+              src="https://www.google.com/maps?q=${encodeURIComponent(e.meetingPoint+', '+e.city+', '+e.country)}&output=embed"
+              width="100%" height="260" style="border:0;display:block;" loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"></iframe>
+          </div>
+          <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.meetingPoint+', '+e.city+', '+e.country)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;font-size:13px;color:var(--blue-l);font-weight:600;text-decoration:none;">🧭 Ouvrir dans Google Maps</a>
+        </div>`:''}
+
         <!-- Guide / Hôte -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;">
           <div style="font-size:17px;font-weight:700;margin-bottom:14px;">👤 Votre guide</div>
