@@ -820,6 +820,7 @@ let appState = {
   excursionFormData:{title:'',category:'',duration:'',maxParticipants:10,price:0,priceType:'personne',description:'',highlights:['','','',''],included:'',notIncluded:'',meetingPoint:'',meetingTime:'',meetingTimeEnd:'',whatToBring:'',schedule:'',photos:[],availability:[],city:'',country:'',difficulty:'facile',minAge:0,languages:['Français']},
   excursionFormPublished:false,
   excursionBookings:[],
+  myExcursionBookings:[],
   paymentData:{method:'card',cardNumber:'',cardName:'',expiry:'',cvv:'',paypalEmail:''},
   pendingBooking:null,
   myExcursions:[],
@@ -911,6 +912,12 @@ function render() {
     _brc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement des demandes…</div>';
     app.appendChild(_brc);
     loadBookingRequests(_brc);
+  }
+  else if(pg==='excursion-requests'){
+    const _erc = document.createElement('div');
+    _erc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement des demandes…</div>';
+    app.appendChild(_erc);
+    loadExcursionBookingRequests(_erc);
   }
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
   else if(pg==='admin') app.appendChild(buildAdminDashboard());
@@ -3803,12 +3810,41 @@ async function loadReservations(container){
     };
   });
 
+  // --- Mes réservations d'excursions ---
+  try{ await _sb.rpc('fn_auto_complete_excursion_bookings'); }catch(e){ console.warn('fn_auto_complete_excursion_bookings:', e.message); }
+
+  const { data: excBk, error: excBkErr } = await _sb.from('excursion_bookings')
+    .select('*').eq('guest_id', uid).order('created_at', {ascending:false});
+
+  if(excBkErr){
+    console.warn('Erreur chargement réservations excursions:', excBkErr.message);
+    appState.myExcursionBookings = [];
+  } else {
+    const excIds2 = [...new Set((excBk||[]).map(b=>b.excursion_id).filter(Boolean))];
+    const { data: excs2 } = excIds2.length
+      ? await _sb.from('excursions').select('id,title,city,country').in('id', excIds2)
+      : { data: [] };
+    const excMap2 = Object.fromEntries((excs2||[]).map(e=>[e.id,e]));
+    appState.myExcursionBookings = (excBk||[]).map(b=>{
+      const ex = excMap2[b.excursion_id] || {};
+      return {
+        id: b.reference || b.id, _dbId: b.id, excursionId: b.excursion_id,
+        title: ex.title || 'Excursion', city: ex.city || '—', country: ex.country || '—',
+        date: b.date, participants: b.participants||1, total: b.total||0,
+        status: b.status||'en attente', createdAt: b.created_at
+      };
+    });
+  }
+
   const fresh = buildReservations();
   if(container && container.parentNode){ container.replaceWith(fresh); }
 }
 
 function buildReservations(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
+  const typeTab = appState.resaTypeTab||'logements';
+  if(typeTab==='excursions') return buildExcursionReservations();
+
   const tabs=['toutes','confirmée','en attente','terminée','refusée','annulée'];
   const filt=appState.resaFilter||'toutes';
   const list=appState.reservations.filter(r=>filt==='toutes'||r.status===filt);
@@ -3820,12 +3856,17 @@ function buildReservations(){
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Mes réservations</span></div>
   <div style="max-width:1000px;margin:0 auto;padding:28px 20px 60px;">
 
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:28px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:20px;">
       <div>
         <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📅 Mes réservations</h1>
         <p style="font-size:15px;color:var(--gray-500);">${appState.reservations.length} réservation${appState.reservations.length>1?'s':''} au total</p>
       </div>
       <button onclick="navigate('home')" style="background:var(--blue);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle réservation</button>
+    </div>
+
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:24px;">
+      <button onclick="appState.resaTypeTab='logements';navigate('reservations')" style="padding:10px 22px;border:none;background:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:3px solid var(--blue);color:var(--blue);margin-bottom:-2px;">🏠 Logements (${appState.reservations.length})</button>
+      <button onclick="appState.resaTypeTab='excursions';navigate('reservations')" style="padding:10px 22px;border:none;background:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;color:var(--gray-500);margin-bottom:-2px;">✈️ Excursions (${(appState.myExcursionBookings||[]).length})</button>
     </div>
 
     <!-- Stat cards -->
@@ -3965,6 +4006,115 @@ async function cancelReservation(dbId){
     }
   } catch(efErr){
     console.error('notify-booking cancellation error:', efErr.message);
+  }
+
+  navigate('reservations');
+}
+
+function buildExcursionReservations(){
+  const tabs=['toutes','confirmée','en attente','terminée','refusée','annulée'];
+  const filt=appState.resaFilter||'toutes';
+  const list=(appState.myExcursionBookings||[]).filter(r=>filt==='toutes'||r.status===filt);
+  const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000'};
+  const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0'};
+
+  const d=document.createElement('div');
+  d.innerHTML=`
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Mes réservations</span></div>
+  <div style="max-width:1000px;margin:0 auto;padding:28px 20px 60px;">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:20px;">
+      <div>
+        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📅 Mes réservations</h1>
+        <p style="font-size:15px;color:var(--gray-500);">${(appState.myExcursionBookings||[]).length} réservation${(appState.myExcursionBookings||[]).length>1?'s':''} d'excursion</p>
+      </div>
+      <button onclick="navigate('excursions')" style="background:var(--blue);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Explorer les excursions</button>
+    </div>
+
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:24px;">
+      <button onclick="appState.resaTypeTab='logements';navigate('reservations')" style="padding:10px 22px;border:none;background:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;color:var(--gray-500);margin-bottom:-2px;">🏠 Logements (${appState.reservations.length})</button>
+      <button onclick="appState.resaTypeTab='excursions';navigate('reservations')" style="padding:10px 22px;border:none;background:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:3px solid var(--orange);color:var(--orange);margin-bottom:-2px;">✈️ Excursions (${(appState.myExcursionBookings||[]).length})</button>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);padding-bottom:0;flex-wrap:wrap;">
+      ${tabs.map(t=>`<button onclick="appState.resaFilter='${t}';navigate('reservations')" style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filt===t?'2px solid var(--blue)':'2px solid transparent'};color:${filt===t?'var(--blue)':'var(--gray-500)'};margin-bottom:-2px;text-transform:capitalize;">${t==='toutes'?'Toutes':t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}
+    </div>
+
+    ${list.length===0?`<div style="text-align:center;padding:60px 20px;">
+      <div style="font-size:52px;margin-bottom:14px;">✈️</div>
+      <h3 style="font-size:18px;font-weight:700;color:var(--gray-700);margin-bottom:8px;">Aucune réservation d'excursion ${filt!=='toutes'?filt:''}</h3>
+      <p style="color:var(--gray-500);">Explorez nos excursions pour votre prochain séjour.</p>
+      <button onclick="navigate('excursions')" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Explorer les excursions</button>
+    </div>`:list.map(r=>{
+      const dt=r.date?new Date(r.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+      return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;">
+        <div style="display:flex;gap:0;flex-wrap:wrap;">
+          <div style="width:110px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0;min-height:110px;">✈️</div>
+          <div style="flex:1;padding:16px 18px;display:flex;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:200px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+                <span style="font-size:16px;font-weight:700;">${r.title}</span>
+                <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[r.status]};color:${statusColor[r.status]};">${r.status.toUpperCase()}</span>
+              </div>
+              <div style="font-size:13px;color:var(--gray-500);margin-bottom:8px;">📍 ${r.city}, ${r.country}</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--gray-500);">
+                <span>📅 ${dt}</span>
+                <span>👥 ${r.participants} participant${r.participants>1?'s':''}</span>
+                <span>🔖 Réf: <code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.id}</code></span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:120px;">
+              <div style="text-align:right;">
+                <div style="font-size:20px;font-weight:800;color:var(--gray-900);">${r.total.toLocaleString()}€</div>
+              </div>
+              ${(r.status==='confirmée'||r.status==='en attente')?`<button onclick="cancelExcursionBooking('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>`:''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+  return d;
+}
+
+async function cancelExcursionBooking(dbId){
+  if(!confirm('Êtes-vous sûr de vouloir annuler cette réservation ?')) return;
+
+  const { data: bk, error: fetchErr } = await _sb.from('excursion_bookings').select('*').eq('id', dbId).maybeSingle();
+  if(fetchErr || !bk){ showToast('Réservation introuvable','var(--red)'); return; }
+
+  const { error } = await _sb.from('excursion_bookings').update({status:'annulée'}).eq('id', dbId);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast('Réservation annulée','var(--red)');
+
+  try{
+    const [{data: exc}, {data: guestProf}] = await Promise.all([
+      _sb.from('excursions').select('title,contact_email').eq('id', bk.excursion_id).maybeSingle(),
+      _sb.from('profiles').select('email,first_name').eq('id', bk.guest_id).maybeSingle()
+    ]);
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+    };
+    const basePayload = {
+      guest_name: guestProf?.first_name || 'Un voyageur',
+      excursion_title: exc?.title || 'excursion',
+      date: bk.date, participants: bk.participants, total: bk.total, reference: bk.reference
+    };
+    if(exc?.contact_email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
+        method: 'POST', headers,
+        body: JSON.stringify({...basePayload, type: 'cancelled_by_guest', recipient_email: exc.contact_email})
+      });
+    }
+    if(guestProf?.email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
+        method: 'POST', headers,
+        body: JSON.stringify({...basePayload, type: 'cancelled_confirmation', recipient_email: guestProf.email})
+      });
+    }
+  } catch(efErr){
+    console.error('notify-excursion-booking cancellation error:', efErr.message);
   }
 
   navigate('reservations');
@@ -4182,6 +4332,56 @@ async function loadMesAnnonces(container){
   }
 
   appState.myAnnonces = (data||[]).map(a=>mapAnnonceRow(a, resaStats, viewStats, avisStats));
+
+  // --- Mes excursions (prestataire) ---
+  const { data: excData, error: excErr } = await _sb.from('excursions')
+    .select('*')
+    .eq('owner_id', auth.currentUser.id)
+    .order('created_at', {ascending:false});
+
+  if(excErr){
+    console.warn('Erreur chargement mes excursions:', excErr.message);
+    appState.myExcursions = [];
+  } else {
+    const excIds = (excData||[]).map(e=>e.id);
+    const bkStats = {};
+    if(excIds.length){
+      const { data: bkRows, error: bkErr } = await _sb.from('excursion_bookings')
+        .select('excursion_id,total,status')
+        .in('excursion_id', excIds)
+        .in('status', ['confirmée','terminée']);
+      if(bkErr){
+        console.warn('Erreur chargement stats réservations excursions:', bkErr.message);
+      } else {
+        (bkRows||[]).forEach(b=>{
+          if(!bkStats[b.excursion_id]) bkStats[b.excursion_id] = {count:0, revenue:0};
+          bkStats[b.excursion_id].count++;
+          bkStats[b.excursion_id].revenue += b.total||0;
+        });
+      }
+    }
+    const pendingStats = {};
+    if(excIds.length){
+      const { data: pendRows } = await _sb.from('excursion_bookings')
+        .select('excursion_id').in('excursion_id', excIds).eq('status','en attente');
+      (pendRows||[]).forEach(b=>{ pendingStats[b.excursion_id] = (pendingStats[b.excursion_id]||0) + 1; });
+    }
+    appState.myExcursions = (excData||[]).map(e=>{
+      const bs = bkStats[e.id] || {count:0, revenue:0};
+      return {
+        id: e.id, excursionId: e.id, ownerId: e.owner_id,
+        title: e.title, emoji: '✈️', city: e.city, country: e.country,
+        duration: e.duration, price: e.price, priceType: e.price_type,
+        status: e.status, availability: e.availability||[],
+        groupSize: e.max_participants, maxParticipants: e.max_participants,
+        instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation,
+        bookingsCount: bs.count, revenue: bs.revenue,
+        pendingCount: pendingStats[e.id]||0,
+        createdAt: e.created_at
+      };
+    });
+  }
+
   const fresh = buildMesAnnonces();
   if(container && container.parentNode){ container.replaceWith(fresh); }
 }
@@ -4261,12 +4461,21 @@ function buildMesAnnonces(){
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <span style="background:${{publiée:'#e8f9f0','en attente':'#fff8e0',brouillon:'#f1f3f5'}[e.status]||'#f1f3f5'};color:${{publiée:'#0d9e6e','en attente':'#e6a800',brouillon:'#6c757d'}[e.status]||'#6c757d'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${e.status||'en attente'}</span>
                 <span style="font-size:12px;color:var(--gray-400);">${(e.availability||[]).length} date${(e.availability||[]).length>1?'s':''} disponible${(e.availability||[]).length>1?'s':''}</span>
+                ${e.instantBook?'<span style="font-size:11px;color:var(--blue-l);font-weight:600;">⚡ Instantanée</span>':''}
+              </div>
+              <div style="display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--gray-500);">
+                <span>📅 ${e.bookingsCount||0} réservation${(e.bookingsCount||0)>1?'s':''}</span>
+                <span>💶 ${(e.revenue||0).toLocaleString()}€ générés</span>
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              <button onclick="navigate('excursion-requests')"
+                style="background:${e.pendingCount?'#fff8e0':'var(--gray-50)'};color:${e.pendingCount?'#a07000':'var(--gray-600)'};padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid ${e.pendingCount?'#f0d080':'var(--gray-200)'};cursor:pointer;display:flex;align-items:center;gap:6px;">
+                📥 Demandes${e.pendingCount?` (${e.pendingCount})`:''}
+              </button>
               <button onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})"
                 style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;">
-                📊 Statistiques
+                👁️ Voir la fiche
               </button>
               <button onclick="navigate('excursion-form');appState.mesAnnoncesTab='excursions'"
                 style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
@@ -5144,8 +5353,8 @@ function buildExcursionDetail(){
             <div style="flex:1;">
               <div style="font-size:16px;font-weight:700;margin-bottom:3px;">${e.host}</div>
               <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--gray-500);">
-                <span>⭐ ${e.hostRating}/10</span>
-                <span>🗺️ ${e.hostTrips} excursions</span>
+                ${e.hostRating!=null?`<span>⭐ ${e.hostRating}/10</span>`:`<span>🆕 Nouveau prestataire</span>`}
+                ${e.hostTrips!=null?`<span>🗺️ ${e.hostTrips} excursions</span>`:''}
                 <span>✅ Guide vérifié</span>
               </div>
             </div>
@@ -5159,8 +5368,7 @@ function buildExcursionDetail(){
         <div style="background:#fff;border:2px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;position:sticky;top:76px;">
           <div style="font-size:26px;font-weight:800;margin-bottom:4px;">${e.price}€ <span style="font-size:14px;font-weight:400;color:var(--gray-500);">/ ${e.priceType}</span></div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
-            <div style="background:var(--blue);color:#fff;font-weight:800;font-size:12px;padding:2px 7px;border-radius:4px;">${e.rating}</div>
-            <span style="font-size:13px;color:var(--gray-500);">${e.reviews} avis vérifiés</span>
+            ${e.reviews>0?`<div style="background:var(--blue);color:#fff;font-weight:800;font-size:12px;padding:2px 7px;border-radius:4px;">${e.rating}</div><span style="font-size:13px;color:var(--gray-500);">${e.reviews} avis vérifiés</span>`:`<span style="font-size:13px;color:var(--gray-500);">🆕 Nouvelle excursion, aucun avis pour l'instant</span>`}
           </div>
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:6px;">📅 Choisissez une date</label>
@@ -5313,6 +5521,9 @@ function bookExcursion(excId){
   const total = (exc.price||0) * pax;
   appState.pendingBooking = {
     type:'excursion', excId,
+    excursionRealId: exc.excursionId || null,
+    instantBookExc: !!exc.instantBook,
+    unitPrice: exc.price||0,
     title: exc.title||'Excursion',
     date, pax, total,
     emoji: exc.emoji||'✈️',
@@ -5321,17 +5532,27 @@ function bookExcursion(excId){
   navigate('payment');
 }
 
-function excToggleStatus(id){
-  const e = appState.myExcursions.find(x=>x.id===id);
+async function excToggleStatus(id){
+  const e = (appState.myExcursions||[]).find(x=>x.id===id);
   if(!e) return;
-  e.status = e.status==='suspendue' ? 'publiée' : 'suspendue';
-  showToast(e.status==='publiée' ? '✅ Excursion republiée' : '⏸️ Excursion suspendue', 'var(--blue)');
+  const newStatus = e.status==='suspendue' ? 'publiée' : 'suspendue';
+  const { error } = await _sb.from('excursions').update({status:newStatus}).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  e.status = newStatus;
+  showToast(newStatus==='publiée' ? '✅ Excursion republiée' : '⏸️ Excursion suspendue', 'var(--blue)');
   navigate('mesannonces');
 }
 
-function excDelete(id){
-  if(!confirm('Supprimer cette excursion ?')) return;
-  appState.myExcursions = appState.myExcursions.filter(x=>x.id!==id);
+async function excDelete(id){
+  const e = (appState.myExcursions||[]).find(x=>x.id===id);
+  if(e && (e.bookingsCount||0) > 0){
+    showToast('⛔ Impossible : cette excursion a des réservations. Suspendez-la plutôt.','var(--red)');
+    return;
+  }
+  if(!confirm('Supprimer cette excursion ? Cette action est définitive.')) return;
+  const { error } = await _sb.from('excursions').delete().eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  appState.myExcursions = (appState.myExcursions||[]).filter(x=>x.id!==id);
   showToast('🗑️ Excursion supprimée', 'var(--red)');
   navigate('mesannonces');
 }
@@ -5882,6 +6103,8 @@ async function excFormPublish(){
     photos: photoUrls,
     availability: fd.availability||[],
     status: 'en attente',
+    instant_book: !!fd.instantBook,
+    free_cancellation: !!fd.freeCancellation,
     contact_firstname: fd.firstname||'',
     contact_lastname: fd.lastname||'',
     contact_email: fd.email||'',
@@ -6492,7 +6715,7 @@ function showPaymentProcessing(total,method,onComplete){
   },700);
 }
 
-function finalizeBooking(pb,method){
+async function finalizeBooking(pb,method){
   const ref=(pb.type==='excursion'?'EXC':'SF')+'-'+Math.random().toString(36).substr(2,8).toUpperCase();
   const methodLabels={card:'Carte bancaire',paypal:'PayPal'};
   if(pb.type==='hotel'){
@@ -6508,20 +6731,80 @@ function finalizeBooking(pb,method){
       checkIn:pb.checkIn,checkOut:pb.checkOut,rooms:pb.rooms,ref,paymentMethod:methodLabels[method]};
     appState.pendingBooking=null;
     navigate('confirm');
+  } else if(pb.excursionRealId){
+    await finalizeRealExcursionBooking(pb, ref, methodLabels[method]||method);
   } else {
+    // Excursion de démonstration (mock) — pas de table réelle correspondante
     appState.excursionBookings.push({id:ref,excId:pb.excId,title:pb.title,date:pb.date,pax:pb.pax,total:pb.total,status:'confirmée',paymentMethod:methodLabels[method]||method,createdAt:new Date().toISOString().split('T')[0]});
     appState.pendingBooking=null;
     showPaymentSuccess(ref,pb.title,pb.total,methodLabels[method]||method);
   }
 }
 
-function showPaymentSuccess(ref,title,total,method){
+async function finalizeRealExcursionBooking(pb, ref, methodLabel){
+  const status = pb.instantBookExc ? 'confirmée' : 'en attente';
+  const { error } = await _sb.from('excursion_bookings').insert([{
+    excursion_id: pb.excursionRealId,
+    guest_id: auth.currentUser.id,
+    date: pb.date,
+    participants: pb.pax,
+    unit_price: pb.unitPrice||0,
+    total: pb.total,
+    status,
+    reference: ref
+  }]);
+
+  if(error){
+    const capacityIssue = /CAPACITY_EXCEEDED/.test(error.message||'');
+    showToast(capacityIssue
+      ? '⛔ Plus assez de places disponibles pour cette date. Choisissez une autre date ou réduisez le nombre de participants.'
+      : "La réservation n'a pas pu être enregistrée : "+error.message, 'var(--red)');
+    appState.pendingBooking=null;
+    navigate('excursion-detail',{selectedExcursionId:pb.excId});
+    return;
+  }
+
+  // Emails : confirmation/demande au client + alerte au prestataire
+  try{
+    const { data: exc } = await _sb.from('excursions').select('title,contact_email').eq('id', pb.excursionRealId).maybeSingle();
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+    };
+    const basePayload = {
+      excursion_title: exc?.title || pb.title,
+      guest_name: auth.currentUser.firstName || 'Voyageur',
+      date: pb.date, participants: pb.pax, total: pb.total, reference: ref
+    };
+    if(auth.currentUser.email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
+        method:'POST', headers,
+        body: JSON.stringify({...basePayload, type: status==='confirmée' ? 'instant_confirmed' : 'request_received', recipient_email: auth.currentUser.email})
+      });
+    }
+    if(exc?.contact_email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
+        method:'POST', headers,
+        body: JSON.stringify({...basePayload, type:'host_alert', instant: status==='confirmée', recipient_email: exc.contact_email})
+      });
+    }
+  } catch(efErr){
+    console.error('notify-excursion-booking error:', efErr.message);
+  }
+
+  appState.pendingBooking=null;
+  showPaymentSuccess(ref, pb.title, pb.total, methodLabel, status==='en attente');
+}
+
+function showPaymentSuccess(ref,title,total,method,pending){
   const d=document.createElement('div');
   d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
   d.innerHTML=`<div style="background:#fff;border-radius:var(--r-xl);padding:36px;text-align:center;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
-    <div style="width:72px;height:72px;border-radius:50%;background:#e8f9f0;border:3px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 18px;">✅</div>
-    <h2 style="font-size:22px;font-weight:800;color:var(--green);margin-bottom:8px;">Paiement réussi !</h2>
-    <p style="font-size:15px;color:var(--gray-600);margin-bottom:20px;line-height:1.7;">Excursion <strong>${title}</strong> confirmée.</p>
+    <div style="width:72px;height:72px;border-radius:50%;background:${pending?'#fff8e0':'#e8f9f0'};border:3px solid ${pending?'#e6a800':'var(--green)'};display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 18px;">${pending?'⏳':'✅'}</div>
+    <h2 style="font-size:22px;font-weight:800;color:${pending?'#e6a800':'var(--green)'};margin-bottom:8px;">${pending?'Demande envoyée !':'Paiement réussi !'}</h2>
+    <p style="font-size:15px;color:var(--gray-600);margin-bottom:20px;line-height:1.7;">${pending
+      ? `Votre demande pour <strong>${title}</strong> a été transmise au prestataire. Vous recevrez un email dès sa décision.`
+      : `Excursion <strong>${title}</strong> confirmée.`}</p>
     <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;margin-bottom:20px;font-size:14px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:var(--gray-500);">Référence</span><span style="font-family:monospace;font-weight:700;">${ref}</span></div>
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:var(--gray-500);">Montant</span><span style="font-weight:800;color:var(--green);">${total}€</span></div>
@@ -7116,6 +7399,151 @@ async function loadBookingRequests(container){
       </div>`;
     }).join('')}
   </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   EXCURSION BOOKING REQUESTS (prestataire view)
+══════════════════════════════════════════════════════════════════ */
+async function loadExcursionBookingRequests(container){
+  if(!auth.currentUser){navigate('home');return;}
+  const uid = auth.currentUser.id;
+  const filter = appState.excRequestsFilter||'all';
+  const statusMap = {pending:'en attente', accepted:'confirmée', declined:'refusée'};
+
+  try{ await _sb.rpc('fn_auto_complete_excursion_bookings'); }catch(e){ console.warn('fn_auto_complete_excursion_bookings:', e.message); }
+
+  const { data: myExcs, error: excErr } = await _sb.from('excursions').select('id,title').eq('owner_id', uid);
+  if(excErr){ if(container){container.innerHTML='<div style="padding:24px;color:red;">Erreur : '+excErr.message+'</div>';} return; }
+  const excIds = (myExcs||[]).map(e=>e.id);
+  const excMap = Object.fromEntries((myExcs||[]).map(e=>[e.id,e]));
+
+  let bkRows = [];
+  if(excIds.length){
+    const { data, error } = await _sb.from('excursion_bookings').select('*').in('excursion_id', excIds).order('created_at',{ascending:false});
+    if(error){ if(container){container.innerHTML='<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';} return; }
+    bkRows = data||[];
+  }
+
+  const guestIds = [...new Set(bkRows.map(r=>r.guest_id).filter(Boolean))];
+  const { data: profs } = guestIds.length
+    ? await _sb.from('profiles').select('id,first_name,last_name').in('id', guestIds)
+    : { data: [] };
+  const profMap = Object.fromEntries((profs||[]).map(p=>[p.id,p]));
+
+  const all = bkRows.map(r=>{
+    const p = profMap[r.guest_id];
+    const guestName = p ? (p.first_name||'Voyageur') : 'Voyageur';
+    return {
+      id: r.id, ref: r.reference,
+      excursionId: r.excursion_id,
+      excursionTitle: excMap[r.excursion_id]?.title || 'Excursion',
+      guestName, guestAvatar: guestName.slice(0,2).toUpperCase(),
+      date: r.date, participants: r.participants||1,
+      total: r.total||0, status: r.status
+    };
+  });
+
+  const pendingCount = all.filter(r=>r.status==='en attente').length;
+  const list = all.filter(r=>filter==='all' || r.status===statusMap[filter]);
+
+  const statusColor={'en attente':'#e6a800',confirmée:'var(--green)',refusée:'var(--red)',terminée:'#6c757d',annulée:'#cc0000'};
+  const statusBg={'en attente':'#fff8e0',confirmée:'#e8f9f0',refusée:'#fff0f0',terminée:'#f1f3f5',annulée:'#fff0f0'};
+  const statusLabel={'en attente':'En attente',confirmée:'Acceptée',refusée:'Refusée',terminée:'Terminée',annulée:'Annulée'};
+
+  container.innerHTML=`
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Demandes d'excursions</span></div>
+  <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:28px;">
+      <div>
+        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">✈️ Demandes de réservation d'excursions</h1>
+        <p style="font-size:15px;color:var(--gray-500);">${all.length} demande${all.length>1?'s':''}${pendingCount>0?' · <strong style="color:#e6a800">'+pendingCount+' en attente</strong>':''}</p>
+      </div>
+      <button onclick="navigate('mesannonces');appState.mesAnnoncesTab='excursions'" style="background:var(--gray-100);color:var(--gray-700);padding:10px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--gray-300);cursor:pointer;">← Mes excursions</button>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);flex-wrap:wrap;">
+      ${[['all','Toutes'],['pending','En attente'],['accepted','Acceptées'],['declined','Refusées']].map(([v,l])=>`
+        <button onclick="appState.excRequestsFilter='${v}';navigate('excursion-requests')"
+          style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filter===v?'2px solid var(--orange)':'2px solid transparent'};color:${filter===v?'var(--orange)':'var(--gray-500)'};margin-bottom:-2px;">${l}</button>`).join('')}
+    </div>
+
+    ${list.length===0?`<div style="text-align:center;padding:60px;background:#fff;border-radius:var(--r-lg);border:1px solid var(--gray-200);">
+      <div style="font-size:52px;margin-bottom:14px;">📭</div>
+      <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--gray-700);">Aucune demande${filter!=='all'?' '+(statusLabel[statusMap[filter]]||'').toLowerCase():''}</h3>
+    </div>`
+    :list.map(req=>{
+      const dt=req.date?new Date(req.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+      return `<div style="background:#fff;border:1px solid ${req.status==='en attente'?'#ffe0a0':'var(--gray-200)'};border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
+        ${req.status==='en attente'?'<div style="background:linear-gradient(90deg,#FFB400,#FFD666);height:4px;"></div>':''}
+        <div style="padding:20px;">
+          <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+            <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${req.guestAvatar}</div>
+            <div style="flex:1;min-width:200px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+                <span style="font-size:16px;font-weight:700;">${req.guestName}</span>
+                <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[req.status]};color:${statusColor[req.status]};">${(statusLabel[req.status]||req.status).toUpperCase()}</span>
+              </div>
+              <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">✈️ ${req.excursionTitle}</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">
+                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Date</div><div style="font-size:13px;font-weight:600;">${dt}</div></div>
+                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Participants</div><div style="font-size:13px;font-weight:600;">👥 ${req.participants}</div></div>
+                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
+              </div>
+            </div>
+            ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
+              <button onclick="decideExcursionRequest('${req.id}','confirmée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">✅ Accepter</button>
+              <button onclick="decideExcursionRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
+            </div>`:''}
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function decideExcursionRequest(reqId, decision){
+  const reason = prompt('Message optionnel pour le client (laissez vide pour le message standard) :', '');
+  if(reason === null) return;
+  handleExcursionBookingRequest(reqId, decision, reason.trim());
+}
+
+async function handleExcursionBookingRequest(reqId, decision, hostMessage){
+  const { data: bk, error: fetchErr } = await _sb.from('excursion_bookings').select('*').eq('id', reqId).maybeSingle();
+  if(fetchErr || !bk){ showToast('Demande introuvable','var(--red)'); return; }
+
+  const { error } = await _sb.from('excursion_bookings').update({status: decision}).eq('id', reqId);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  showToast(decision==='confirmée' ? '✅ Demande acceptée ! Réservation confirmée.' : 'Demande refusée.', decision==='confirmée'?'var(--green)':'var(--gray-700)');
+
+  try{
+    const [{data: guestProf}, {data: exc}] = await Promise.all([
+      _sb.from('profiles').select('email,first_name').eq('id', bk.guest_id).maybeSingle(),
+      _sb.from('excursions').select('title').eq('id', bk.excursion_id).maybeSingle()
+    ]);
+    if(guestProf?.email){
+      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        },
+        body: JSON.stringify({
+          type: 'decision',
+          decision: decision==='confirmée' ? 'accepted' : 'declined',
+          recipient_email: guestProf.email,
+          guest_name: guestProf.first_name || 'Voyageur',
+          excursion_title: exc?.title || 'Excursion',
+          date: bk.date, participants: bk.participants, total: bk.total,
+          reference: bk.reference, host_message: hostMessage || ''
+        })
+      });
+    }
+  } catch(efErr){
+    console.error('notify-excursion-booking decision error:', efErr.message);
+  }
+
+  navigate('excursion-requests');
 }
 
 function decideBookingRequest(reqId, decision){
@@ -9782,6 +10210,60 @@ async function loadPublishedAnnonces(){
   } catch(e){ console.warn('Erreur loadPublishedAnnonces:', e.message); }
 }
 loadPublishedAnnonces();
+
+async function loadPublishedExcursions(){
+  try{
+    const { data, error } = await _sb.from('excursions').select('*').eq('status','publiée').order('created_at',{ascending:false});
+    if(error){ console.warn('Erreur chargement excursions publiées:', error.message); return; }
+
+    (data||[]).forEach(e => {
+      if(excursions.some(x=>x.excursionId===e.id)) return; // évite les doublons si déjà fusionné
+      excursions.push({
+        id: 'REAL-EXC-'+e.id,
+        excursionId: e.id,
+        ownerId: e.owner_id,
+        title: e.title || 'Excursion',
+        city: e.city || '',
+        country: e.country || 'Tunisie',
+        category: e.category || '',
+        categoryLabel: e.category_label || '',
+        emoji: '✈️',
+        duration: e.duration || '—',
+        durationMin: 0,
+        groupSize: e.max_participants || 10,
+        minAge: e.min_age || 0,
+        price: e.price || 0,
+        priceType: e.price_type || 'personne',
+        rating: 0,
+        reviews: 0,
+        language: e.languages || ['Français'],
+        difficulty: e.difficulty || 'facile',
+        includes: [],
+        description: e.description || '',
+        highlights: e.highlights || [],
+        meetingPoint: e.meeting_point || '',
+        meetingTime: e.meeting_time || '',
+        meetingTimeEnd: e.meeting_time_end || '',
+        notIncluded: e.not_included || '',
+        whatToBring: e.what_to_bring || '',
+        host: e.contact_firstname || 'Prestataire',
+        hostAvatar: (e.contact_firstname?.[0]||'P')+(e.contact_lastname?.[0]||''),
+        hostRating: null, // pas de note fabriquée tant qu'il n'y a pas de vrais avis pour les excursions
+        hostTrips: null,
+        photos: e.photos || [],
+        available: true,
+        freeCancellation: !!e.free_cancellation,
+        instantBook: !!e.instant_book,
+        featured: false,
+        availability: e.availability || [],
+        createdAt: e.created_at || null
+      });
+    });
+
+    render();
+  } catch(e){ console.warn('Erreur loadPublishedExcursions:', e.message); }
+}
+loadPublishedExcursions();
 
 
 /* ===================== PHOTO PROFIL ===================== */
