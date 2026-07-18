@@ -6128,6 +6128,10 @@ async function excFormPublish(){
   if(realPhotos.length){
     if(btn){btn.innerHTML='<span class="spinner-sm"></span> Envoi des photos…';}
     photoUrls = await uploadExcursionPhotos(ref, realPhotos);
+    if(photoUrls.length < realPhotos.length){
+      const nb = realPhotos.length - photoUrls.length;
+      showToast(`⚠️ ${nb} photo${nb>1?'s':''} n'${nb>1?'ont':'a'} pas pu être envoyée${nb>1?'s':''}. L'excursion sera publiée sans elle${nb>1?'s':''}.`, 'var(--red)');
+    }
   }
 
   if(btn){btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
