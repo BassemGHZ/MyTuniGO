@@ -4390,11 +4390,21 @@ async function loadMesAnnonces(container){
       const bs = bkStats[e.id] || {count:0, revenue:0};
       return {
         id: e.id, excursionId: e.id, ownerId: e.owner_id,
-        title: e.title, emoji: '✈️', city: e.city, country: e.country,
-        duration: e.duration, price: e.price, priceType: e.price_type,
+        title: e.title||'Excursion', emoji: '✈️', city: e.city||'', country: e.country||'Tunisie',
+        category: e.category||'', categoryLabel: e.category_label||'',
+        duration: e.duration||'—', durationMin: 0,
+        price: e.price||0, priceType: e.price_type||'personne',
         status: e.status, availability: e.availability||[],
-        groupSize: e.max_participants, maxParticipants: e.max_participants,
+        groupSize: e.max_participants||10, maxParticipants: e.max_participants||10, minAge: e.min_age||0,
+        difficulty: e.difficulty||'facile', language: e.languages||['Français'],
         instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation,
+        description: e.description||'', highlights: e.highlights||[], includes: e.includes||[],
+        notIncluded: e.not_included||'', whatToBring: e.what_to_bring||'', schedule: e.schedule||'',
+        meetingPoint: e.meeting_point||'', meetingTime: e.meeting_time||'', meetingTimeEnd: e.meeting_time_end||'',
+        host: e.contact_firstname||'Vous', hostAvatar: (e.contact_firstname?.[0]||'V')+(e.contact_lastname?.[0]||''),
+        hostRating: null, hostTrips: null,
+        photos: e.photos||[], available: true, featured: false,
+        rating: 0, reviews: 0,
         bookingsCount: bs.count, revenue: bs.revenue,
         pendingCount: pendingStats[e.id]||0,
         createdAt: e.created_at
@@ -5228,9 +5238,9 @@ function excursionCardHTML(e){
     onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.15)'"
     onmouseout="this.style.transform='';this.style.boxShadow=''">
     <!-- Image -->
-    <div style="position:relative;height:190px;background:linear-gradient(135deg,#1a1a2e,#0f3460);display:flex;align-items:center;justify-content:center;font-size:72px;cursor:pointer;"
+    <div style="position:relative;height:190px;background:${e.photos&&e.photos.length?`url('${e.photos[0]}') center/cover no-repeat`:'linear-gradient(135deg,#1a1a2e,#0f3460)'};display:flex;align-items:center;justify-content:center;font-size:72px;cursor:pointer;"
       onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})">
-      ${e.emoji}
+      ${e.photos&&e.photos.length?'':e.emoji}
       ${e.featured?'<span style="position:absolute;top:10px;left:10px;background:var(--yellow);color:#222;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;">⭐ En vedette</span>':''}
       ${e.freeCancellation?'<span style="position:absolute;top:10px;right:10px;background:rgba(13,158,110,.9);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">✓ Annulation gratuite</span>':''}
       <div style="position:absolute;bottom:10px;left:10px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">
@@ -5314,13 +5324,20 @@ function buildExcursionDetail(){
     </div>
 
     <!-- Hero image -->
-    <div style="height:320px;background:linear-gradient(135deg,#1a1a2e,#0f3460);border-radius:var(--r-xl);display:flex;align-items:center;justify-content:center;font-size:110px;margin-bottom:28px;position:relative;overflow:hidden;">
-      ${e.emoji}
+    <div id="exc-hero-main" style="height:320px;background:${e.photos&&e.photos.length?`url('${e.photos[0]}') center/cover no-repeat`:'linear-gradient(135deg,#1a1a2e,#0f3460)'};border-radius:var(--r-xl);display:flex;align-items:center;justify-content:center;font-size:110px;margin-bottom:${e.photos&&e.photos.length>1?'8px':'28px'};position:relative;overflow:hidden;">
+      ${e.photos&&e.photos.length?'':e.emoji}
       <div style="position:absolute;bottom:16px;left:16px;display:flex;gap:8px;flex-wrap:wrap;">
         ${e.freeCancellation?'<span style="background:rgba(13,158,110,.85);color:#fff;font-size:13px;font-weight:600;padding:5px 14px;border-radius:20px;">✓ Annulation gratuite</span>':''}
         ${e.instantBook?'<span style="background:rgba(0,53,128,.85);color:#fff;font-size:13px;font-weight:600;padding:5px 14px;border-radius:20px;">⚡ Réservation instantanée</span>':''}
       </div>
     </div>
+    ${e.photos&&e.photos.length>1?`
+    <div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:28px;padding-bottom:2px;">
+      ${e.photos.map((url,i)=>`
+        <img src="${url}" onclick="document.getElementById('exc-hero-main').style.background=\`url('${url}') center/cover no-repeat\`"
+          style="width:76px;height:60px;object-fit:cover;border-radius:8px;cursor:pointer;flex-shrink:0;border:2px solid ${i===0?'var(--blue)':'transparent'};">
+      `).join('')}
+    </div>`:''}
 
     <div class="exc-detail-grid" style="display:grid;grid-template-columns:1fr 340px;gap:28px;align-items:start;">
       <div class="exc-detail-main">
