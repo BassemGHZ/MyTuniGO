@@ -5596,6 +5596,16 @@ async function excToggleStatus(id){
   const { error } = await _sb.from('excursions').update({status:newStatus}).eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
   e.status = newStatus;
+
+  // Répercute immédiatement le changement sur le tableau public (page "Excursions"),
+  // sinon une excursion suspendue restait visible jusqu'au rechargement complet de la page.
+  const gIdx = excursions.findIndex(x=>x.excursionId===id);
+  if(newStatus!=='publiée' && gIdx>-1){
+    excursions.splice(gIdx,1);
+  } else if(newStatus==='publiée' && gIdx===-1){
+    await loadPublishedExcursions();
+  }
+
   showToast(newStatus==='publiée' ? '✅ Excursion republiée' : '⏸️ Excursion suspendue', 'var(--blue)');
   navigate('mesannonces');
 }
@@ -5610,6 +5620,11 @@ async function excDelete(id){
   const { error } = await _sb.from('excursions').delete().eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
   appState.myExcursions = (appState.myExcursions||[]).filter(x=>x.id!==id);
+
+  // Idem : retire immédiatement l'excursion supprimée du tableau public en mémoire.
+  const gIdx = excursions.findIndex(x=>x.excursionId===id);
+  if(gIdx>-1) excursions.splice(gIdx,1);
+
   showToast('🗑️ Excursion supprimée', 'var(--red)');
   navigate('mesannonces');
 }
