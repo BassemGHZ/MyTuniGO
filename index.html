@@ -6433,6 +6433,7 @@ async function loadAnnonceEditOwner(container, id){
     description: a.description||'', access: a.access||'',
     rooms: a.rooms||1, bathrooms: a.bathrooms||1, capacity: a.capacity||2, size: a.size||'',
     address: a.address||'', city: a.city||'', country: a.country||'Tunisie', zip: a.zip||'',
+    lat: a.lat||'', lng: a.lng||'',
     price_night: a.price_night||0, price_week: a.price_week||0, price_month: a.price_month||0,
     cancellation: a.cancellation||'flexible',
     checkin: a.checkin||'15:00', checkout: a.checkout||'11:00',
@@ -6446,13 +6447,14 @@ async function loadAnnonceEditOwner(container, id){
   if(container){
     const fresh = buildAnnonceEditFormOwner();
     if(container.parentNode){ container.replaceWith(fresh); }
+    setTimeout(initAnnEditMap, 200);
   } else {
     navigate('annonce-edit-owner');
   }
 }
 
 function aeSet(key,val){ appState.annEditData[key]=val; }
-function aeRefresh(){ const el=document.getElementById('ann-edit-form'); if(el) el.innerHTML=buildAnnonceEditFormOwnerInner(); }
+function aeRefresh(){ const el=document.getElementById('ann-edit-form'); if(el) el.innerHTML=buildAnnonceEditFormOwnerInner(); setTimeout(initAnnEditMap, 100); }
 function aeToggleAmenity(id){ const arr=appState.annEditData.amenities||[]; appState.annEditData.amenities = arr.includes(id) ? arr.filter(x=>x!==id) : [...arr,id]; aeRefresh(); }
 
 function buildAnnonceEditFormOwner(){
@@ -6502,6 +6504,15 @@ function buildAnnonceEditFormOwnerInner(){
         ${field('Salles de bain','bathrooms','number')}
         ${field('Capacité (voyageurs)','capacity','number')}
       </div>
+      <div style="margin-top:8px;margin-bottom:10px;">
+        <button type="button" onclick="geocodeEditAddress()" style="background:var(--blue);color:#fff;padding:9px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">🔍 Localiser sur la carte</button>
+        <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">La carte se centre sur l'adresse ci-dessus</span>
+      </div>
+      <div style="font-size:13px;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-weight:600;">
+        🗺️ <span>Position GPS — <strong>cliquez sur la carte ou déplacez le marqueur</strong></span>
+      </div>
+      <div id="ann-edit-map" style="height:360px;border-radius:var(--r-lg);border:1.5px solid var(--gray-300);overflow:hidden;z-index:1;"></div>
+      <div id="ann-edit-map-coords" style="font-size:12px;color:${ed.lat&&ed.lng?'var(--green)':'var(--red)'};margin-top:6px;text-align:right;font-weight:600;">${ed.lat&&ed.lng?'✅ Coordonnées : '+parseFloat(ed.lat).toFixed(6)+', '+parseFloat(ed.lng).toFixed(6):'⚠️ Aucun point positionné — cliquez sur la carte'}</div>
     </div>
 
     <!-- Description -->
@@ -6579,6 +6590,89 @@ function buildAnnonceEditFormOwnerInner(){
   `;
 }
 
+let annEditMap = null;
+let annEditMarker = null;
+
+function initAnnEditMap(){
+  const mapEl = document.getElementById('ann-edit-map');
+  if(!mapEl) return;
+  if(annEditMap){ try{ annEditMap.remove(); }catch(e){} annEditMap=null; annEditMarker=null; }
+
+  annEditMap = L.map('ann-edit-map', {scrollWheelZoom:false}).setView([36.8065, 10.1815], 6);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+    subdomains:'abcd', maxZoom:19
+  }).addTo(annEditMap);
+
+  annEditMap.on('click', function(e){
+    placeAnnEditMarker(e.latlng.lat, e.latlng.lng);
+  });
+
+  const ed = appState.annEditData;
+  const savedLat = parseFloat(ed?.lat), savedLng = parseFloat(ed?.lng);
+  if(!isNaN(savedLat) && !isNaN(savedLng)){
+    annEditMap.setView([savedLat, savedLng], 14);
+    placeAnnEditMarker(savedLat, savedLng);
+  }
+}
+
+function placeAnnEditMarker(lat, lng){
+  if(!annEditMap) return;
+  const icon = L.divIcon({
+    html:'<div style="background:#cc0000;border:3px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+    iconSize:[18,18], iconAnchor:[9,9], className:''
+  });
+  if(annEditMarker) annEditMap.removeLayer(annEditMarker);
+  annEditMarker = L.marker([lat,lng], {icon, draggable:true}).addTo(annEditMap);
+  annEditMarker.on('dragend', function(e){
+    const p = e.target.getLatLng();
+    updateAnnEditCoordsDisplay(p.lat, p.lng);
+  });
+  updateAnnEditCoordsDisplay(lat, lng);
+}
+
+function updateAnnEditCoordsDisplay(lat, lng){
+  const el = document.getElementById('ann-edit-map-coords');
+  if(el){
+    el.textContent = '✅ Coordonnées : ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+    el.style.color = 'var(--green)';
+  }
+  appState.annEditData.lat = lat;
+  appState.annEditData.lng = lng;
+}
+
+async function geocodeEditAddress(){
+  const ed = appState.annEditData;
+  const query = [ed.address, ed.city, ed.zip, ed.country].filter(Boolean).join(', ');
+  if(!query.trim()){ showToast("⚠️ Remplissez d'abord l'adresse",'var(--red)'); return; }
+
+  const btns = Array.from(document.querySelectorAll('button'));
+  const btn = btns.find(b=>b.textContent.includes('Localiser sur la carte'));
+  if(btn){btn.textContent='⏳ Recherche...';btn.disabled=true;}
+
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(query)+'&limit=1';
+    const res = await fetch(url, {headers:{'Accept-Language':'fr','User-Agent':'MyTunigo/1.0'}});
+    const data = await res.json();
+    if(data && data.length>0){
+      const lat=parseFloat(data[0].lat), lng=parseFloat(data[0].lon);
+      if(!annEditMap){
+        initAnnEditMap();
+        setTimeout(()=>{ if(annEditMap){annEditMap.setView([lat,lng],15);placeAnnEditMarker(lat,lng);} },400);
+      } else {
+        annEditMap.setView([lat,lng],15);
+        placeAnnEditMarker(lat,lng);
+      }
+      showToast('📍 Adresse localisée avec succès !','var(--green)');
+    } else {
+      showToast('Adresse introuvable — cliquez sur la carte pour positionner manuellement','var(--gray-700)');
+    }
+  } catch(e){
+    showToast('Erreur réseau — vérifiez votre connexion','var(--red)');
+  }
+  if(btn){btn.textContent='🔍 Localiser sur la carte';btn.disabled=false;}
+}
+
 async function saveAnnonceEditOwner(){
   const ed = appState.annEditData;
   if(!ed || !ed.id) return;
@@ -6588,6 +6682,7 @@ async function saveAnnonceEditOwner(){
     stars: ed.stars||3, description: ed.description||'', access: ed.access||'',
     rooms: ed.rooms||1, bathrooms: ed.bathrooms||1, capacity: ed.capacity||2, size: ed.size||null,
     address: ed.address||'', city: normalizeCityName(ed.city)||'', country: ed.country||'Tunisie', zip: ed.zip||'',
+    lat: ed.lat||null, lng: ed.lng||null,
     price_night: ed.price_night||0, price_week: ed.price_week||0, price_month: ed.price_month||0,
     cancellation: ed.cancellation||'flexible',
     checkin: ed.checkin||'15:00', checkout: ed.checkout||'11:00',
