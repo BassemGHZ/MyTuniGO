@@ -11215,7 +11215,12 @@ const hotelCoords = {
 };
 
 function initHotelMap(hId){
-  const coords = hotelCoords[hId] || [48.8566,2.3522];
+  const h = hotels.find(x=>x.id===hId);
+  // Priorité aux vraies coordonnées GPS de l'annonce (saisies via le sélecteur de position).
+  // La table hotelCoords ne sert plus que de repli pour les hébergements de démonstration.
+  const coords = (h && h.lat!=null && h.lng!=null && !isNaN(h.lat) && !isNaN(h.lng))
+    ? [h.lat, h.lng]
+    : (hotelCoords[hId] || [48.8566,2.3522]);
   const mapEl = document.getElementById('hotel-map-'+hId);
   if(!mapEl || mapEl._leaflet_id) return;
   setTimeout(()=>{
