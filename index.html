@@ -2000,6 +2000,10 @@ function hotelCardHTML(h){
     <div class="hc-body">
       <div class="hc-name">${h.name}</div>
       <div class="hc-loc">📍 ${h.city}, ${h.country}</div>
+      <div style="display:flex;gap:10px;font-size:12.5px;color:var(--gray-500);margin:2px 0 4px;">
+        <span>🛏️ ${h.rooms||1} chambre${(h.rooms||1)>1?'s':''}</span>
+        <span>👥 ${h.capacity||2} voyageur${(h.capacity||2)>1?'s':''}</span>
+      </div>
       <div class="hc-rating"><div class="r-badge">${h.rating}★</div><span class="r-count">${h.reviews.toLocaleString()} avis</span></div>
       ${hasDiscount?`<div style="font-size:13px;color:var(--gray-400);text-decoration:line-through;">${h.price}€</div>`:''}
       ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;">🏷️ Sur certaines dates</div>`:''}
@@ -2600,6 +2604,28 @@ function buildDetail(){
     </div>
     <div class="gallery">
       ${galleryHtml(h)}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:24px;">
+      <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;text-align:center;">
+        <div style="font-size:22px;margin-bottom:4px;">🛏️</div>
+        <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;">Chambres</div>
+        <div style="font-size:16px;font-weight:800;color:var(--gray-900);">${h.rooms||1}</div>
+      </div>
+      <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;text-align:center;">
+        <div style="font-size:22px;margin-bottom:4px;">👥</div>
+        <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;">Capacité</div>
+        <div style="font-size:16px;font-weight:800;color:var(--gray-900);">${h.capacity||2} voyageur${(h.capacity||2)>1?'s':''}</div>
+      </div>
+      <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;text-align:center;">
+        <div style="font-size:22px;margin-bottom:4px;">🛁</div>
+        <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;">Salles de bain</div>
+        <div style="font-size:16px;font-weight:800;color:var(--gray-900);">${h.bathrooms||1}</div>
+      </div>
+      ${h.size?`<div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;text-align:center;">
+        <div style="font-size:22px;margin-bottom:4px;">📐</div>
+        <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;">Surface</div>
+        <div style="font-size:16px;font-weight:800;color:var(--gray-900);">${h.size} m²</div>
+      </div>`:''}
     </div>
     <div class="det-body">
       <div>
@@ -6689,7 +6715,10 @@ async function saveAnnonceEditOwner(){
     min_stay: ed.min_stay||1, max_stay: ed.max_stay||30,
     amenities: ed.amenities||[],
     contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
-    contact_email: ed.email||'', contact_phone: ed.phone||''
+    contact_email: ed.email||'', contact_phone: ed.phone||'',
+    // Toute modification remet l'annonce en attente de re-validation admin,
+    // pour éviter qu'un hôte modifie discrètement une annonce déjà validée.
+    status: 'en attente'
   };
 
   const { error } = await _sb.from('annonces').update(updates).eq('id', ed.id);
@@ -6702,8 +6731,26 @@ async function saveAnnonceEditOwner(){
     hEntry.price=updates.price_night; hEntry.capacity=updates.capacity; hEntry.rooms=updates.rooms;
     hEntry.desc=updates.description; hEntry.features=updates.amenities;
   }
+  // L'annonce repasse en attente : on la retire de la page publique de recherche
+  // jusqu'à ce qu'elle soit revalidée, comme n'importe quelle annonce non publiée.
+  const hIdx = hotels.findIndex(x=>x.annonceId===ed.id);
+  if(hIdx>-1) hotels.splice(hIdx,1);
 
-  showToast('✅ Annonce mise à jour','var(--green)');
+  // Mails hôte (validation en cours) + admin (annonce à valider), même pattern qu'à la création
+  try {
+    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({ ...updates, id: ed.id, edited: true })
+    });
+  } catch(efErr){
+    console.error('notify-admin (édition annonce) error:', efErr.message);
+  }
+
+  showToast('✅ Annonce mise à jour — repassée en validation admin','var(--blue)');
   navigate('mesannonces');
 }
 
@@ -8201,12 +8248,33 @@ async function saveExcursionEdit(){
     availability: ed.availability||[],
     instant_book: !!ed.instantBook, free_cancellation: !!ed.freeCancellation,
     contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
-    contact_email: ed.email||'', contact_phone: ed.phone||''
+    contact_email: ed.email||'', contact_phone: ed.phone||'',
+    // Toute modification remet l'excursion en attente de re-validation admin
+    status: 'en attente'
   };
 
   const { error } = await _sb.from('excursions').update(updates).eq('id', ed.id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-  showToast('✅ Excursion mise à jour','var(--green)');
+
+  // Retire immédiatement l'excursion du tableau public en mémoire, comme pour une suspension
+  const gIdx = excursions.findIndex(x=>x.excursionId===ed.id);
+  if(gIdx>-1) excursions.splice(gIdx,1);
+
+  // Mails prestataire (validation en cours) + admin (excursion à valider), même pattern qu'à la création
+  try {
+    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({ ...updates, id: ed.id, edited: true, isExcursion: true })
+    });
+  } catch(efErr){
+    console.error('notify-admin (édition excursion) error:', efErr.message);
+  }
+
+  showToast('✅ Excursion mise à jour — repassée en validation admin','var(--blue)');
   navigate('manage-excursions');
 }
 
@@ -10889,6 +10957,8 @@ async function loadPublishedAnnonces(){
         stars: a.stars || 3,
         capacity: a.capacity || 2,
         rooms: a.rooms || 1,
+        bathrooms: a.bathrooms || 1,
+        size: a.size || null,
         rating: avgRating,
         ratingLabel: ratingLabelFor(avgRating),
         reviews: rs ? rs.count : 0,
