@@ -6465,7 +6465,6 @@ async function loadAnnonceEditOwner(container, id){
     rooms: a.rooms||1, bathrooms: a.bathrooms||1, capacity: a.capacity||2, size: a.size||'',
     address: a.address||'', city: a.city||'', country: a.country||'Tunisie', zip: a.zip||'',
     lat: a.lat||'', lng: a.lng||'',
-    price_night: a.price_night||0, price_week: a.price_week||0, price_month: a.price_month||0,
     cancellation: a.cancellation||'flexible',
     checkin: a.checkin||'15:00', checkout: a.checkout||'11:00',
     min_stay: a.min_stay||1, max_stay: a.max_stay||30,
@@ -6561,19 +6560,6 @@ function buildAnnonceEditFormOwnerInner(){
           <div onclick="aeToggleAmenity('${am.id}')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1.5px solid ${(ed.amenities||[]).includes(am.id)?'var(--blue)':'var(--gray-300)'};border-radius:var(--r-md);cursor:pointer;background:${(ed.amenities||[]).includes(am.id)?'rgba(0,53,128,.05)':'#fff'};">
             <span style="font-size:16px;">${am.icon}</span><span style="font-size:13px;font-weight:500;">${am.name}</span>
           </div>`).join('')}
-      </div>
-    </div>
-
-    <!-- Tarifs -->
-    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
-      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">💶 Tarifs</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-        ${field('Prix / nuit (€)','price_night','number')}
-        ${field('Prix / semaine (€)','price_week','number')}
-        ${field('Prix / mois (€)','price_month','number')}
-      </div>
-      <div style="background:#f0f7ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:10px 14px;font-size:13px;color:var(--blue-l);">
-        💡 Le nouveau prix ne s'applique qu'aux futures réservations. Les réservations déjà confirmées ou passées gardent leur montant d'origine.
       </div>
     </div>
 
@@ -6714,7 +6700,6 @@ async function saveAnnonceEditOwner(){
     rooms: ed.rooms||1, bathrooms: ed.bathrooms||1, capacity: ed.capacity||2, size: ed.size||null,
     address: ed.address||'', city: normalizeCityName(ed.city)||'', country: ed.country||'Tunisie', zip: ed.zip||'',
     lat: ed.lat||null, lng: ed.lng||null,
-    price_night: ed.price_night||0, price_week: ed.price_week||0, price_month: ed.price_month||0,
     cancellation: ed.cancellation||'flexible',
     checkin: ed.checkin||'15:00', checkout: ed.checkout||'11:00',
     min_stay: ed.min_stay||1, max_stay: ed.max_stay||30,
