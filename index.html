@@ -4296,6 +4296,7 @@ function mapAnnonceRow(a, resaStats, viewStats, avisStats){
     capacity: a.capacity || 2,
     price_night: a.price_night || 0,
     status: a.status || 'en attente',
+    hasPendingChanges: !!a.pending_changes,
     photos: a.photos || [],
     discount: a.discount_percent || 0,
     promoExpiry: a.promo_expires_at || null,
@@ -4587,7 +4588,10 @@ function buildMesAnnonces(){
               <span style="font-size:17px;font-weight:700;color:var(--blue-l);cursor:pointer;" onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})">${a.name}</span>
               <div style="font-size:13px;color:var(--gray-500);margin-top:3px;">📍 ${a.city}, ${a.country} · ${a.typeLabel} ${'★'.repeat(a.stars)}</div>
             </div>
-            <span style="font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;background:${statusBg[a.status]||'#f1f3f5'};color:${statusColor[a.status]||'#6c757d'};white-space:nowrap;">${a.status.toUpperCase()}</span>
+            <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <span style="font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;background:${statusBg[a.status]||'#f1f3f5'};color:${statusColor[a.status]||'#6c757d'};white-space:nowrap;">${a.status.toUpperCase()}</span>
+              ${a.hasPendingChanges?'<span style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:#fff8e0;color:#e6a800;white-space:nowrap;">✏️ Modifications en attente</span>':''}
+            </span>
           </div>
           <!-- Mini stats -->
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin:12px 0;">
@@ -4716,6 +4720,7 @@ async function loadAnnonceDetail(container){
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
           <h2 style="font-size:20px;font-weight:800;">${a.name}</h2>
           <span style="font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px;background:${statusBg[a.status]};color:${statusColor[a.status]};">${a.status.toUpperCase()}</span>
+          ${a.hasPendingChanges?'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:#fff8e0;color:#e6a800;">✏️ Modifications en attente de validation</span>':''}
         </div>
         <div style="font-size:14px;color:var(--gray-500);margin-bottom:4px;">📍 ${a.address}, ${a.city}, ${a.country}</div>
         <div style="font-size:14px;color:var(--gray-600);">${a.typeLabel} · ${'★'.repeat(a.stars)} · <strong>${a.price_night}€/nuit</strong></div>
@@ -6714,27 +6719,33 @@ async function saveAnnonceEditOwner(){
     checkin: ed.checkin||'15:00', checkout: ed.checkout||'11:00',
     min_stay: ed.min_stay||1, max_stay: ed.max_stay||30,
     amenities: ed.amenities||[],
-    contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
-    contact_email: ed.email||'', contact_phone: ed.phone||'',
-    // Toute modification remet l'annonce en attente de re-validation admin,
-    // pour éviter qu'un hôte modifie discrètement une annonce déjà validée.
-    status: 'en attente'
+    contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||''
+    , contact_email: ed.email||'', contact_phone: ed.phone||''
   };
 
-  const { error } = await _sb.from('annonces').update(updates).eq('id', ed.id);
+  // Vérifie si l'annonce est déjà publiée (donc potentiellement réservée) :
+  // si oui on ne la touche pas, on stocke les changements à part.
+  const { data: current, error: fetchErr } = await _sb.from('annonces').select('status').eq('id', ed.id).maybeSingle();
+  if(fetchErr){ showToast('Erreur : '+fetchErr.message,'var(--red)'); return; }
+  const isLivePublished = current?.status === 'publiée';
+
+  let error;
+  if(isLivePublished){
+    // L'annonce reste visible et réservable telle quelle ; les nouvelles infos
+    // attendent la validation admin avant de remplacer la version en ligne.
+    ({ error } = await _sb.from('annonces').update({ pending_changes: updates }).eq('id', ed.id));
+  } else {
+    // Rien n'est encore en ligne (brouillon / en attente / rejetée) : rien à
+    // protéger, on applique directement et ça repart en validation normale.
+    ({ error } = await _sb.from('annonces').update({ ...updates, status: 'en attente', pending_changes: null }).eq('id', ed.id));
+  }
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
-  // Met à jour immédiatement la copie en mémoire (hotels[]), sans attendre un rechargement
-  const hEntry = hotels.find(x=>x.annonceId===ed.id);
-  if(hEntry){
-    hEntry.name=updates.name; hEntry.city=updates.city; hEntry.country=updates.country;
-    hEntry.price=updates.price_night; hEntry.capacity=updates.capacity; hEntry.rooms=updates.rooms;
-    hEntry.desc=updates.description; hEntry.features=updates.amenities;
+  if(!isLivePublished){
+    // Met à jour immédiatement la copie en mémoire (hotels[]) si elle existait
+    const hIdx = hotels.findIndex(x=>x.annonceId===ed.id);
+    if(hIdx>-1) hotels.splice(hIdx,1);
   }
-  // L'annonce repasse en attente : on la retire de la page publique de recherche
-  // jusqu'à ce qu'elle soit revalidée, comme n'importe quelle annonce non publiée.
-  const hIdx = hotels.findIndex(x=>x.annonceId===ed.id);
-  if(hIdx>-1) hotels.splice(hIdx,1);
 
   // Mails hôte (validation en cours) + admin (annonce à valider), même pattern qu'à la création
   try {
@@ -6744,13 +6755,15 @@ async function saveAnnonceEditOwner(){
         'Content-Type': 'application/json',
         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
       },
-      body: JSON.stringify({ ...updates, id: ed.id, edited: true })
+      body: JSON.stringify({ ...updates, id: ed.id, edited: true, pendingReview: isLivePublished })
     });
   } catch(efErr){
     console.error('notify-admin (édition annonce) error:', efErr.message);
   }
 
-  showToast('✅ Annonce mise à jour — repassée en validation admin','var(--blue)');
+  showToast(isLivePublished
+    ? '✅ Modifications enregistrées — en attente de validation. Votre annonce actuelle reste visible en attendant.'
+    : '✅ Annonce mise à jour — en attente de validation', 'var(--blue)');
   navigate('mesannonces');
 }
 
@@ -9497,8 +9510,9 @@ async function buildAdminAnnonces(content){
   }
 
   const pending = (data||[]).filter(a=>a.status==='en attente');
-  const others  = (data||[]).filter(a=>a.status!=='en attente');
-  const all = [...pending, ...others];
+  const pendingChanges = (data||[]).filter(a=>a.status!=='en attente' && a.pending_changes);
+  const others  = (data||[]).filter(a=>a.status!=='en attente' && !a.pending_changes);
+  const all = [...pending, ...pendingChanges, ...others];
   _adminAnnoncesCache = all;
 
   if(!all.length){
@@ -9511,11 +9525,11 @@ async function buildAdminAnnonces(content){
 
   content.innerHTML = `
     <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
-      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">📋 Annonces (${all.length}) — ${pending.length} en attente</h2>
+      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">📋 Annonces (${all.length}) — ${pending.length} en attente${pendingChanges.length?' · '+pendingChanges.length+' modification(s) à valider':''}</h2>
       <button onclick="buildAdminAnnonces(document.getElementById('admin-content'))" style="background:#003580;color:#fff;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">🔄 Actualiser</button>
     </div>
     ${all.map(a=>`
-    <div id="ann-card-${a.id}" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:12px;">
+    <div id="ann-card-${a.id}" style="background:#fff;border:1px solid ${a.pending_changes?'#ffd699':'#e5e7eb'};border-radius:12px;padding:20px;margin-bottom:12px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="display:flex;gap:14px;flex:1;min-width:260px;">
           ${(a.photos&&a.photos.length)?`
@@ -9528,6 +9542,7 @@ async function buildAdminAnnonces(content){
               <span style="font-size:16px;">${a.emoji||'🏠'}</span>
               <strong style="font-size:15px;color:#111827;">${a.name||'—'}</strong>
               <span style="background:${statusBg[a.status]||'#f5f5f5'};color:${statusColor[a.status]||'#6b7280'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${a.status||'—'}</span>
+              ${a.pending_changes?'<span style="background:#fff3d6;color:#a16800;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">✏️ Modifications en attente</span>':''}
               ${a.photos&&a.photos.length>1?`<span style="font-size:11px;color:#6b7280;">📷 ${a.photos.length} photos</span>`:''}
             </div>
             <div style="font-size:13px;color:#6b7280;line-height:1.7;">
@@ -9551,7 +9566,13 @@ async function buildAdminAnnonces(content){
           <button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" 
             style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter</button>
           `:''}
-          ${a.status==='publiée'?`<button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
+          ${a.pending_changes?`
+          <button onclick="applyPendingAnnonceChanges('${a.id}')"
+            style="background:#e6a800;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">✅ Appliquer les modifications</button>
+          <button onclick="rejectPendingAnnonceChanges('${a.id}')"
+            style="background:#fff;color:#cc0000;border:1.5px solid #cc0000;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter les modifications</button>
+          `:''}
+          ${a.status==='publiée' && !a.pending_changes?`<button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
         </div>
       </div>
     </div>`).join('')}`;
@@ -9591,6 +9612,66 @@ async function rejectAnnonce(id, ref, name, email, firstname){
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
   showToast('Annonce rejetée.','var(--red)');
+  buildAdminAnnonces(document.getElementById('admin-content'));
+}
+
+async function applyPendingAnnonceChanges(id){
+  const a = _adminAnnoncesCache.find(x=>String(x.id)===String(id));
+  if(!a || !a.pending_changes){ showToast('Aucune modification en attente','var(--red)'); return; }
+  if(!confirm('Appliquer ces modifications à l\'annonce "'+(a.name||'')+'" ? Elles remplaceront la version actuellement en ligne.')) return;
+
+  const { error } = await _sb.from('annonces')
+    .update({ ...a.pending_changes, pending_changes: null })
+    .eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  try {
+    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({
+        _action: 'pending_changes_applied',
+        ref: a.ref, name: a.pending_changes.name||a.name,
+        contact_email: a.contact_email, contact_firstname: a.contact_firstname
+      })
+    });
+  } catch(e){ console.warn('Email non envoyé:', e); }
+
+  // Retire l'entrée obsolète de hotels[] pour forcer un rechargement propre avec les nouvelles infos
+  const hIdx = hotels.findIndex(x=>x.annonceId===id);
+  if(hIdx>-1) hotels.splice(hIdx,1);
+
+  showToast('✅ Modifications appliquées, annonce mise à jour en ligne','var(--green)');
+  buildAdminAnnonces(document.getElementById('admin-content'));
+}
+
+async function rejectPendingAnnonceChanges(id){
+  const a = _adminAnnoncesCache.find(x=>String(x.id)===String(id));
+  if(!a){ showToast('Annonce introuvable','var(--red)'); return; }
+  if(!confirm('Rejeter ces modifications ? L\'annonce actuellement en ligne restera inchangée.')) return;
+
+  const { error } = await _sb.from('annonces').update({ pending_changes: null }).eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  try {
+    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({
+        _action: 'pending_changes_rejected',
+        ref: a.ref, name: a.name,
+        contact_email: a.contact_email, contact_firstname: a.contact_firstname
+      })
+    });
+  } catch(e){ console.warn('Email non envoyé:', e); }
+
+  showToast('Modifications rejetées. L\'annonce en ligne reste inchangée.','var(--red)');
   buildAdminAnnonces(document.getElementById('admin-content'));
 }
 
@@ -9732,6 +9813,14 @@ function renderAdminAnnonceModal(id){
         <p>${_adminModalEditMode ? "Modification de l'annonce" : "Détail de l'annonce"}</p>
       </div>
       <div class="modal-body" style="max-height:58vh;overflow-y:auto;">
+        ${(!_adminModalEditMode && a.pending_changes)?`
+          <div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+            <div style="font-weight:800;color:#a16800;font-size:14px;margin-bottom:10px;">✏️ Modifications proposées par l'hôte (annonce en ligne inchangée pour l'instant)</div>
+            <div style="font-size:13px;color:#4b5563;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;">
+              ${Object.entries(a.pending_changes).filter(([k,v])=>v!==undefined && v!==null && JSON.stringify(v)!=='[]').map(([k,v])=>`<div><strong>${k}</strong> : ${Array.isArray(v)?v.join(', '):String(v)}</div>`).join('')}
+            </div>
+          </div>
+        `:''}
         ${body}
       </div>
       <div style="display:flex;gap:8px;padding:16px 24px;border-top:1px solid var(--gray-200);flex-wrap:wrap;">
@@ -9743,6 +9832,10 @@ function renderAdminAnnonceModal(id){
           ${a.status==='en attente' ? `
             <button onclick="document.getElementById('modal-root').innerHTML='';validateAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#0d9e6e;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✅ Valider</button>
             <button onclick="document.getElementById('modal-root').innerHTML='';rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="flex:1;min-width:120px;background:#cc0000;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">❌ Rejeter</button>
+          ` : ''}
+          ${a.pending_changes ? `
+            <button onclick="document.getElementById('modal-root').innerHTML='';applyPendingAnnonceChanges('${a.id}')" style="flex:1;min-width:160px;background:#e6a800;color:#fff;padding:11px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:700;">✅ Appliquer les modifications</button>
+            <button onclick="document.getElementById('modal-root').innerHTML='';rejectPendingAnnonceChanges('${a.id}')" style="flex:1;min-width:160px;background:#fff;color:#cc0000;border:1.5px solid #cc0000;padding:11px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;">❌ Rejeter les modifications</button>
           ` : ''}
         `}
       </div>
