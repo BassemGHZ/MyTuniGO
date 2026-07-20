@@ -2047,9 +2047,17 @@ function doSearch(){
 function searchByDest(dest){appState.searchDest=dest;appState.resultsPage=1;navigate('results');}
 
 /* ===================== RESULTS ===================== */
-function getFiltered(){
+function haversineKm(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function getFilteredBase(ignoreCity){
   let list = hotels.filter(h=>{
-    if(appState.searchDest && !h.city.toLowerCase().includes(appState.searchDest.toLowerCase()) && !h.country.toLowerCase().includes(appState.searchDest.toLowerCase())) return false;
+    if(!ignoreCity && appState.searchDest && !h.city.toLowerCase().includes(appState.searchDest.toLowerCase()) && !h.country.toLowerCase().includes(appState.searchDest.toLowerCase())) return false;
     
     if(h.price < (appState.filters.minPrice||0)) return false;
     if((appState.filters.maxPrice||410) < 410 && h.price > (appState.filters.maxPrice||410)) return false;
@@ -2077,6 +2085,43 @@ function getFiltered(){
   if(appState.sort==='price_asc') list.sort((a,b)=>a.price-b.price);
   else if(appState.sort==='rating') list.sort((a,b)=>b.rating-a.rating);
   return list;
+}
+
+// Élargit la recherche à un rayon de 50 km autour de la destination recherchée
+// quand aucun résultat exact n'est trouvé, pour maximiser les chances de proposer
+// un bien dans la zone ou les environs plutôt qu'une page vide.
+async function loadNearbyFallback(query){
+  appState._nearbyFallback = { query, loading:true, results:[] };
+  try{
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(query+', Tunisie')+'&limit=1';
+    const res = await fetch(url, {headers:{'Accept-Language':'fr','User-Agent':'MyTunigo/1.0'}});
+    const data = await res.json();
+    if(!data || !data.length){
+      appState._nearbyFallback = { query, loading:false, results:[], notFound:true };
+      refreshResults();
+      return;
+    }
+    const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+    let list = getFilteredBase(true).filter(h=>h.lat!=null && h.lng!=null && !isNaN(h.lat) && !isNaN(h.lng));
+    list = list.map(h=>Object.assign({}, h, { _distanceKm: haversineKm(lat,lng,h.lat,h.lng) }))
+                .filter(h=>h._distanceKm<=50)
+                .sort((a,b)=>a._distanceKm-b._distanceKm);
+    appState._nearbyFallback = { query, loading:false, results:list, centerLat:lat, centerLng:lng };
+  } catch(e){
+    console.warn('loadNearbyFallback:', e.message);
+    appState._nearbyFallback = { query, loading:false, results:[], error:true };
+  }
+  refreshResults();
+}
+
+function getFiltered(){
+  const exact = getFilteredBase(false);
+  if(exact.length>0 || !appState.searchDest) return exact;
+  const nf = appState._nearbyFallback;
+  if(nf && nf.query===appState.searchDest) return nf.results||[];
+  // Déclenche le chargement du repli 50km (résultat asynchrone, redessine ensuite)
+  loadNearbyFallback(appState.searchDest);
+  return [];
 }
 
 let _resultsAvailKey = null; // 'checkin|checkout' déjà chargé, pour éviter de refetch inutilement
@@ -2400,9 +2445,18 @@ function buildResults(){
           <option value="rating" ${appState.sort==='rating'?'selected':''}>Les mieux notés</option>
         </select>
       </div>
+      ${(appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && !appState._nearbyFallback.loading && (appState._nearbyFallback.results||[]).length>0) ? `
+        <div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+          <span style="font-size:22px;">📍</span>
+          <div style="font-size:14px;color:#4b5563;"><strong>Aucun bien disponible exactement à "${appState.searchDest}"</strong> — voici ${appState._nearbyFallback.results.length} hébergement${appState._nearbyFallback.results.length>1?'s':''} dans un rayon de 50 km autour de cette zone.</div>
+        </div>
+      ` : ''}
+      ${(appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && appState._nearbyFallback.loading) ? `
+        <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;font-size:14px;color:var(--gray-500);">⏳ Recherche de biens dans les environs de "${appState.searchDest}"…</div>
+      ` : ''}
       <div class="results-list">
         ${filtered.length===0
-          ?`<div class="no-results"><div style="font-size:52px;margin-bottom:14px;">🔍</div><h3>Aucun résultat</h3><p>Modifiez vos critères ou explorez d'autres destinations.</p><button onclick="resetFilters()" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Réinitialiser les filtres</button></div>`
+          ?`<div class="no-results"><div style="font-size:52px;margin-bottom:14px;">🔍</div><h3>${(appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && !appState._nearbyFallback.loading) ? 'Aucun résultat même dans un rayon de 50 km' : 'Aucun résultat'}</h3><p>Modifiez vos critères ou explorez d'autres destinations.</p><button onclick="resetFilters()" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Réinitialiser les filtres</button></div>`
           :pageItems.map(h=>resultCardHTML(h)).join('')}
       </div>
       ${filtered.length>0 && totalPages>1 ? `<div class="pagination">
@@ -2440,7 +2494,7 @@ function resultCardHTML(h){
           <button id="fav-btn-${h.id}" onclick="event.stopPropagation();toggleFavorite(${h.id})" style="background:none;border:none;font-size:22px;cursor:pointer;flex-shrink:0;line-height:1;padding:0;transition:transform .15s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${getFavIcon(h.id)}</button>
         </div>
         <div class="rc-type">${h.type} ${'★'.repeat(h.stars)}</div>
-        <div class="rc-loc">📍 ${h.address}</div>
+        <div class="rc-loc">📍 ${h.address}${h._distanceKm!=null?` <span style="color:#e6a800;font-weight:700;">· à ${Math.round(h._distanceKm)} km de votre recherche</span>`:''}</div>
         <div class="rc-tags">${h.features.slice(0,4).map(f=>`<span class="rc-tag">${amenIcon(f)} ${amenLabel(f)}</span>`).join('')}</div>
         <div class="rc-desc">${h.desc.substring(0,120)}…</div>
       </div>
