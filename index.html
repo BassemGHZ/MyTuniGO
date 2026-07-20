@@ -3931,7 +3931,7 @@ async function loadReservations(container){
         id: b.reference || b.id, _dbId: b.id, excursionId: b.excursion_id,
         title: ex.title || 'Excursion', city: ex.city || '—', country: ex.country || '—',
         date: b.date, participants: b.participants||1, total: b.total||0,
-        status: b.status||'en attente', createdAt: b.created_at
+        status: b.status||'en attente', paymentMethod: b.payment_method||'en ligne', createdAt: b.created_at
       };
     });
   }
@@ -4161,6 +4161,7 @@ function buildExcursionReservations(){
                 <span>📅 ${dt}</span>
                 <span>👥 ${r.participants} participant${r.participants>1?'s':''}</span>
                 <span>🔖 Réf: <code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.id}</code></span>
+                ${r.paymentMethod==='Paiement sur place'?`<span style="color:#e6a800;font-weight:600;">💵 À payer sur place</span>`:''}
               </div>
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:120px;">
@@ -4478,7 +4479,7 @@ async function loadMesAnnonces(container){
         status: e.status, availability: e.availability||[],
         groupSize: e.max_participants||10, maxParticipants: e.max_participants||10, minAge: e.min_age||0,
         difficulty: e.difficulty||'facile', language: e.languages||['Français'],
-        instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation,
+        instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation, payOnSite: !!e.pay_on_site,
         description: e.description||'', highlights: e.highlights||[], includes: e.includes||[],
         notIncluded: e.not_included||'', whatToBring: e.what_to_bring||'', schedule: e.schedule||'',
         meetingPoint: e.meeting_point||'', meetingTime: e.meeting_time||'', meetingTimeEnd: e.meeting_time_end||'',
@@ -5665,6 +5666,7 @@ function bookExcursion(excId){
     type:'excursion', excId,
     excursionRealId: exc.excursionId || null,
     instantBookExc: !!exc.instantBook,
+    payOnSiteAllowed: !!exc.payOnSite,
     unitPrice: exc.price||0,
     title: exc.title||'Excursion',
     date, pax, total,
@@ -6038,6 +6040,15 @@ function excFormStep2(fd){
       </div>
     </div>
 
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--gray-50);border-radius:var(--r-md);border:1px solid var(--gray-200);margin-bottom:20px;">
+      <div><div style="font-size:14px;font-weight:700;">💵 Paiement sur place accepté</div>
+        <div style="font-size:12px;color:var(--gray-500);">Le voyageur pourra choisir de payer directement le jour de l'excursion, sans payer en ligne</div></div>
+      <div onclick="excSet('payOnSite',!appState.excursionFormData.payOnSite);excRefresh()"
+        style="width:44px;height:24px;border-radius:12px;background:${fd.payOnSite?'var(--blue)':'var(--gray-300)'};cursor:pointer;position:relative;transition:background .2s;">
+        <div style="position:absolute;top:2px;${fd.payOnSite?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;transition:all .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+      </div>
+    </div>
+
     <!-- Calendrier des dates disponibles -->
     <div style="font-size:15px;font-weight:700;margin-bottom:6px;margin-top:4px;">📅 Dates disponibles</div>
     <div style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">Cliquez sur les jours où vous proposez cette excursion. Naviguez d'un mois à l'autre.</div>
@@ -6280,6 +6291,7 @@ async function excFormPublish(){
     status: 'en attente',
     instant_book: !!fd.instantBook,
     free_cancellation: !!fd.freeCancellation,
+    pay_on_site: !!fd.payOnSite,
     contact_firstname: fd.firstname||'',
     contact_lastname: fd.lastname||'',
     contact_email: fd.email||'',
@@ -7026,7 +7038,8 @@ function buildPayment(){
   const pb = appState.pendingBooking;
   if(!pb){navigate('home');return document.createElement('div');}
   const pd = appState.paymentData;
-  const method = pd.method||'card';
+  let method = pd.method||'card';
+  if(method==='onsite' && !(pb.type==='excursion' && pb.payOnSiteAllowed)) method='card';
 
   let summaryHTML='', itemName='', itemLocation='', itemEmoji='🏨';
   if(pb.type==='hotel'){
@@ -7061,8 +7074,10 @@ function buildPayment(){
         <!-- Méthodes -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;margin-bottom:20px;">
           <div style="font-size:16px;font-weight:700;margin-bottom:16px;">Choisissez votre moyen de paiement</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            ${[{id:'card',icon:'💳',label:'Carte bancaire'},{id:'paypal',icon:'🅿️',label:'PayPal'}].map(m=>{
+          <div style="display:grid;grid-template-columns:${(pb.type==='excursion' && pb.payOnSiteAllowed)?'1fr 1fr 1fr':'1fr 1fr'};gap:12px;">
+            ${[{id:'card',icon:'💳',label:'Carte bancaire'},{id:'paypal',icon:'🅿️',label:'PayPal'}]
+              .concat((pb.type==='excursion' && pb.payOnSiteAllowed)?[{id:'onsite',icon:'💵',label:'Payer sur place'}]:[])
+              .map(m=>{
               const active=method===m.id;
               return '<div onclick="paySetMethod(\''+m.id+'\')" id="pm-'+m.id+'" style="border:2px solid '+(active?'var(--blue)':'var(--gray-200)')+';border-radius:var(--r-md);padding:16px;text-align:center;cursor:pointer;background:'+(active?'rgba(0,53,128,.05)':'#fff')+';transition:all .15s;">'
                 +'<div style="font-size:30px;margin-bottom:8px;">'+m.icon+'</div>'
@@ -7170,6 +7185,21 @@ function buildPayFormHTML(method,pd,total){
       </button>
     </div>`;
 
+  if(method==='onsite') return `
+    <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:18px;">💵 Paiement sur place</div>
+      <div style="text-align:center;padding:20px;background:#fff8e0;border-radius:var(--r-md);margin-bottom:20px;border:1px solid #ffd699;">
+        <div style="font-size:48px;margin-bottom:8px;">💵</div>
+        <div style="font-size:15px;color:#4b5563;">Vous réglerez <strong>${total}€</strong> directement le jour de l'excursion, auprès du prestataire.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;padding:10px 14px;background:var(--gray-50);border-radius:var(--r-md);border:1px solid var(--gray-200);">
+        <span>ℹ️</span><span style="font-size:13px;color:var(--gray-600);">Votre place est réservée dès maintenant, sans paiement en ligne.</span>
+      </div>
+      <button onclick="processPayment()" style="width:100%;background:#e6a800;color:#fff;padding:14px;border-radius:var(--r-md);font-size:17px;font-weight:800;border:none;cursor:pointer;">
+        ✅ Confirmer la réservation (paiement sur place)
+      </button>
+    </div>`;
+
   return '';
 }
 
@@ -7177,7 +7207,7 @@ function paySetMethod(m){
   appState.paymentData.method=m;
   const block=document.getElementById('pay-form-block');
   if(block) block.innerHTML=buildPayFormHTML(m,appState.paymentData,appState.pendingBooking?.total||0);
-  ['card','paypal'].forEach(id=>{
+  ['card','paypal','onsite'].forEach(id=>{
     const el=document.getElementById('pm-'+id);
     if(!el) return;
     const active=id===m;
@@ -7224,7 +7254,7 @@ function processPayment(){
 }
 
 function showPaymentProcessing(total,method,onComplete){
-  const methodLabels={card:'Carte bancaire',paypal:'PayPal'};
+  const methodLabels={card:'Carte bancaire',paypal:'PayPal',onsite:'Paiement sur place'};
   const overlay=document.createElement('div');
   overlay.id='pay-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
@@ -7253,7 +7283,7 @@ function showPaymentProcessing(total,method,onComplete){
 
 async function finalizeBooking(pb,method){
   const ref=(pb.type==='excursion'?'EXC':'SF')+'-'+Math.random().toString(36).substr(2,8).toUpperCase();
-  const methodLabels={card:'Carte bancaire',paypal:'PayPal'};
+  const methodLabels={card:'Carte bancaire',paypal:'PayPal',onsite:'Paiement sur place'};
   if(pb.type==='hotel'){
     const h=hotels.find(x=>x.id===pb.hotelId)||{name:'Hébergement',emoji:'🏨',city:'—',country:'—'};
     const comm=calcCommission(pb.total);
@@ -7287,7 +7317,8 @@ async function finalizeRealExcursionBooking(pb, ref, methodLabel){
     unit_price: pb.unitPrice||0,
     total: pb.total,
     status,
-    reference: ref
+    reference: ref,
+    payment_method: methodLabel||'en ligne'
   }]);
 
   if(error){
@@ -7975,7 +8006,7 @@ async function loadExcursionBookingRequests(container){
       excursionTitle: excMap[r.excursion_id]?.title || 'Excursion',
       guestName, guestAvatar: guestName.slice(0,2).toUpperCase(),
       date: r.date, participants: r.participants||1,
-      total: r.total||0, status: r.status
+      total: r.total||0, status: r.status, paymentMethod: r.payment_method||'en ligne'
     };
   });
 
@@ -8024,6 +8055,7 @@ async function loadExcursionBookingRequests(container){
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Date</div><div style="font-size:13px;font-weight:600;">${dt}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Participants</div><div style="font-size:13px;font-weight:600;">👥 ${req.participants}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
+                <div style="background:${req.paymentMethod==='Paiement sur place'?'#fff8e0':'var(--gray-50)'};border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Paiement</div><div style="font-size:13px;font-weight:600;color:${req.paymentMethod==='Paiement sur place'?'#a16800':'inherit'};">${req.paymentMethod==='Paiement sur place'?'💵 Sur place':'💳 En ligne'}</div></div>
               </div>
             </div>
             ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
@@ -8160,7 +8192,7 @@ async function loadExcursionEdit(container, id){
     notIncluded: e.not_included||'', whatToBring: e.what_to_bring||'', schedule: e.schedule||'',
     meetingPoint: e.meeting_point||'', meetingTime: e.meeting_time||'', meetingTimeEnd: e.meeting_time_end||'',
     availability: e.availability||[],
-    instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation,
+    instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation, payOnSite: !!e.pay_on_site,
     firstname: e.contact_firstname||'', lastname: e.contact_lastname||'',
     email: e.contact_email||'', phone: e.contact_phone||''
   };
@@ -8312,10 +8344,16 @@ function buildExcursionEditFormInner(){
           <div style="position:absolute;top:2px;${ed.instantBook?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--gray-100);">
         <div><div style="font-size:14px;font-weight:600;">Annulation gratuite</div></div>
         <div onclick="edSet('freeCancellation', !appState.excEditData.freeCancellation); edRefresh();" style="width:44px;height:24px;border-radius:12px;background:${ed.freeCancellation?'var(--blue)':'var(--gray-300)'};cursor:pointer;position:relative;flex-shrink:0;">
           <div style="position:absolute;top:2px;${ed.freeCancellation?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
+        <div><div style="font-size:14px;font-weight:600;">💵 Paiement sur place accepté</div><div style="font-size:12px;color:var(--gray-500);">Le voyageur peut choisir de payer le jour de l'excursion</div></div>
+        <div onclick="edSet('payOnSite', !appState.excEditData.payOnSite); edRefresh();" style="width:44px;height:24px;border-radius:12px;background:${ed.payOnSite?'var(--blue)':'var(--gray-300)'};cursor:pointer;position:relative;flex-shrink:0;">
+          <div style="position:absolute;top:2px;${ed.payOnSite?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
         </div>
       </div>
     </div>
@@ -8354,7 +8392,7 @@ async function saveExcursionEdit(){
     not_included: ed.notIncluded||'', what_to_bring: ed.whatToBring||'', schedule: ed.schedule||'',
     meeting_point: ed.meetingPoint||'', meeting_time: ed.meetingTime||'', meeting_time_end: ed.meetingTimeEnd||'',
     availability: ed.availability||[],
-    instant_book: !!ed.instantBook, free_cancellation: !!ed.freeCancellation,
+    instant_book: !!ed.instantBook, free_cancellation: !!ed.freeCancellation, pay_on_site: !!ed.payOnSite,
     contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
     contact_email: ed.email||'', contact_phone: ed.phone||'',
     // Toute modification remet l'excursion en attente de re-validation admin
@@ -11221,7 +11259,7 @@ async function loadPublishedExcursions(){
         photos: e.photos || [],
         available: true,
         freeCancellation: !!e.free_cancellation,
-        instantBook: !!e.instant_book,
+        instantBook: !!e.instant_book, payOnSite: !!e.pay_on_site,
         featured: false,
         availability: e.availability || [],
         createdAt: e.created_at || null
