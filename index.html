@@ -1307,10 +1307,13 @@ function priceTrackTouch(e){
 function closeDropdown(){const dd=document.getElementById('user-dropdown');if(dd)dd.remove();}
 function closeDropdownOutside(e){const dd=document.getElementById('user-dropdown');if(dd&&!dd.contains(e.target))dd.remove();}
 
-function logout(){
+async function logout(){
   auth.currentUser=null;
   closeDropdown();
   renderAuthArea();
+  try{ await _sb.auth.signOut(); }
+  catch(e){ console.warn('signOut error:', e.message); }
+  navigate('home');
   showToast('À bientôt ! Vous avez été déconnecté.','#003580');
 }
 
