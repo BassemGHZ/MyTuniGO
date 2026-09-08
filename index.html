@@ -1540,7 +1540,19 @@ async function handleRegister(){
   if(!terms){showModalAlert("Acceptez les conditions d'utilisation.");return;}
 
   const btn = document.querySelector('.btn-submit');
-  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Envoi en cours…';}
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Vérification…';}
+
+  // Supabase Auth ne renvoie pas toujours une erreur pour un email déjà
+  // enregistré (comportement volontaire, pour ne pas révéler quels emails
+  // existent) — on vérifie donc nous-mêmes avant de tenter l'inscription.
+  const { data: existing } = await _sb.rpc('email_exists', { check_email: email });
+  if(existing){
+    if(btn){btn.disabled=false;btn.textContent='Créer mon compte gratuitement';}
+    showModalAlert('Un compte existe déjà avec cet e-mail. Essayez de vous connecter, ou utilisez "Mot de passe oublié" si besoin.');
+    return;
+  }
+
+  if(btn){btn.innerHTML='<span class="spinner-sm"></span> Envoi en cours…';}
 
   const { error } = await _sb.auth.signUp({
     email,
