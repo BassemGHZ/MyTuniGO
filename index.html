@@ -1432,7 +1432,7 @@ async function handleLogin(){
   }
 
   const meta = data.user?.user_metadata || {};
-  const { data: prof } = await _sb.from('profiles').select('photo').eq('id', data.user.id).maybeSingle();
+  const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', data.user.id).maybeSingle();
   auth.currentUser = {
     id: data.user.id,
     role: meta.role || 'user',
@@ -1440,6 +1440,10 @@ async function handleLogin(){
     lastName:  meta.last_name  || '',
     email:     data.user.email,
     photo:     prof?.photo || null,
+    phone:     prof?.phone || null,
+    birthdate: prof?.birthdate || null,
+    country:   prof?.country || null,
+    bio:       prof?.bio || null,
     emailVerified: true,
     createdAt: data.user.created_at?.split('T')[0] || '',
     bankData: { preferredMethod: 'virement' }
@@ -5098,17 +5102,40 @@ function buildProfil(){
   return d;
 }
 
-function saveProfile(){
+async function saveProfile(){
   const u = auth.currentUser;
   const first = document.getElementById('pf-first')?.value?.trim();
   const last  = document.getElementById('pf-last')?.value?.trim();
   if(!first||!last){showToast('⚠️ Prénom et nom obligatoires','var(--red)');return;}
+  const phone     = document.getElementById('pf-phone')?.value?.trim()||null;
+  const birthdate = document.getElementById('pf-birth')?.value||null;
+  const country   = document.getElementById('pf-country')?.value||null;
+  const bio       = document.getElementById('pf-bio')?.value?.trim()||null;
+
+  const btn = document.querySelector('button[onclick="saveProfile()"]');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Enregistrement…';}
+
+  const { error: dbErr } = await _sb.from('profiles').update({
+    first_name: first, last_name: last, phone, birthdate, country, bio
+  }).eq('id', u.id);
+
+  if(dbErr){
+    showToast('Erreur : '+dbErr.message,'var(--red)');
+    if(btn){btn.disabled=false;btn.textContent='💾 Enregistrer';}
+    return;
+  }
+
+  // Garde le prénom/nom synchronisés avec les métadonnées d'authentification,
+  // utilisées à la connexion et à la restauration de session.
+  try{ await _sb.auth.updateUser({ data: { first_name: first, last_name: last } }); }
+  catch(e){ console.warn('auth.updateUser error:', e.message); }
+
   u.firstName = first;
   u.lastName  = last;
-  u.phone     = document.getElementById('pf-phone')?.value?.trim()||u.phone;
-  u.birthdate = document.getElementById('pf-birth')?.value||u.birthdate;
-  u.country   = document.getElementById('pf-country')?.value||u.country;
-  u.bio       = document.getElementById('pf-bio')?.value?.trim()||u.bio;
+  u.phone     = phone;
+  u.birthdate = birthdate;
+  u.country   = country;
+  u.bio       = bio;
   // Update in users array
   const idx = auth.users.findIndex(x=>x.id===u.id);
   if(idx>=0) auth.users[idx] = {...auth.users[idx], ...u};
@@ -11142,7 +11169,7 @@ render();
 _sb.auth.getSession().then(async ({ data: { session } }) => {
   if(session?.user && !auth.currentUser){
     const meta = session.user.user_metadata || {};
-    const { data: prof } = await _sb.from('profiles').select('photo').eq('id', session.user.id).maybeSingle();
+    const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', session.user.id).maybeSingle();
     auth.currentUser = {
       id: session.user.id,
       role: meta.role || 'user',
@@ -11150,6 +11177,10 @@ _sb.auth.getSession().then(async ({ data: { session } }) => {
       lastName:  meta.last_name  || '',
       email:     session.user.email,
       photo:     prof?.photo || null,
+      phone:     prof?.phone || null,
+      birthdate: prof?.birthdate || null,
+      country:   prof?.country || null,
+      bio:       prof?.bio || null,
       emailVerified: true,
       createdAt: session.user.created_at?.split('T')[0] || '',
       bankData: { preferredMethod: 'virement' }
