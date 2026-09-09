@@ -1454,6 +1454,7 @@ async function handleLogin(){
   closeModal();
   renderAuthArea();
   showToast('Bienvenue, ' + auth.currentUser.firstName + ' ! 🎉', 'var(--green)');
+  loadUserFavorites();
   const pending = appState._pendingPage;
   appState._pendingPage = null;
   navigate(pending || 'home');
@@ -3865,8 +3866,35 @@ function getFavIcon(id){
   return appState.favorites.includes(id) ? '❤️' : '🤍';
 }
 
+async function loadUserFavorites(){
+  if(!auth.currentUser) return;
+  // S'assure que les tableaux hotels/excursions sont peuplés avant de résoudre
+  // les favoris (ces fonctions sont idempotentes, sans doublon en cas de rappel).
+  try{ await Promise.all([loadPublishedAnnonces(), loadPublishedExcursions()]); }
+  catch(e){ console.warn('loadUserFavorites: chargement annonces/excursions échoué:', e.message); }
+
+  const { data, error } = await _sb.from('favorites').select('item_type,item_ref').eq('user_id', auth.currentUser.id);
+  if(error){ console.warn('loadUserFavorites error:', error.message); return; }
+
+  const resolved = [];
+  (data||[]).forEach(f=>{
+    if(f.item_type==='annonce'){
+      const h = hotels.find(x=>x.annonceId===f.item_ref);
+      if(h) resolved.push(h.id);
+    } else if(f.item_type==='excursion'){
+      const allExc = [...excursions, ...(appState.myExcursions||[])];
+      const e = allExc.find(x=>x.excursionId===f.item_ref);
+      if(e) resolved.push('exc-'+e.id);
+    }
+  });
+  appState.favorites = resolved;
+  if(appState.page==='favoris') navigate('favoris');
+}
+
 function toggleFavorite(hId){
   if(!auth.currentUser){openModal('login');showToast('Connectez-vous pour sauvegarder des favoris','var(--blue)');return;}
+  const h = hotels.find(x=>x.id===hId);
+  const nowFav = !appState.favorites.includes(hId);
   if(appState.favorites.includes(hId)){
     appState.favorites=appState.favorites.filter(x=>x!==hId);
     showToast('Retiré de vos favoris','var(--gray-700)');
@@ -3881,6 +3909,17 @@ function toggleFavorite(hId){
   // Also update detail save button if present
   const saveBtns = document.querySelectorAll('[data-savebtn]');
   saveBtns.forEach(b => b.innerHTML = getFavIcon(hId) + ' ' + (appState.favorites.includes(hId)?'Sauvegardé':'Sauvegarder'));
+
+  // Persistance en base (uniquement pour les vraies annonces, pas les démos mock)
+  if(h && h.annonceId){
+    if(nowFav){
+      _sb.from('favorites').insert([{ user_id: auth.currentUser.id, item_type:'annonce', item_ref: h.annonceId }])
+        .then(({error})=>{ if(error) console.warn('favorites insert error:', error.message); });
+    } else {
+      _sb.from('favorites').delete().eq('user_id', auth.currentUser.id).eq('item_type','annonce').eq('item_ref', h.annonceId)
+        .then(({error})=>{ if(error) console.warn('favorites delete error:', error.message); });
+    }
+  }
 }
 
 function checkAuthAndGo(page){
@@ -5792,8 +5831,21 @@ function excPromoFlash(id){
 function toggleExcFavorite(excId){
   const key = 'exc-'+excId;
   if(!auth.currentUser){openModal('login');return;}
+  const allExc = [...excursions, ...(appState.myExcursions||[])];
+  const exc = allExc.find(x=>x.id===excId);
+  const nowFav = !appState.favorites.includes(key);
   if(appState.favorites.includes(key)){appState.favorites=appState.favorites.filter(x=>x!==key);showToast('Retiré des favoris','var(--gray-700)');}
   else{appState.favorites.push(key);showToast('❤️ Ajouté aux favoris !','#e74c3c');}
+
+  if(exc && exc.excursionId){
+    if(nowFav){
+      _sb.from('favorites').insert([{ user_id: auth.currentUser.id, item_type:'excursion', item_ref: exc.excursionId }])
+        .then(({error})=>{ if(error) console.warn('favorites insert error:', error.message); });
+    } else {
+      _sb.from('favorites').delete().eq('user_id', auth.currentUser.id).eq('item_type','excursion').eq('item_ref', exc.excursionId)
+        .then(({error})=>{ if(error) console.warn('favorites delete error:', error.message); });
+    }
+  }
   navigate('excursion-detail');
 }
 
@@ -11203,6 +11255,7 @@ _sb.auth.getSession().then(async ({ data: { session } }) => {
     };
     renderAuthArea();
     render();
+    loadUserFavorites();
   }
 }).catch(e => console.warn('Restauration de session échouée:', e.message));
 
