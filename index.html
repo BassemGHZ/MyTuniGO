@@ -2406,16 +2406,7 @@ function buildResults(){
           <span id="arrow-types" style="font-size:11px;transition:transform .2s;color:var(--gray-400);">▼</span>
         </div>
         <div id="filter-types">
-          ${(()=>{
-            const allTypes = ['Hôtel','Appartement','Maison','Studio','Chalet'];
-            const visibleCount = appState.filterExpanded?.types ? allTypes.length : 3;
-            const shown = allTypes.slice(0, visibleCount);
-            return shown.map(t=>'<div class="f-opt">'
-              +'<input type="checkbox" '+(appState.filters.types.includes(t)?'checked':'')+' onchange="toggleTypeF(\''+t+'\',this.checked)">'
-              +'<label>'+t+'</label></div>').join('')
-            + (allTypes.length > 3 ? '<button onclick="toggleFilterExpand(\'types\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
-              +(appState.filterExpanded?.types ? '▲ Voir moins' : '▼ Voir '+(allTypes.length-3)+' de plus')+'</button>' : '');
-          })()}
+          ${renderTypesFilterHTML()}
         </div>
       </div>
 
@@ -2426,15 +2417,7 @@ function buildResults(){
           <span id="arrow-amenities" style="font-size:11px;transition:transform .2s;color:var(--gray-400);">▼</span>
         </div>
         <div id="filter-amenities">
-          ${(()=>{
-            const allAmen = ['Wi-Fi gratuit','Piscine','Parking','Restaurant','Spa','Climatisation','Salle de sport','Animaux acceptés','Cuisine équipée','Vue mer'];
-            const visibleCount = appState.filterExpanded?.amenities ? allAmen.length : 3;
-            return allAmen.slice(0, visibleCount).map(a=>'<div class="f-opt">'
-              +'<input type="checkbox" '+(appState.filters.amenities.includes(a)?'checked':'')+' onchange="toggleAmenF(\''+a+'\',this.checked)">'
-              +'<label>'+a+'</label></div>').join('')
-            + (allAmen.length > 3 ? '<button onclick="toggleFilterExpand(\'amenities\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
-              +(appState.filterExpanded?.amenities ? '▲ Voir moins' : '▼ Voir '+(allAmen.length-3)+' de plus')+'</button>' : '');
-          })()}
+          ${renderAmenitiesFilterHTML()}
         </div>
       </div>
 
@@ -2445,15 +2428,7 @@ function buildResults(){
           <span id="arrow-ratings" style="font-size:11px;transition:transform .2s;color:var(--gray-400);">▼</span>
         </div>
         <div id="filter-ratings">
-          ${(()=>{
-            const allRatings = [{v:0,l:'Toutes'},{v:5,l:'5★'},{v:4,l:'4★ et +'},{v:3,l:'3★ et +'},{v:2,l:'2★ et +'}];
-            const visibleCount = appState.filterExpanded?.ratings ? allRatings.length : 3;
-            return allRatings.slice(0, visibleCount).map(r=>'<div class="f-opt">'
-              +'<input type="radio" name="rat" value="'+r.v+'" '+(appState.filters.minRating==r.v?'checked':'')+' onchange="updateRatingF('+r.v+')">'
-              +'<label>'+r.l+'</label></div>').join('')
-            + (allRatings.length > 3 ? '<button onclick="toggleFilterExpand(\'ratings\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
-              +(appState.filterExpanded?.ratings ? '▲ Voir moins' : '▼ Voir '+(allRatings.length-3)+' de plus')+'</button>' : '');
-          })()}
+          ${renderRatingsFilterHTML()}
         </div>
       </div>
 
@@ -2588,11 +2563,47 @@ function togglePromoFilter(checked){ appState.filters.promoOnly = checked; appSt
 function updateRatingF(v){appState.filters.minRating=v;appState.resultsPage=1;refreshResults();}
 function toggleTypeF(t,c){if(c){if(!appState.filters.types.includes(t))appState.filters.types.push(t);}else{appState.filters.types=appState.filters.types.filter(x=>x!==t);}appState.resultsPage=1;refreshResults();}
 
+function renderTypesFilterHTML(){
+  const allTypes = ['Hôtel','Appartement','Maison','Studio','Chalet'];
+  const visibleCount = appState.filterExpanded?.types ? allTypes.length : 3;
+  const shown = allTypes.slice(0, visibleCount);
+  return shown.map(t=>'<div class="f-opt">'
+    +'<input type="checkbox" '+(appState.filters.types.includes(t)?'checked':'')+' onchange="toggleTypeF(\''+t+'\',this.checked)">'
+    +'<label>'+t+'</label></div>').join('')
+  + (allTypes.length > 3 ? '<button onclick="toggleFilterExpand(\'types\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
+    +(appState.filterExpanded?.types ? '▲ Voir moins' : '▼ Voir '+(allTypes.length-3)+' de plus')+'</button>' : '');
+}
+
+function renderAmenitiesFilterHTML(){
+  const allAmen = ['Wi-Fi gratuit','Piscine','Parking','Restaurant','Spa','Climatisation','Salle de sport','Animaux acceptés','Cuisine équipée','Vue mer'];
+  const visibleCount = appState.filterExpanded?.amenities ? allAmen.length : 3;
+  return allAmen.slice(0, visibleCount).map(a=>'<div class="f-opt">'
+    +'<input type="checkbox" '+(appState.filters.amenities.includes(a)?'checked':'')+' onchange="toggleAmenF(\''+a+'\',this.checked)">'
+    +'<label>'+a+'</label></div>').join('')
+  + (allAmen.length > 3 ? '<button onclick="toggleFilterExpand(\'amenities\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
+    +(appState.filterExpanded?.amenities ? '▲ Voir moins' : '▼ Voir '+(allAmen.length-3)+' de plus')+'</button>' : '');
+}
+
+function renderRatingsFilterHTML(){
+  const allRatings = [{v:0,l:'Toutes'},{v:5,l:'5★'},{v:4,l:'4★ et +'},{v:3,l:'3★ et +'},{v:2,l:'2★ et +'}];
+  const visibleCount = appState.filterExpanded?.ratings ? allRatings.length : 3;
+  return allRatings.slice(0, visibleCount).map(r=>'<div class="f-opt">'
+    +'<input type="radio" name="rat" value="'+r.v+'" '+(appState.filters.minRating==r.v?'checked':'')+' onchange="updateRatingF('+r.v+')">'
+    +'<label>'+r.l+'</label></div>').join('')
+  + (allRatings.length > 3 ? '<button onclick="toggleFilterExpand(\'ratings\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
+    +(appState.filterExpanded?.ratings ? '▲ Voir moins' : '▼ Voir '+(allRatings.length-3)+' de plus')+'</button>' : '');
+}
+
 function toggleFilterExpand(section){
   if(!appState.filterExpanded) appState.filterExpanded = {types:false,amenities:false,ratings:false};
   appState.filterExpanded[section] = !appState.filterExpanded[section];
-  // Re-render just the filters panel (cheaper than full navigate)
-  navigate('results');
+  // Ne met à jour que la section concernée, sans re-render complet ni
+  // navigate() — évite de faire remonter la page en haut au clic.
+  const el = document.getElementById('filter-'+section);
+  if(!el) return;
+  if(section==='types') el.innerHTML = renderTypesFilterHTML();
+  else if(section==='amenities') el.innerHTML = renderAmenitiesFilterHTML();
+  else if(section==='ratings') el.innerHTML = renderRatingsFilterHTML();
 }
 
 function toggleFilter(section){
