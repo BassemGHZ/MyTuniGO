@@ -5952,7 +5952,7 @@ function excFormStep0(fd){
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:100px;line-height:1.6;">${fd.description}</textarea>
       <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.description||'').length}/250</div></div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:14px;margin-bottom:14px;">
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée</label>
         <div style="display:flex;gap:6px;">
           <input type="number" min="1" max="30" value="${fd.duration||2}" oninput="excSet('duration',this.value)"
@@ -6132,7 +6132,7 @@ function excFormStep2(fd){
     </div>
 
     <div style="font-size:15px;font-weight:700;margin-bottom:14px;">Politique d'annulation</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px;">
       ${[['true','Flexible','Remboursement intégral jusqu\'à 24h avant'],['false','Stricte','Non remboursable après réservation']].map(([v,t,desc])=>`
         <div onclick="excSet('freeCancellation',${v});excRefresh()" style="border:1.5px solid ${String(fd.freeCancellation)===v?'var(--blue)':'var(--gray-300)'};border-radius:var(--r-md);padding:12px 14px;cursor:pointer;background:${String(fd.freeCancellation)===v?'rgba(0,53,128,.05)':'#fff'};">
           <div style="font-size:13px;font-weight:700;color:var(--gray-900);margin-bottom:3px;">${t}</div>
@@ -7183,7 +7183,7 @@ function buildPayment(){
         <!-- Méthodes -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;margin-bottom:20px;">
           <div style="font-size:16px;font-weight:700;margin-bottom:16px;">Choisissez votre moyen de paiement</div>
-          <div style="display:grid;grid-template-columns:${(pb.type==='excursion' && pb.payOnSiteAllowed)?'1fr 1fr 1fr':'1fr 1fr'};gap:12px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;">
             ${[{id:'card',icon:'💳',label:'Carte bancaire'},{id:'paypal',icon:'🅿️',label:'PayPal'}]
               .concat((pb.type==='excursion' && pb.payOnSiteAllowed)?[{id:'onsite',icon:'💵',label:'Payer sur place'}]:[])
               .map(m=>{
