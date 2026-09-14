@@ -11230,8 +11230,25 @@ _sb.auth.onAuthStateChange((event, session) => {
   }
 })();
 
-// Première entrée d'historique (page d'accueil), pour que le bouton
-// Retour du navigateur ait un point de départ valide dès le premier clic.
+// Restaure la page (et ses identifiants) après un F5, au lieu de toujours
+// revenir à l'accueil. history.state survit à un rechargement complet —
+// contrairement à appState qui repart de zéro à chaque chargement de script.
+const RESTORABLE_PAGES = new Set(['home','results','detail','excursions','excursion-detail',
+  'mesannonces','reservations','favoris','messages','profil','booking-requests',
+  'excursion-requests','manage-excursions','annonce-edit-owner','excursion-edit',
+  'about','cgu','privacy','admin']);
+
+let _restoredPage = null;
+try{
+  if(history.state && history.state.page && RESTORABLE_PAGES.has(history.state.page)){
+    _restoredPage = history.state.page;
+    appState.page = _restoredPage;
+    if(history.state.ids){
+      Object.entries(history.state.ids).forEach(([k,v])=>{ if(v!=null) appState[k]=v; });
+    }
+  }
+}catch(e){}
+
 try{
   history.replaceState(
     { page: appState.page, ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
@@ -11239,7 +11256,44 @@ try{
   );
 }catch(e){}
 
-render();
+if(_restoredPage && _restoredPage!=='home'){
+  // Rechargement sur une page profonde : on attend que les annonces/excursions
+  // et la session soient prêtes avant le tout premier rendu, sinon la page
+  // (ex: fiche détail, "Mes réservations") ne trouve rien et rebascule à
+  // tort vers l'accueil faute de données encore chargées.
+  app.innerHTML = '<div style="text-align:center;padding:120px 20px;color:var(--gray-400);">⏳ Chargement…</div>';
+  Promise.all([
+    loadPublishedAnnonces(),
+    loadPublishedExcursions(),
+    _sb.auth.getSession().then(async ({ data: { session } }) => {
+      if(session?.user && !auth.currentUser){
+        const meta = session.user.user_metadata || {};
+        const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', session.user.id).maybeSingle();
+        auth.currentUser = {
+          id: session.user.id,
+          role: meta.role || 'user',
+          firstName: meta.first_name || session.user.email.split('@')[0],
+          lastName:  meta.last_name  || '',
+          email:     session.user.email,
+          photo:     prof?.photo || null,
+          phone:     prof?.phone || null,
+          birthdate: prof?.birthdate || null,
+          country:   prof?.country || null,
+          bio:       prof?.bio || null,
+          emailVerified: true,
+          createdAt: session.user.created_at?.split('T')[0] || '',
+          bankData: { preferredMethod: 'virement' }
+        };
+      }
+    }).catch(e => console.warn('Restauration de session échouée:', e.message))
+  ]).finally(()=>{
+    renderAuthArea();
+    render();
+    if(auth.currentUser) loadUserFavorites();
+  });
+} else {
+  render();
+}
 
 // ── Restauration de session au chargement de la page ──
 // auth.currentUser n'est qu'une variable JS en mémoire : sans ceci, un simple
