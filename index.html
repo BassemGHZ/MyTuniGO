@@ -962,6 +962,11 @@ function render() {
     if(h) setTimeout(()=>initHotelMap(h.id), 200);
     if(h) setTimeout(()=>initBlockedDatesPicker(h.id), 150);
     if(h) setTimeout(()=>loadDetailReviews(h.id), 150);
+    // Synchronise le prix total + l'état interne (appState.checkIn/checkOut)
+    // avec les dates déjà pré-remplies depuis la recherche — sans ça, le
+    // calcul du montant total ne se déclenchait qu'au premier changement
+    // manuel de date, laissant le prix affiché en tarif unitaire par nuit.
+    if(h && (appState.searchCheckIn || appState.checkIn)) setTimeout(updateBk, 160);
   }
   if(pg==='annonce' && appState.annoncePage===1) setTimeout(initAnnMap, 200);
 }
