@@ -3384,7 +3384,10 @@ function annStep1(ad){
   <div class="ann-full a-field"><label>Adresse (numéro et rue) *</label>
     <input id="af-address" type="text" placeholder="Ex : 24 avenue des Lilas" value="${ad.address}" oninput="annSet('address',this.value)"></div>
   <div style="display:grid;grid-template-columns:2fr 1fr 2fr;gap:14px;margin-bottom:14px;">
-    <div class="a-field"><label>Ville *</label><input id="af-city" type="text" maxlength="30" placeholder="Paris" value="${ad.city}" oninput="annSet('city',this.value)" onblur="annNormalizeCity()"></div>
+    <div class="a-field"><label>Ville *</label><select id="af-city" oninput="annSet('city',this.value)">
+      <option value="" ${!ad.city?'selected':''} disabled>Sélectionnez une ville</option>
+      ${['Ariana','Béja','Ben Arous','Bizerte','Gabès','Gafsa','Jendouba','Kairouan','Kasserine','Kébili','Le Kef','Mahdia','Manouba','Médenine','Monastir','Nabeul','Sfax','Sidi Bouzid','Siliana','Sousse','Tataouine','Tozeur','Tunis','Zaghouan'].map(c=>`<option ${ad.city===c?'selected':''}>${c}</option>`).join('')}
+    </select></div>
     <div class="a-field"><label>Code postal</label><input id="af-zip" type="text" placeholder="75001" value="${ad.zip}" oninput="annSet(\'zip\',this.value)"></div>
     <div class="a-field"><label>Pays</label><select oninput="annSet(\'country\',this.value)">${opts}</select></div>
   </div>
@@ -9088,7 +9091,7 @@ function openBookingRequest(hId){
         <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Arrivée</label>
           <input type="date" id="req-checkin" min="${new Date().toISOString().split('T')[0]}" onchange="validateReqDates()" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
         <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Départ</label>
-          <input type="date" id="req-checkout" onchange="validateReqDates()" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
+          <input type="date" id="req-checkout" min="${new Date(Date.now()+86400000).toISOString().split('T')[0]}" onchange="validateReqDates()" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
       </div>
       <div style="margin-bottom:14px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Voyageurs</label>
         <select id="req-guests" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
@@ -11743,6 +11746,89 @@ async function submitNewPassword(){
     setTimeout(()=>{ closeModal(); modalMode='login'; renderModal(); openModal(); }, 2500);
   }
 }
+
+/* ===================== ASSISTANT IA (MyTunigo) ===================== */
+let _mtAssistantHistory = [];
+let _mtAssistantOpen = false;
+
+function initAssistantWidget(){
+  if(document.getElementById('mt-assistant-btn')) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <button id="mt-assistant-btn" onclick="toggleAssistant()" style="position:fixed;bottom:20px;right:20px;width:58px;height:58px;border-radius:50%;background:var(--blue);color:#fff;border:none;box-shadow:0 4px 16px rgba(0,53,128,.35);font-size:26px;cursor:pointer;z-index:1400;display:flex;align-items:center;justify-content:center;">💬</button>
+    <div id="mt-assistant-panel" style="display:none;position:fixed;bottom:88px;right:20px;width:340px;max-width:calc(100vw - 32px);height:460px;max-height:calc(100vh - 120px);background:#fff;border-radius:var(--r-xl);box-shadow:0 12px 40px rgba(0,0,0,.25);z-index:1400;flex-direction:column;overflow:hidden;border:1px solid var(--gray-200);">
+      <div style="background:var(--blue);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div><div style="font-weight:800;font-size:14px;">🤖 Assistant MyTunigo</div><div style="font-size:11px;opacity:.85;">Là pour vous aider</div></div>
+        <span onclick="toggleAssistant()" style="cursor:pointer;font-size:18px;opacity:.85;">✕</span>
+      </div>
+      <div id="mt-assistant-msgs" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--gray-50);"></div>
+      <div style="padding:10px;border-top:1px solid var(--gray-200);display:flex;gap:8px;flex-shrink:0;background:#fff;">
+        <input id="mt-assistant-input" type="text" placeholder="Posez votre question…" onkeydown="if(event.key==='Enter')sendAssistantMessage()" style="flex:1;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:20px;font-size:13px;">
+        <button onclick="sendAssistantMessage()" style="background:var(--blue);color:#fff;border:none;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:15px;flex-shrink:0;">➤</button>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+}
+
+function toggleAssistant(){
+  _mtAssistantOpen = !_mtAssistantOpen;
+  const panel = document.getElementById('mt-assistant-panel');
+  if(!panel) return;
+  panel.style.display = _mtAssistantOpen ? 'flex' : 'none';
+  if(_mtAssistantOpen && _mtAssistantHistory.length===0){
+    appendAssistantBubble('assistant', "Bonjour 👋 Je suis l'assistant MyTunigo. Je peux vous aider à trouver un logement ou une excursion, comprendre comment réserver, ou vous guider si vous êtes hôte/prestataire. Que puis-je faire pour vous ?");
+  }
+}
+
+function appendAssistantBubble(role, text){
+  const box = document.getElementById('mt-assistant-msgs');
+  if(!box) return;
+  const bubble = document.createElement('div');
+  const isUser = role==='user';
+  bubble.style.cssText = `max-width:85%;padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.5;white-space:pre-wrap;align-self:${isUser?'flex-end':'flex-start'};background:${isUser?'var(--blue)':'#fff'};color:${isUser?'#fff':'var(--gray-800)'};border:${isUser?'none':'1px solid var(--gray-200)'};`;
+  bubble.textContent = text;
+  box.appendChild(bubble);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendAssistantMessage(){
+  const input = document.getElementById('mt-assistant-input');
+  const text = input?.value?.trim();
+  if(!text) return;
+  input.value = '';
+  appendAssistantBubble('user', text);
+  _mtAssistantHistory.push({role:'user', text});
+
+  const box = document.getElementById('mt-assistant-msgs');
+  const typingEl = document.createElement('div');
+  typingEl.id = 'mt-typing';
+  typingEl.style.cssText = 'align-self:flex-start;font-size:13px;color:var(--gray-400);padding:4px 8px;';
+  typingEl.textContent = '⏳ L\'assistant réfléchit…';
+  box.appendChild(typingEl);
+  box.scrollTop = box.scrollHeight;
+
+  try{
+    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/mytunigo-assistant', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({ message: text, history: _mtAssistantHistory })
+    });
+    const data = await res.json();
+    document.getElementById('mt-typing')?.remove();
+    const reply = data?.reply || "Désolé, une erreur est survenue. Réessayez dans un instant.";
+    appendAssistantBubble('assistant', reply);
+    _mtAssistantHistory.push({role:'assistant', text:reply});
+  } catch(e){
+    document.getElementById('mt-typing')?.remove();
+    appendAssistantBubble('assistant', "Connexion impossible pour le moment. Réessayez dans un instant.");
+    console.error('mytunigo-assistant error:', e.message);
+  }
+}
+
+initAssistantWidget();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
