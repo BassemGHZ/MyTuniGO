@@ -11389,7 +11389,20 @@ async function loadPublishedAnnonces(){
         reviews: rs ? rs.count : 0,
         price: a.price_night || 0,
         emoji: a.emoji || '🏠',
-        features: a.amenities || [],
+        features: (a.amenities||[]).map(id=>{
+          // Les vraies annonces stockent des identifiants internes (wifi, pool…)
+          // alors que le filtre de recherche et les données de démonstration
+          // utilisent des libellés affichables (Wi-Fi gratuit, Piscine…).
+          // Sans cette traduction, aucune vraie annonce ne pouvait jamais
+          // correspondre au filtre équipements, quel que soit le nombre de
+          // cases cochées.
+          const labelMap = {
+            wifi:'Wi-Fi gratuit', pool:'Piscine', parking:'Parking', ac:'Climatisation',
+            kitchen:'Cuisine équipée', spa:'Spa', gym:'Salle de sport', pets:'Animaux acceptés',
+            breakfast:'Petit-déjeuner', terrace:'Terrasse', sea:'Vue mer', transfer:'Navette aéroport'
+          };
+          return labelMap[id] || id;
+        }),
         desc: a.description || '',
         address: a.address || '',
         checkin: a.checkin || '15:00',
