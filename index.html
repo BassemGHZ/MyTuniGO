@@ -11758,7 +11758,7 @@ function initAssistantWidget(){
     <button id="mt-assistant-btn" onclick="toggleAssistant()" style="position:fixed;bottom:20px;right:20px;width:58px;height:58px;border-radius:50%;background:var(--blue);color:#fff;border:none;box-shadow:0 4px 16px rgba(0,53,128,.35);font-size:26px;cursor:pointer;z-index:1400;display:flex;align-items:center;justify-content:center;">💬</button>
     <div id="mt-assistant-panel" style="display:none;position:fixed;bottom:88px;right:20px;width:340px;max-width:calc(100vw - 32px);height:460px;max-height:calc(100vh - 120px);background:#fff;border-radius:var(--r-xl);box-shadow:0 12px 40px rgba(0,0,0,.25);z-index:1400;flex-direction:column;overflow:hidden;border:1px solid var(--gray-200);">
       <div style="background:var(--blue);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-        <div><div style="font-weight:800;font-size:14px;">🤖 Assistant MyTunigo</div><div style="font-size:11px;opacity:.85;">Là pour vous aider</div></div>
+        <div><div style="font-weight:800;font-size:14px;">🏛️ عليسة (Aliya)</div><div style="font-size:11px;opacity:.85;">Votre assistante MyTunigo</div></div>
         <span onclick="toggleAssistant()" style="cursor:pointer;font-size:18px;opacity:.85;">✕</span>
       </div>
       <div id="mt-assistant-msgs" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--gray-50);"></div>
@@ -11776,7 +11776,7 @@ function toggleAssistant(){
   if(!panel) return;
   panel.style.display = _mtAssistantOpen ? 'flex' : 'none';
   if(_mtAssistantOpen && _mtAssistantHistory.length===0){
-    appendAssistantBubble('assistant', "Bonjour 👋 Je suis l'assistant MyTunigo. Je peux vous aider à trouver un logement ou une excursion, comprendre comment réserver, ou vous guider si vous êtes hôte/prestataire. Que puis-je faire pour vous ?");
+    appendAssistantBubble('assistant', "Bonjour 👋 Je suis Aliya (عليسة), l'assistante de MyTunigo. Je peux vous aider à trouver un logement ou une excursion, comprendre comment réserver, ou vous guider si vous êtes hôte/prestataire. Que puis-je faire pour vous ?");
   }
 }
 
