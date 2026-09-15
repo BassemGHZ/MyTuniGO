@@ -698,6 +698,7 @@ const AMENITIES_ANN = [
   {id:'gym',icon:'💪',name:'Salle de sport'},
   {id:'breakfast',icon:'☕',name:'Petit-déjeuner'},
   {id:'transfer',icon:'🚗',name:'Navette aéroport'},
+  {id:'restauration',icon:'🍽️',name:'Restauration'},
   {id:'pmr',icon:'♿',name:'Accès PMR'},
   {id:'nonsmoking',icon:'🚭',name:'Non-fumeur'}
 ];
@@ -2608,7 +2609,7 @@ function renderTypesFilterHTML(){
 }
 
 function renderAmenitiesFilterHTML(){
-  const allAmen = ['Wi-Fi gratuit','Parking','Climatisation','Cuisine équipée','Terrasse','Vue mer','Piscine','Spa','Animaux acceptés','Salle de sport','Petit-déjeuner','Navette aéroport','Accès PMR','Non-fumeur'];
+  const allAmen = ['Wi-Fi gratuit','Parking','Climatisation','Cuisine équipée','Terrasse','Vue mer','Piscine','Spa','Animaux acceptés','Salle de sport','Petit-déjeuner','Restauration','Navette aéroport','Accès PMR','Non-fumeur'];
   const visibleCount = appState.filterExpanded?.amenities ? allAmen.length : 3;
   return allAmen.slice(0, visibleCount).map(a=>'<div class="f-opt">'
     +'<input type="checkbox" '+(appState.filters.amenities.includes(a)?'checked':'')+' onchange="toggleAmenF(\''+a+'\',this.checked)">'
@@ -2760,8 +2761,6 @@ function buildDetail(){
           <div class="det-sec-title">🛎️ Équipements</div>
           <div class="amen-grid-det">
             ${h.features.map(f=>`<div class="amen-item-det"><span style="font-size:18px;">${amenIcon(f)}</span> ${amenLabel(f)}</div>`).join('')}
-            <div class="amen-item-det"><span style="font-size:18px;">♿</span> Accès PMR</div>
-            <div class="amen-item-det"><span style="font-size:18px;">🚭</span> Non-fumeur</div>
           </div>
         </div>
         ${buildHostCardHTML(h.id)}
@@ -2854,13 +2853,13 @@ function renderStars(rating){
 }
 
 function amenLabel(f){
-  const annAmen = AMENITIES_ANN.find(a=>a.id===f);
+  const annAmen = AMENITIES_ANN.find(a=>a.name===f);
   if(annAmen) return annAmen.name;
   return f;
 }
 
 function amenIcon(f){
-  const annAmen = AMENITIES_ANN.find(a=>a.id===f);
+  const annAmen = AMENITIES_ANN.find(a=>a.name===f);
   if(annAmen) return annAmen.icon;
   const m={'Wi-Fi gratuit':'📶','Piscine':'🏊','Spa':'💆','Restaurant':'🍽️','Parking':'🅿️','Cuisine équipée':'🍳','AC':'❄️','Terrasse':'🌿','Bar':'🍸','Petit-déjeuner inclus':'☕','Vue mer':'🌊','Onsen':'♨️','Salle de gym':'💪','Bar panoramique':'🌃','Concierge 24h':'🛎️','Bain japonais':'🛁','Jardin zen':'🎋','Yukata inclus':'👘','Dîner traditionnel':'🥢','Petit-déjeuner':'☕','Transfer aéroport':'🚗','Piscine privée':'🏊','Salle de sport':'💪'};
   return m[f]||'✓';
@@ -11415,6 +11414,7 @@ async function loadPublishedAnnonces(){
             wifi:'Wi-Fi gratuit', pool:'Piscine', parking:'Parking', ac:'Climatisation',
             kitchen:'Cuisine équipée', spa:'Spa', gym:'Salle de sport', pets:'Animaux acceptés',
             breakfast:'Petit-déjeuner', terrace:'Terrasse', sea:'Vue mer', transfer:'Navette aéroport',
+            restauration:'Restauration',
             pmr:'Accès PMR', nonsmoking:'Non-fumeur'
           };
           return labelMap[id] || id;
