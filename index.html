@@ -832,7 +832,7 @@ let appState = {
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
   annoncePage:0,
-  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'France',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
+  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
   annoncePublished:false,
   favorites:[],
   reservations:[
@@ -1690,7 +1690,7 @@ function excNormalizeCity(){
 }
 
 function getPopularDestinations(){
-  const real = hotels.filter(h => h.annonceId && h.city && h.city.trim());
+  const real = hotels.filter(h => h.annonceId && h.city && h.city.trim() && h.country==='Tunisie');
   const byCity = {};
   real.forEach(h=>{
     // Normalisation pour le regroupement : "CHEBBA", "Chebba", "chebba" doivent
@@ -1718,7 +1718,7 @@ function getPopularDestinations(){
 // À enrichir plus tard avec de vrais signaux (vues, taux de conversion,
 // nombre de réservations) une fois les tables d'analytics en place.
 function getFeaturedHotels(){
-  const real = hotels.filter(h => h.annonceId && h.photos && h.photos.length > 0);
+  const real = hotels.filter(h => h.annonceId && h.photos && h.photos.length > 0 && h.country==='Tunisie');
   real.sort((a,b) => {
     const photoDiff = (b.photos.length||0) - (a.photos.length||0);
     if(photoDiff !== 0) return photoDiff;
@@ -2112,6 +2112,9 @@ function haversineKm(lat1, lng1, lat2, lng2){
 
 function getFilteredBase(ignoreCity){
   let list = hotels.filter(h=>{
+    // Version 1 du site : uniquement la Tunisie (les autres pays des données
+    // de démonstration restent en mémoire mais ne s'affichent nulle part).
+    if(h.country!=='Tunisie') return false;
     if(!ignoreCity && appState.searchDest && !h.city.toLowerCase().includes(appState.searchDest.toLowerCase()) && !h.country.toLowerCase().includes(appState.searchDest.toLowerCase())) return false;
     
     if(h.price < (appState.filters.minPrice||0)) return false;
@@ -3372,10 +3375,8 @@ function annStep0(ad){return `<div class="ann-card">
 </div>`;}
 
 function annStep1(ad){
-  const countries = ['Tunisie','--- Europe ---','France','Belgique','Suisse','Espagne','Italie','Portugal','Allemagne','Royaume-Uni','Pays-Bas','--- Afrique ---','Algérie','Maroc','Sénégal',"Côte d'Ivoire",'Cameroun','Mali','Burkina Faso','Niger','Congo (RDC)','Kenya','Ghana','Nigeria','Madagascar','Tanzanie','--- Autre ---','Autre'];
-  const opts = countries.map(c=>c.startsWith('---')
-    ? '<option disabled style="color:#aaa;font-style:italic">'+c+'</option>'
-    : '<option '+(ad.country===c?'selected':'')+'>'+c+'</option>').join('');
+  const countries = ['Tunisie'];
+  const opts = countries.map(c=>'<option '+(ad.country===c?'selected':'')+'>'+c+'</option>').join('');
 
   return `<div class="ann-card">
   <div class="ann-sec">Adresse de l'hébergement</div>
@@ -3883,7 +3884,7 @@ function buildAnnonceSuccess(){
         <div class="suc-ref">${ref}</div>
         <p style="font-size:13px;color:var(--gray-500);margin-top:10px;">Conservez cette référence pour suivre votre annonce.</p>
         <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;flex-wrap:wrap;">
-          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'France',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
+          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
           <button onclick="navigate('home')" style="background:var(--gray-100);color:var(--gray-800);padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">🏠 Accueil</button>
         </div>
       </div>
