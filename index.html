@@ -685,7 +685,22 @@ const reviewsData = [
 ];
 
 const TYPES_ANN = [{id:'hotel',icon:'🏨',name:'Hôtel'},{id:'apt',icon:'🏢',name:'Appartement'},{id:'house',icon:'🏡',name:'Maison'},{id:'studio',icon:'🛋️',name:'Studio'},{id:'chalet',icon:'🏔️',name:'Chalet'}];
-const AMENITIES_ANN = [{id:'wifi',icon:'📶',name:'Wi-Fi'},{id:'pool',icon:'🏊',name:'Piscine'},{id:'parking',icon:'🅿️',name:'Parking'},{id:'ac',icon:'❄️',name:'Climatisation'},{id:'kitchen',icon:'🍳',name:'Cuisine équipée'},{id:'spa',icon:'💆',name:'Spa / Jacuzzi'},{id:'gym',icon:'💪',name:'Salle de sport'},{id:'pets',icon:'🐾',name:'Animaux acceptés'},{id:'breakfast',icon:'☕',name:'Petit-déjeuner'},{id:'terrace',icon:'🌿',name:'Terrasse'},{id:'sea',icon:'🌊',name:'Vue mer'},{id:'transfer',icon:'🚗',name:'Navette aéroport'}];
+const AMENITIES_ANN = [
+  {id:'wifi',icon:'📶',name:'Wi-Fi gratuit'},
+  {id:'parking',icon:'🅿️',name:'Parking'},
+  {id:'ac',icon:'❄️',name:'Climatisation'},
+  {id:'kitchen',icon:'🍳',name:'Cuisine équipée'},
+  {id:'terrace',icon:'🌿',name:'Terrasse'},
+  {id:'sea',icon:'🌊',name:'Vue mer'},
+  {id:'pool',icon:'🏊',name:'Piscine'},
+  {id:'spa',icon:'💆',name:'Spa'},
+  {id:'pets',icon:'🐾',name:'Animaux acceptés'},
+  {id:'gym',icon:'💪',name:'Salle de sport'},
+  {id:'breakfast',icon:'☕',name:'Petit-déjeuner'},
+  {id:'transfer',icon:'🚗',name:'Navette aéroport'},
+  {id:'pmr',icon:'♿',name:'Accès PMR'},
+  {id:'nonsmoking',icon:'🚭',name:'Non-fumeur'}
+];
 
 
 /* ===================== AIRBNB MODE — DATA ===================== */
@@ -2593,7 +2608,7 @@ function renderTypesFilterHTML(){
 }
 
 function renderAmenitiesFilterHTML(){
-  const allAmen = ['Wi-Fi gratuit','Piscine','Parking','Restaurant','Spa','Climatisation','Salle de sport','Animaux acceptés','Cuisine équipée','Vue mer'];
+  const allAmen = ['Wi-Fi gratuit','Parking','Climatisation','Cuisine équipée','Terrasse','Vue mer','Piscine','Spa','Animaux acceptés','Salle de sport','Petit-déjeuner','Navette aéroport','Accès PMR','Non-fumeur'];
   const visibleCount = appState.filterExpanded?.amenities ? allAmen.length : 3;
   return allAmen.slice(0, visibleCount).map(a=>'<div class="f-opt">'
     +'<input type="checkbox" '+(appState.filters.amenities.includes(a)?'checked':'')+' onchange="toggleAmenF(\''+a+'\',this.checked)">'
@@ -11399,7 +11414,8 @@ async function loadPublishedAnnonces(){
           const labelMap = {
             wifi:'Wi-Fi gratuit', pool:'Piscine', parking:'Parking', ac:'Climatisation',
             kitchen:'Cuisine équipée', spa:'Spa', gym:'Salle de sport', pets:'Animaux acceptés',
-            breakfast:'Petit-déjeuner', terrace:'Terrasse', sea:'Vue mer', transfer:'Navette aéroport'
+            breakfast:'Petit-déjeuner', terrace:'Terrasse', sea:'Vue mer', transfer:'Navette aéroport',
+            pmr:'Accès PMR', nonsmoking:'Non-fumeur'
           };
           return labelMap[id] || id;
         }),
