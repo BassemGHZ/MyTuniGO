@@ -2510,7 +2510,7 @@ function resultCardHTML(h){
           <button id="fav-btn-${h.id}" onclick="event.stopPropagation();toggleFavorite(${h.id})" style="background:none;border:none;font-size:22px;cursor:pointer;flex-shrink:0;line-height:1;padding:0;transition:transform .15s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${getFavIcon(h.id)}</button>
         </div>
         <div class="rc-type">${h.type} ${'★'.repeat(h.stars)}</div>
-        <div class="rc-loc">📍 ${h.address}${h._distanceKm!=null?` <span style="color:#e6a800;font-weight:700;">· à ${Math.round(h._distanceKm)} km de votre recherche</span>`:''}</div>
+        <div class="rc-loc">📍 ${h.address||(h.city+', '+h.country)}${h._distanceKm!=null?` <span style="color:#e6a800;font-weight:700;">· à ${Math.round(h._distanceKm)} km de votre recherche</span>`:''}</div>
         <div class="rc-tags">${h.features.slice(0,4).map(f=>`<span class="rc-tag">${amenIcon(f)} ${amenLabel(f)}</span>`).join('')}</div>
         <div class="rc-desc">${h.desc.substring(0,120)}…</div>
       </div>
@@ -2706,7 +2706,7 @@ function buildDetail(){
       <div class="r-badge">${h.rating}★</div>
       <strong>${h.ratingLabel}</strong>
       <span style="color:var(--gray-500)">· ${h.reviews.toLocaleString()} avis</span>
-      <span class="det-loc">📍 ${h.address}</span>
+      <span class="det-loc">📍 ${h.address||(h.city+', '+h.country)}</span>
     </div>
     <div class="gallery">
       ${galleryHtml(h)}
