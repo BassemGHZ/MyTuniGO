@@ -984,6 +984,9 @@ function render() {
     // manuel de date, laissant le prix affiché en tarif unitaire par nuit.
     if(h && (appState.searchCheckIn || appState.checkIn)) setTimeout(updateBk, 160);
   }
+  if(pg==='excursion-detail' && appState.excBookingDate){
+    setTimeout(()=>updateExcSpotsLeft(appState.selectedExcursionId, appState.excBookingDate), 160);
+  }
   if(pg==='annonce' && appState.annoncePage===1) setTimeout(initAnnMap, 200);
 }
 
@@ -5660,6 +5663,7 @@ function buildExcursionDetail(){
               <div id="exc-date-display" style="text-align:center;font-size:13px;font-weight:700;color:${appState.excBookingDate?'var(--blue)':'var(--gray-400)'};">
                 ${appState.excBookingDate?'📅 '+appState.excBookingDate:'⚠️ Sélectionnez une date pour continuer'}
               </div>
+              <div id="exc-spots-left" style="text-align:center;margin-top:4px;"></div>
               <input type="hidden" id="exc-date" value="${appState.excBookingDate||''}">
             `:`
               <input type="date" id="exc-date" min="${new Date().toISOString().split('T')[0]}"
@@ -5773,11 +5777,56 @@ function excSelectDate(ds){
   if(inp)inp.value=ds;
   const disp=document.getElementById('exc-date-display');
   if(disp){disp.textContent='📅 '+ds;disp.style.color='var(--blue)';}
+  updateExcSpotsLeft(appState.selectedExcursionId, ds);
   // Re-render the calendar portion only
   if(e&&e.availability&&e.availability.length>0){
     const calWrap=document.querySelector('#exc-book-cal');
     if(calWrap)calWrap.innerHTML=buildExcBookingCalendar(e);
     else navigate('excursion-detail',{selectedExcursionId:appState.selectedExcursionId});
+  }
+}
+
+async function updateExcSpotsLeft(excId, ds){
+  const el = document.getElementById('exc-spots-left');
+  if(!el || !excId || !ds) return;
+  const allExc = [...excursions, ...(appState.myExcursions||[])];
+  const e = allExc.find(x=>x.id===excId);
+  if(!e || !e.excursionId || !e.groupSize){ el.innerHTML=''; return; }
+
+  el.innerHTML = '<span style="font-size:12px;color:var(--gray-400);">⏳ Vérification des places…</span>';
+  try{
+    const { data, error } = await _sb.from('excursion_bookings')
+      .select('participants')
+      .eq('excursion_id', e.excursionId)
+      .eq('date', ds)
+      .in('status', ['en attente','confirmée']);
+    if(error){ el.innerHTML=''; return; }
+
+    const used = (data||[]).reduce((sum,b)=>sum+(b.participants||0),0);
+    const left = Math.max(0, e.groupSize - used);
+
+    if(left<=0){
+      el.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--red);">⛔ Complet pour cette date</span>';
+    } else if(left<=3){
+      el.innerHTML = '<span style="font-size:12px;font-weight:700;color:#e6a800;">⚠️ Plus que '+left+' place'+(left>1?'s':'')+' disponible'+(left>1?'s':'')+'</span>';
+    } else {
+      el.innerHTML = '<span style="font-size:12px;color:var(--green);">✅ '+left+' places disponibles</span>';
+    }
+
+    // Limite le sélecteur de participants aux places réellement restantes
+    // pour cette date, en plus du contrôle déjà fait côté base au moment
+    // de la réservation (anti-surbooking).
+    const paxEl = document.getElementById('exc-pax');
+    if(paxEl){
+      const current = parseInt(paxEl.value)||1;
+      const maxSel = Math.max(1, Math.min(left, e.groupSize));
+      paxEl.innerHTML = Array.from({length:maxSel},(_, i)=>'<option value="'+(i+1)+'">'+(i+1)+' personne'+(i>0?'s':'')+'</option>').join('');
+      paxEl.value = Math.min(current, maxSel);
+      updateExcTotal(e.price);
+    }
+  } catch(err){
+    console.warn('updateExcSpotsLeft:', err.message);
+    el.innerHTML='';
   }
 }
 
