@@ -2117,8 +2117,15 @@ function getFilteredBase(ignoreCity){
     if(h.country!=='Tunisie') return false;
     if(!ignoreCity && appState.searchDest && !h.city.toLowerCase().includes(appState.searchDest.toLowerCase()) && !h.country.toLowerCase().includes(appState.searchDest.toLowerCase())) return false;
     
-    if(h.price < (appState.filters.minPrice||0)) return false;
-    if((appState.filters.maxPrice||2000) < 2000 && h.price > (appState.filters.maxPrice||2000)) return false;
+    // Le filtre budget compare le prix total du séjour si des dates de
+    // début/fin sont sélectionnées, sinon le prix unitaire par nuit.
+    let priceForFilter = h.price;
+    if(appState.searchCheckIn && appState.searchCheckOut){
+      const nights = Math.max(0, Math.round((new Date(appState.searchCheckOut)-new Date(appState.searchCheckIn))/86400000));
+      if(nights>0) priceForFilter = h.price * nights;
+    }
+    if(priceForFilter < (appState.filters.minPrice||0)) return false;
+    if((appState.filters.maxPrice||2000) < 2000 && priceForFilter > (appState.filters.maxPrice||2000)) return false;
     if(h.rating<appState.filters.minRating) return false;
     if(appState.filters.types.length>0){
       const tMatch = appState.filters.types.some(t => {
@@ -2399,7 +2406,7 @@ function buildResults(){
       </div>
       <!-- 1. Budget -->
       <div class="f-section">
-        <div class="f-title">💰 BUDGET / NUIT</div>
+        <div class="f-title">💰 BUDGET ${(appState.searchCheckIn && appState.searchCheckOut)?'/ SÉJOUR':'/ NUIT'}</div>
 
         <!-- Champs saisissables -->
         <div style="display:flex;align-items:center;gap:8px;margin:12px 0 16px;">
