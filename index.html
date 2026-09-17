@@ -5901,7 +5901,7 @@ function buildExcursionForm(){
   // Init form data if empty
   if(!appState.excursionFormData || !appState.excursionFormData.title){
     appState.excursionFormData = {
-      title:'', category:'', city:'', country:'France', description:'',
+      title:'', category:'', city:'', country:'Tunisie', description:'',
       duration:'', durationUnit:'h', groupSize:8, minAge:0, difficulty:'facile',
       language:['FR'], includes:[], highlights:['','','',''],
       price:0, priceType:'personne', freeCancellation:true, instantBook:false,
@@ -5980,11 +5980,13 @@ function excFormStep0(fd){
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Ville *</label>
-        <input id="ef-city" type="text" maxlength="30" placeholder="Ex : Marrakech" value="${fd.city}" oninput="excSet('city',this.value)" onblur="excNormalizeCity()"
-          style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
+        <select id="ef-city" oninput="excSet('city',this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+          <option value="" ${!fd.city?'selected':''} disabled>Sélectionnez une ville</option>
+          ${['Ariana','Béja','Ben Arous','Bizerte','Gabès','Gafsa','Jendouba','Kairouan','Kasserine','Kébili','Le Kef','Mahdia','Manouba','Médenine','Monastir','Nabeul','Sfax','Sidi Bouzid','Siliana','Sousse','Tataouine','Tozeur','Tunis','Zaghouan'].map(c=>`<option ${fd.city===c?'selected':''}>${c}</option>`).join('')}
+        </select></div>
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Pays *</label>
         <select oninput="excSet('country',this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-          ${['Tunisie','--- Europe ---','France','Belgique','Suisse','Espagne','Italie','Portugal','Allemagne','Royaume-Uni','Pays-Bas','--- Afrique ---','Algérie','Angola','Bénin','Botswana','Burkina Faso','Burundi','Cabo Verde','Cameroun','Centrafrique','Comores','Congo (Brazzaville)','Congo (RDC)','Côte d\'Ivoire','Djibouti','Égypte','Érythrée','Eswatini','Éthiopie','Gabon','Gambie','Ghana','Guinée','Guinée-Bissau','Guinée équatoriale','Kenya','Lesotho','Liberia','Libye','Madagascar','Malawi','Mali','Maroc','Maurice','Mauritanie','Mozambique','Namibie','Niger','Nigeria','Ouganda','Rwanda','São Tomé-et-Príncipe','Sénégal','Sierra Leone','Somalie','Soudan','Soudan du Sud','Tanzanie','Tchad','Togo','Zambie','Zimbabwe','--- Asie & Océanie ---','Japon','Chine','Inde','Thaïlande','Indonésie','Vietnam','Corée du Sud','Émirats Arabes Unis','Turquie','Australie','--- Amériques ---','États-Unis','Canada','Mexique','Brésil','Argentine','Colombie','Pérou','--- Autre ---','Autre'].map(c=>c.startsWith('---')?`<option disabled style='color:#aaa;font-style:italic'>${c}</option>`:`<option ${fd.country===c?'selected':''}>${c}</option>`).join('')}
+          ${['Tunisie'].map(c=>`<option ${fd.country===c?'selected':''}>${c}</option>`).join('')}
         </select></div>
     </div>
 
@@ -8414,8 +8416,19 @@ function buildExcursionEditFormInner(){
         </select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        ${field('Ville','city')}
-        ${field('Pays','country')}
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Ville</label>
+          <select onchange="edSet('city', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            <option value="" ${!ed.city?'selected':''} disabled>Sélectionnez une ville</option>
+            ${['Ariana','Béja','Ben Arous','Bizerte','Gabès','Gafsa','Jendouba','Kairouan','Kasserine','Kébili','Le Kef','Mahdia','Manouba','Médenine','Monastir','Nabeul','Sfax','Sidi Bouzid','Siliana','Sousse','Tataouine','Tozeur','Tunis','Zaghouan'].map(c=>`<option ${ed.city===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Pays</label>
+          <select onchange="edSet('country', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            <option selected>Tunisie</option>
+          </select>
+        </div>
         ${field('Durée (ex: 3h, 1 jour)','duration')}
         ${field('Âge minimum','minAge','number')}
         ${field('Prix (€)','price','number')}
