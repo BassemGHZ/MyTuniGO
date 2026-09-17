@@ -5677,15 +5677,15 @@ function buildExcursionDetail(){
             <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>${e.price}€ × 1 personne</span><span>${e.price}€</span></div>
             <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${e.price}€</span></div>
           </div>
-          <button onclick="bookExcursion('${e.id}')"
+          <button id="exc-book-btn" onclick="bookExcursion('${e.id}')"
             style="width:100%;background:var(--blue);color:#fff;padding:14px;border-radius:var(--r-md);font-size:16px;font-weight:800;border:none;cursor:pointer;margin-top:14px;transition:background .2s;"
             onmouseover="this.style.background='#002570'" onmouseout="this.style.background='var(--blue)'">
-            ✈️ Réserver cette excursion
+            ✅ Réserver — 💵 Paiement sur place
           </button>
           <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;">
             ${e.freeCancellation?'<div style="font-size:13px;color:var(--green);font-weight:600;">✅ Annulation gratuite</div>':''}
             ${e.instantBook?'<div style="font-size:13px;color:var(--blue-l);font-weight:600;">⚡ Confirmation instantanée</div>':''}
-            <div style="font-size:13px;color:var(--green);font-weight:600;">🔒 Paiement sécurisé</div>
+            <div style="font-size:13px;color:var(--green);font-weight:600;">💵 Aucun paiement en ligne — vous réglez sur place</div>
           </div>
         </div>
       </div>
@@ -5781,7 +5781,7 @@ function excSelectDate(ds){
   }
 }
 
-function bookExcursion(excId){
+async function bookExcursion(excId){
   if(!auth.currentUser){openModal('login');showToast('Connectez-vous pour réserver','var(--blue)');return;}
 
   // Get date — mandatory from calendar selection
@@ -5804,18 +5804,32 @@ function bookExcursion(excId){
   if(!exc){showToast('Excursion introuvable','var(--red)');return;}
 
   const total = (exc.price||0) * pax;
-  appState.pendingBooking = {
+  const ref = 'EXC-'+Math.random().toString(36).substr(2,8).toUpperCase();
+
+  // Même mode que les hébergements : paiement sur place uniquement, aucune
+  // page de choix carte/PayPal — réservation immédiate depuis la fiche.
+  if(!exc.excursionId){
+    // Excursion de démonstration (mock) — pas de vraie table correspondante
+    appState.excursionBookings.push({id:ref,excId,title:exc.title||'Excursion',date,pax,total,status:'confirmée',paymentMethod:'Paiement sur place',createdAt:new Date().toISOString().split('T')[0]});
+    showPaymentSuccess(ref, exc.title||'Excursion', total, 'Paiement sur place', false);
+    return;
+  }
+
+  const btn = document.getElementById('exc-book-btn');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Envoi…';}
+
+  const pb = {
     type:'excursion', excId,
-    excursionRealId: exc.excursionId || null,
+    excursionRealId: exc.excursionId,
     instantBookExc: !!exc.instantBook,
-    payOnSiteAllowed: !!exc.payOnSite,
     unitPrice: exc.price||0,
     title: exc.title||'Excursion',
     date, pax, total,
     emoji: exc.emoji||'✈️',
     city: exc.city||'', country: exc.country||''
   };
-  navigate('payment');
+  await finalizeRealExcursionBooking(pb, ref, 'Paiement sur place');
+  if(btn){btn.disabled=false;btn.innerHTML='✅ Réserver — 💵 Paiement sur place';}
 }
 
 async function excToggleStatus(id){
