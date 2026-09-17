@@ -5761,6 +5761,12 @@ function excBookCalNav(dir, excId){
 function excSelectDate(ds){
   const today=new Date().toISOString().split('T')[0];
   if(ds<today)return;
+  const allExc=[...excursions,...(appState.myExcursions||[])];
+  const e=allExc.find(x=>x.id===appState.selectedExcursionId);
+  // Seules les dates explicitement proposées par le prestataire sont
+  // sélectionnables — sans ce contrôle, n'importe quelle date du mois
+  // pouvait être choisie, même en dehors des disponibilités prévues.
+  if(e && e.availability && e.availability.length>0 && !e.availability.includes(ds)) return;
   appState.excBookingDate=ds;
   // Update hidden input and display
   const inp=document.getElementById('exc-date');
@@ -5768,8 +5774,6 @@ function excSelectDate(ds){
   const disp=document.getElementById('exc-date-display');
   if(disp){disp.textContent='📅 '+ds;disp.style.color='var(--blue)';}
   // Re-render the calendar portion only
-  const allExc=[...excursions,...(appState.myExcursions||[])];
-  const e=allExc.find(x=>x.id===appState.selectedExcursionId);
   if(e&&e.availability&&e.availability.length>0){
     const calWrap=document.querySelector('#exc-book-cal');
     if(calWrap)calWrap.innerHTML=buildExcBookingCalendar(e);
