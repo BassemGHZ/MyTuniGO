@@ -2182,14 +2182,25 @@ async function loadNearbyFallback(query){
   refreshResults();
 }
 
+// Nombre de résultats exacts en dessous duquel on complète avec des biens à
+// proximité (rayon 50 km) : couvre à la fois le cas "0 résultat" (repli complet)
+// et le cas "quelques résultats mais zone côtière/peu dense" comme Mahdia.
+const NEARBY_SUPPLEMENT_THRESHOLD = 6;
+
 function getFiltered(){
   const exact = getFilteredBase(false);
-  if(exact.length>0 || !appState.searchDest) return exact;
+  if(!appState.searchDest) return exact;
+  if(exact.length >= NEARBY_SUPPLEMENT_THRESHOLD) return exact;
   const nf = appState._nearbyFallback;
-  if(nf && nf.query===appState.searchDest) return nf.results||[];
+  if(nf && nf.query===appState.searchDest){
+    if(nf.loading) return exact;
+    const exactIds = new Set(exact.map(h=>h.id));
+    const nearby = (nf.results||[]).filter(h=>!exactIds.has(h.id)).map(h=>Object.assign({}, h, {_nearby:true}));
+    return exact.concat(nearby);
+  }
   // Déclenche le chargement du repli 50km (résultat asynchrone, redessine ensuite)
   loadNearbyFallback(appState.searchDest);
-  return [];
+  return exact;
 }
 
 let _resultsAvailKey = null; // 'checkin|checkout' déjà chargé, pour éviter de refetch inutilement
@@ -2490,12 +2501,20 @@ function buildResults(){
           <option value="rating" ${appState.sort==='rating'?'selected':''}>Les mieux notés</option>
         </select>
       </div>
-      ${(appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && !appState._nearbyFallback.loading && (appState._nearbyFallback.results||[]).length>0) ? `
-        <div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+      ${(()=>{
+        const nf = appState._nearbyFallback;
+        if(!nf || nf.query!==appState.searchDest || nf.loading) return '';
+        const nearbyCount = filtered.filter(h=>h._nearby).length;
+        if(nearbyCount===0) return '';
+        const exactCount = filtered.length - nearbyCount;
+        const msg = exactCount>0
+          ? `<strong>${exactCount} bien${exactCount>1?'s':''} correspondant${exactCount>1?'s':''} exactement à "${appState.searchDest}"</strong> — complété par ${nearbyCount} bien${nearbyCount>1?'s':''} 📍 à proximité (rayon 50 km) pour élargir votre choix.`
+          : `<strong>Aucun bien disponible exactement à "${appState.searchDest}"</strong> — voici ${nearbyCount} hébergement${nearbyCount>1?'s':''} 📍 à proximité, dans un rayon de 50 km autour de cette zone.`;
+        return `<div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
           <span style="font-size:22px;">📍</span>
-          <div style="font-size:14px;color:#4b5563;"><strong>Aucun bien disponible exactement à "${appState.searchDest}"</strong> — voici ${appState._nearbyFallback.results.length} hébergement${appState._nearbyFallback.results.length>1?'s':''} dans un rayon de 50 km autour de cette zone.</div>
-        </div>
-      ` : ''}
+          <div style="font-size:14px;color:#4b5563;">${msg}</div>
+        </div>`;
+      })()}
       ${(appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && appState._nearbyFallback.loading) ? `
         <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;font-size:14px;color:var(--gray-500);">⏳ Recherche de biens dans les environs de "${appState.searchDest}"…</div>
       ` : ''}
@@ -2531,6 +2550,7 @@ function resultCardHTML(h){
       ${photoOrEmoji(h)}
       ${hasDiscount?`<div style="position:absolute;top:12px;left:0;background:linear-gradient(90deg,#d40000,#ff4444);color:#fff;font-size:13px;font-weight:800;padding:6px 16px 6px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🔥 OFFRE -${h.discount}%</div>`:''}
       ${hasDatePromo?`<div style="position:absolute;top:12px;left:0;background:linear-gradient(90deg,#ea580c,#f59e0b);color:#fff;font-size:13px;font-weight:800;padding:6px 16px 6px 10px;border-radius:0 20px 20px 0;box-shadow:0 2px 8px rgba(0,0,0,.3);">🏷️ PROMO SUR DATES</div>`:''}
+      ${h._nearby?`<div style="position:absolute;top:12px;right:12px;background:#003580;color:#fff;font-size:12px;font-weight:800;padding:6px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.3);">📍 À proximité</div>`:''}
     </div>
     <div class="rc-body">
       <div class="rc-info">
