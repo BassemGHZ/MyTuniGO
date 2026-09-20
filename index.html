@@ -768,7 +768,7 @@ const hostsData = [
 ];
 
 // Demandes de réservation : gérées désormais en base via Supabase (table reservations, statut 'en attente')
-// Voir loadBookingRequests(), submitBookingRequest(), handleBookingRequest()
+// Voir loadBookingRequests(), payOnSite(), handleBookingRequest()
 
 // Messages / conversations : gérées désormais en base via Supabase (tables conversations + messages)
 // Voir loadMessagesList(), loadConversation(), sendMessage(), openMessageHost()
@@ -2882,7 +2882,6 @@ function buildDetail(){
           <hr class="bk-div">
           <div id="bk-calc">${calcBkHTML(h)}</div>
           <button class="btn-reserve" onclick="goConfirm(${h.id})" style="margin-bottom:8px;">⚡ Réserver maintenant</button>
-          <button onclick="openBookingRequest(${h.id})" style="width:100%;background:#fff;color:var(--blue);padding:12px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:2px solid var(--blue);cursor:pointer;transition:all .2s;" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='#fff'">📨 Envoyer une demande à l'hôte</button>
           <button onclick="openMessageHost(${h.id})" style="width:100%;background:#fff;color:var(--gray-700);padding:10px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--gray-300);cursor:pointer;margin-top:6px;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">💬 Contacter l'hôte</button>
           <div id="bk-avail-warn" style="display:none;background:#fff0f0;border:1px solid #ffcccc;border-radius:var(--r-md);padding:10px 14px;margin-top:8px;font-size:13px;color:var(--red);font-weight:600;align-items:center;gap:8px;">
             ⛔ Ces dates sont indisponibles selon le calendrier de l'hôte. Veuillez choisir d'autres dates.
@@ -9203,145 +9202,9 @@ function buildHostCardHTML(hId){
 }
 
 /* host card injected directly in buildDetail */
-
-/* ── Booking request form (simple modal) ── */
-function openBookingRequest(hId){
-  if(!auth.currentUser){openModal('login');return;}
-  const h = hotels.find(x=>x.id===hId);
-  const root = document.getElementById('modal-root');
-  root.innerHTML='';
-  const overlay = document.createElement('div');
-  overlay.className='modal-overlay';
-  overlay.onclick=e=>{if(e.target===overlay)root.innerHTML='';};
-  overlay.innerHTML=`<div class="modal" style="max-width:480px;">
-    <div class="modal-header">
-      <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
-      <h2>📨 Demande de réservation</h2>
-      <p>${h?.name||'Hébergement'}</p>
-    </div>
-    <div class="modal-body">
-      <div style="background:#f0f9ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--blue);line-height:1.6;">
-        ℹ️ Contrairement à la réservation instantanée, l'hôte doit <strong>accepter votre demande</strong> sous 24h. Aucun paiement avant acceptation.
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-        <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Arrivée</label>
-          <input type="date" id="req-checkin" min="${new Date().toISOString().split('T')[0]}" onchange="validateReqDates()" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-        <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Départ</label>
-          <input type="date" id="req-checkout" min="${new Date(Date.now()+86400000).toISOString().split('T')[0]}" onchange="validateReqDates()" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-      </div>
-      <div style="margin-bottom:14px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Voyageurs</label>
-        <select id="req-guests" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-          ${[1,2,3,4,5,6].map(n=>`<option value="${n}">${n} personne${n>1?'s':''}</option>`).join('')}
-        </select></div>
-      <div style="margin-bottom:18px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Message à l'hôte *</label>
-        <textarea id="req-message" placeholder="Présentez-vous et expliquez l\'objet de votre séjour…"
-          style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:90px;line-height:1.6;font-family:inherit;"></textarea>
-      </div>
-      <button onclick="submitBookingRequest(${hId})" style="width:100%;background:var(--blue);color:#fff;padding:13px;border-radius:var(--r-md);font-size:16px;font-weight:800;border:none;cursor:pointer;">📨 Envoyer la demande</button>
-    </div>
-  </div>`;
-  root.appendChild(overlay);
-}
-
-function validateReqDates(){
-  const ciEl = document.getElementById('req-checkin');
-  const coEl = document.getElementById('req-checkout');
-  if(!ciEl||!coEl) return;
-  const ci=ciEl.value, co=coEl.value;
-  if(ci && co && co<=ci){
-    const minCo=new Date(ci); minCo.setDate(minCo.getDate()+1);
-    coEl.value=minCo.toISOString().split('T')[0];
-    showToast('📅 Date de départ ajustée','var(--blue)');
-  }
-  if(ci) coEl.min=new Date(new Date(ci).getTime()+86400000).toISOString().split('T')[0];
-}
-
-async function submitBookingRequest(hId){
-  const checkIn = document.getElementById('req-checkin')?.value;
-  const checkOut = document.getElementById('req-checkout')?.value;
-  const guests = parseInt(document.getElementById('req-guests')?.value||1);
-  const message = document.getElementById('req-message')?.value?.trim();
-  if(!checkIn||!checkOut){showToast('⚠️ Choisissez vos dates','var(--red)');return;}
-  if(!message){showToast('⚠️ Écrivez un message à l\'hôte','var(--red)');return;}
-  if(!auth.currentUser){openModal('login');return;}
-
-  const h = hotels.find(x=>x.id===hId);
-  if(!h?.annonceId){
-    showToast("Cet hébergement n'est pas une annonce réelle.",'var(--red)');
-    return;
-  }
-  const nights = Math.max(1,Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
-  const total = h ? computeNightlyTotal(h, checkIn, checkOut, 1) : 0;
-  const u = auth.currentUser;
-  const guestName = u.firstName || 'Voyageur';
-  const ref = 'REQ-'+Math.random().toString(36).substr(2,6).toUpperCase();
-
-  const btn = document.querySelector('#modal-root .modal button[onclick^="submitBookingRequest"]');
-  if(btn){btn.disabled=true;btn.textContent='Vérification des dates…';}
-
-  const available = await checkAnnonceDatesAvailable(h.annonceId, checkIn, checkOut);
-  if(!available){
-    showToast('⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre. Choisissez d\'autres dates.','var(--red)');
-    if(btn){btn.disabled=false;btn.textContent='📨 Envoyer la demande';}
-    return;
-  }
-  if(btn){btn.textContent='Envoi…';}
-
-  const { error } = await _sb.from('reservations').insert([{
-    logement_id: h.annonceId,
-    guest_id: u.id,
-    check_in: checkIn,
-    check_out: checkOut,
-    nights,
-    rooms: 1,
-    guests_count: guests,
-    total,
-    status: 'en attente',
-    reference: ref,
-    notes: message
-  }]);
-
-  if(error){
-    console.error('submitBookingRequest error:', error.message);
-    const conflict = error.code === '23P01' || /exclu|overlap/i.test(error.message||'');
-    showToast(conflict ? '⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre.' : "La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
-    if(btn){btn.disabled=false;btn.textContent='📨 Envoyer la demande';}
-    return;
-  }
-
-  document.getElementById('modal-root').innerHTML='';
-  showToast('📨 Demande envoyée ! L\'hôte dispose de 24h pour répondre.','var(--blue)');
-
-  // Emails : confirmation immédiate au client + alerte à l'hôte
-  try{
-    const { data: ann } = await _sb.from('annonces').select('name,contact_email').eq('id', h.annonceId).maybeSingle();
-    const propertyName = ann?.name || h.name;
-    const payload = {
-      property_name: propertyName,
-      guest_name: guestName,
-      check_in: checkIn, check_out: checkOut,
-      guests_count: guests, total, message
-    };
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-    };
-    // 1. Confirmation au client
-    if(u.email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
-        method:'POST', headers, body: JSON.stringify({...payload, type:'request_received', recipient_email: u.email})
-      });
-    }
-    // 2. Alerte à l'hôte
-    if(ann?.contact_email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
-        method:'POST', headers, body: JSON.stringify({...payload, type:'host_alert', recipient_email: ann.contact_email})
-      });
-    }
-  } catch(efErr){
-    console.error('notify-booking error:', efErr.message);
-  }
-}
+/* Ancien flux "Envoyer une demande à l'hôte" retiré : redondant avec
+   "Réserver maintenant", qui crée déjà une réservation en attente de
+   validation hôte (payOnSite()). Voir notify-booking pour les emails. */
 
 /* ===================== DEALS FILTER ===================== */
 function setDealsFilter(type){
