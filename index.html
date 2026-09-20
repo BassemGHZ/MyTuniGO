@@ -606,6 +606,14 @@ function fmtMY(d){
   const pad = n => String(n).padStart(2,'0');
   return pad(dt.getMonth()+1)+'/'+dt.getFullYear();
 }
+// Seul le type "Hôtel" correspond à un établissement multi-chambres où l'on
+// peut réserver plusieurs unités identiques (et donc multiplier le prix par
+// le nombre de chambres). Les autres types (Maison, Appartement, Studio,
+// Chalet, maison d'hôte...) se louent en entier : pas de sélecteur ni de
+// multiplicateur de prix sur le nombre de "chambres".
+function isMultiRoomType(h){
+  return !!h && h.type==='Hôtel';
+}
 /* ===================== DATA ===================== */
 /* ===================== DEVICE DETECTION ===================== */
 // ── Device detection ─────────────────────────────────────────────────────────
@@ -2864,11 +2872,11 @@ function buildDetail(){
           <div id="bk-blocked-info" style="display:none;background:#fff8f0;border:1px solid #f0c080;border-radius:var(--r-md);padding:8px 12px;margin-bottom:10px;font-size:12px;color:#a06000;">
             🔒 <span id="bk-blocked-text"></span>
           </div>
-          <div class="bk-field"><label>🛏️ Chambres</label>
+          ${isMultiRoomType(h)?`<div class="bk-field"><label>🛏️ Chambres</label>
             <select id="bk-rooms" onchange="updateBk()">
               ${[1,2,3,4,5].map(n=>`<option value="${n}" ${appState.rooms==n?'selected':''}>${n} chambre${n>1?'s':''}</option>`).join('')}
             </select>
-          </div>
+          </div>`:''}
           <!-- Blocked dates mini-calendar -->
           <div id="bk-mini-cal" style="margin-bottom:12px;display:none;"></div>
           <hr class="bk-div">
@@ -2928,12 +2936,14 @@ function calcBkHTML(h){
   const ci = document.getElementById('bk-ci')?.value || appState.checkIn;
   const co = document.getElementById('bk-co')?.value || appState.checkOut;
   const n=calcNights();
-  const rooms=parseInt(document.getElementById('bk-rooms')?.value||appState.rooms||1);
+  const multiRoom = isMultiRoomType(h);
+  const rooms= multiRoom ? parseInt(document.getElementById('bk-rooms')?.value||appState.rooms||1) : 1;
   if(n<=0)return `<div style="font-size:13px;color:var(--gray-500);text-align:center;padding:8px 0;">Sélectionnez vos dates pour voir le total</div>`;
   const sub = computeNightlyTotal(h, ci, co, rooms);
   const avgUnit = Math.round(sub/(n*rooms));
   const taxes=Math.round(sub*.1), total=sub+taxes;
-  return `<div class="bk-row"><span>${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.</span><span>${sub}€</span></div>
+  const lineLabel = multiRoom ? `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.` : `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''}`;
+  return `<div class="bk-row"><span>${lineLabel}</span><span>${sub}€</span></div>
     <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
     <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${total}€</span></div>`;
 }
@@ -3103,7 +3113,7 @@ function buildConfirm(){
           <div class="sum-row"><span>Ville</span><span>📍 ${h.city}, ${h.country}</span></div>
           <div class="sum-row"><span>Arrivée</span><span>${appState.checkIn||'—'}</span></div>
           <div class="sum-row"><span>Départ</span><span>${appState.checkOut||'—'}</span></div>
-          <div class="sum-row"><span>Chambres</span><span>${appState.rooms||1}</span></div>
+          ${isMultiRoomType(h)?`<div class="sum-row"><span>Chambres</span><span>${appState.rooms||1}</span></div>`:''}
           ${nights>0?`<div class="sum-row"><span>Durée</span><span>${nights} nuit${nights>1?'s':''}</span></div>`:''}
           <div class="sum-row" style="font-weight:800;font-size:15px;border-top:1px solid var(--gray-300);margin-top:8px;padding-top:8px;">
             <span>Total estimé</span><span style="color:var(--blue)">${total}€</span>
@@ -4179,7 +4189,7 @@ function buildReservations(){
               </div>
               <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--gray-500);">
                 <span>🌙 ${r.nights} nuit${r.nights>1?'s':''}</span>
-                <span>🛏️ ${r.rooms} chambre${r.rooms>1?'s':''}</span>
+                ${isMultiRoomType(h)?`<span>🛏️ ${r.rooms} chambre${r.rooms>1?'s':''}</span>`:''}
                 <span>🔖 Réf: <code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.id}</code></span>
               </div>
             </div>
@@ -7309,7 +7319,7 @@ function buildPayment(){
       <div class="sum-row"><span>📍 Lieu</span><span>${h.city}, ${h.country}</span></div>
       <div class="sum-row"><span>📅 Arrivée</span><span>${pb.checkIn||'—'}</span></div>
       <div class="sum-row"><span>📅 Départ</span><span>${pb.checkOut||'—'}</span></div>
-      <div class="sum-row"><span>🛏️ Chambres</span><span>${pb.rooms} · ${pb.nights} nuit${pb.nights>1?'s':''}</span></div>
+      <div class="sum-row"><span>🌙 Durée</span><span>${isMultiRoomType(h)?pb.rooms+' ch. · ':''}${pb.nights} nuit${pb.nights>1?'s':''}</span></div>
       <div class="sum-row"><span>Sous-total</span><span>${sub}€</span></div>
       <div class="sum-row"><span>Taxes (10%)</span><span>${taxes}€</span></div>
       <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span style="color:var(--blue)">${pb.total}€</span></div>`;
