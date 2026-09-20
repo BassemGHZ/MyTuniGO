@@ -587,6 +587,25 @@
 <div id="modal-root"></div>
 
 <script>
+/* ===================== DATE FORMATTING (harmonisé JJ/MM/AAAA) ===================== */
+// Formate une date (Date, ISO string ou timestamp) au format JJ/MM/AAAA,
+// utilisé partout sur le site où une date complète est affichée à l'utilisateur.
+function fmtDMY(d){
+  if(!d) return '—';
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if(isNaN(dt.getTime())) return '—';
+  const pad = n => String(n).padStart(2,'0');
+  return pad(dt.getDate())+'/'+pad(dt.getMonth()+1)+'/'+dt.getFullYear();
+}
+// Formate une date au format MM/AAAA (ex: "Membre depuis 09/2026"), pour les
+// affichages qui n'ont jamais eu de jour précis.
+function fmtMY(d){
+  if(!d) return '—';
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if(isNaN(dt.getTime())) return '—';
+  const pad = n => String(n).padStart(2,'0');
+  return pad(dt.getMonth()+1)+'/'+dt.getFullYear();
+}
 /* ===================== DATA ===================== */
 /* ===================== DEVICE DETECTION ===================== */
 // ── Device detection ─────────────────────────────────────────────────────────
@@ -1852,7 +1871,7 @@ function updateHeroDatesDisplay(){
   const ciEl = document.getElementById('s-in'); if(ciEl) ciEl.value = appState.searchCheckIn||'';
   const coEl = document.getElementById('s-out'); if(coEl) coEl.value = appState.searchCheckOut||'';
   if(!el) return;
-  const f = ds => new Date(ds+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+  const f = ds => fmtDMY(ds+'T00:00:00');
   if(appState.searchCheckIn && appState.searchCheckOut){
     el.textContent = f(appState.searchCheckIn)+' → '+f(appState.searchCheckOut);
     el.style.color = 'var(--gray-900)';
@@ -1878,7 +1897,7 @@ function buildHome(){
           <label>📅 Dates</label>
           <div id="s-dates-display" onclick="toggleHeroCalendar()" style="cursor:pointer;font-size:14px;font-weight:500;color:${appState.searchCheckIn?'var(--gray-900)':'var(--gray-400)'};padding:2px 0;">
             ${appState.searchCheckIn && appState.searchCheckOut
-              ? new Date(appState.searchCheckIn+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' → '+new Date(appState.searchCheckOut+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
+              ? fmtDMY(appState.searchCheckIn+'T00:00:00')+' → '+fmtDMY(appState.searchCheckOut+'T00:00:00')
               : 'Ajouter des dates'}
           </div>
           <input type="hidden" id="s-in" value="${appState.searchCheckIn}">
@@ -4134,8 +4153,8 @@ function buildReservations(){
       <button onclick="navigate('home')" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Explorer les hébergements</button>
     </div>`:list.map(r=>{
       const h=hotels.find(x=>x.id===r.hotelId)||{name:r._propName||'Hébergement',emoji:r._propEmoji||'🏨',city:r._propCity||'—',country:r._propCountry||'—'};
-      const ci=r.checkIn?new Date(r.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
-      const co=r.checkOut?new Date(r.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+      const ci=r.checkIn?fmtDMY(r.checkIn):'—';
+      const co=r.checkOut?fmtDMY(r.checkOut):'—';
       return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
         <div style="display:flex;gap:0;flex-wrap:wrap;">
           <div style="width:180px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:56px;flex-shrink:0;min-height:130px;">
@@ -4284,7 +4303,7 @@ function buildExcursionReservations(){
       <p style="color:var(--gray-500);">Explorez nos excursions pour votre prochain séjour.</p>
       <button onclick="navigate('excursions')" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Explorer les excursions</button>
     </div>`:list.map(r=>{
-      const dt=r.date?new Date(r.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+      const dt=r.date?fmtDMY(r.date):'—';
       return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;">
         <div style="display:flex;gap:0;flex-wrap:wrap;">
           <div style="width:110px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0;min-height:110px;">✈️</div>
@@ -4819,7 +4838,7 @@ function buildMesAnnonces(){
           </div>
         </div>
       </div>
-      ${a.discount>0?`<div style="background:linear-gradient(90deg,#d40000,#ff4444);padding:10px 20px;font-size:13px;color:#fff;font-weight:700;border-top:none;display:flex;align-items:center;justify-content:space-between;"><span>🔥 Offre de dernière minute active — ${a.discount}% de réduction jusqu'au ${a.promoExpiry?new Date(a.promoExpiry).toLocaleDateString('fr-FR'):'—'}</span><button onclick="removePromo('${a.id}')" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;">Retirer</button></div>`:''}
+      ${a.discount>0?`<div style="background:linear-gradient(90deg,#d40000,#ff4444);padding:10px 20px;font-size:13px;color:#fff;font-weight:700;border-top:none;display:flex;align-items:center;justify-content:space-between;"><span>🔥 Offre de dernière minute active — ${a.discount}% de réduction jusqu'au ${a.promoExpiry?fmtDMY(a.promoExpiry):'—'}</span><button onclick="removePromo('${a.id}')" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;">Retirer</button></div>`:''}
       ${a.status==='en attente'?`<div style="background:#fff8e0;padding:10px 20px;font-size:13px;color:#856404;border-top:1px solid #ffe080;">⏳ Votre annonce est en cours de vérification par notre équipe. Délai estimé : 24h.</div>`:''}
       ${a.status==='suspendue'?`<div style="background:#fff0f0;padding:10px 20px;font-size:13px;color:var(--red);border-top:1px solid #ffcccc;">⛔ Cette annonce est suspendue. Republier pour la rendre visible aux voyageurs.</div>`:''}
     </div>`).join('')}
@@ -4917,7 +4936,7 @@ async function loadAnnonceDetail(container){
         </div>
         <div style="font-size:14px;color:var(--gray-500);margin-bottom:4px;">📍 ${a.address}, ${a.city}, ${a.country}</div>
         <div style="font-size:14px;color:var(--gray-600);">${a.typeLabel} · ${'★'.repeat(a.stars)} · <strong>${a.price_night}€/nuit</strong></div>
-        <div style="font-size:12px;color:var(--gray-400);margin-top:4px;">Publiée le ${new Date(a.createdAt).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:4px;">Publiée le ${fmtDMY(a.createdAt)}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         ${a.status==='publiée'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#fff8e0;color:#a07000;padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #ffe080;cursor:pointer;">⏸ Suspendre</button>`:''}
@@ -5032,8 +5051,8 @@ async function loadAnnonceDetail(container){
               const sBg={confirmée:'#e8f9f0','en attente':'#fff8e0',terminée:'#f1f3f5',annulée:'#fff0f0'};
               return `<tr style="border-bottom:1px solid var(--gray-100);">
                 <td style="padding:10px 14px;font-weight:600;">${r.guestName}</td>
-                <td style="padding:10px 14px;color:var(--gray-600);">${r.checkIn?new Date(r.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—'}</td>
-                <td style="padding:10px 14px;color:var(--gray-600);">${r.checkOut?new Date(r.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—'}</td>
+                <td style="padding:10px 14px;color:var(--gray-600);">${r.checkIn?fmtDMY(r.checkIn):'—'}</td>
+                <td style="padding:10px 14px;color:var(--gray-600);">${r.checkOut?fmtDMY(r.checkOut):'—'}</td>
                 <td style="padding:10px 14px;font-weight:700;">${r.total}€</td>
                 <td style="padding:10px 14px;"><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:${sBg[r.status]||'#f1f3f5'};color:${sColor[r.status]||'var(--gray-600)'};">${r.status.toUpperCase()}</span></td>
               </tr>`;
@@ -5089,7 +5108,7 @@ function buildProfil(){
         <div style="font-size:14px;color:rgba(255,255,255,.8);margin-bottom:8px;">📧 ${u.email}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <span style="background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;">✅ Compte vérifié</span>
-          <span style="background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;">🗓️ Membre depuis ${new Date(u.createdAt).toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}</span>
+          <span style="background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;">🗓️ Membre depuis ${fmtMY(u.createdAt)}</span>
           ${(()=>{
             const tiers={Découvreur:'🌱',Explorateur:'🌍',Nomade:'✈️',Ambassador:'🏆'};
             const t=u.loyaltyTier||'Découvreur';
@@ -7797,7 +7816,7 @@ function buildHostProfile(){
             </div>
           </div>
 
-          <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">Membre depuis ${new Date(host.memberSince).toLocaleDateString('fr-FR',{month:'long',year:'numeric'})}</div>
+          <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">Membre depuis ${fmtMY(host.memberSince)}</div>
 
           <button onclick="openMessageHost(${host.properties[0]||1})" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">💬 Contacter ${host.firstName}</button>
         </div>
@@ -7942,7 +7961,7 @@ async function loadMessagesList(container){
       const annHotel = hotels.find(x=>x.annonceId===conv.logement_id);
       const lastMsg = lastMsgMap[conv.id];
       const time = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '';
-      const startDate = conv.created_at ? new Date(conv.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}) : '';
+      const startDate = conv.created_at ? fmtDMY(conv.created_at) : '';
       return `<div onclick="appState.selectedConvId='${conv.id}';navigate('conversation')"
         style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:16px;transition:all .2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
         <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${avatar}</div>
@@ -8173,8 +8192,8 @@ async function loadBookingRequests(container){
       <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--gray-700);">Aucune demande${filter!=='all'?' '+statusLabel[statusMap[filter]].toLowerCase():''}</h3>
     </div>`
     :list.map(req=>{
-      const ci=req.checkIn?new Date(req.checkIn).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—';
-      const co=req.checkOut?new Date(req.checkOut).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—';
+      const ci=req.checkIn?fmtDMY(req.checkIn):'—';
+      const co=req.checkOut?fmtDMY(req.checkOut):'—';
       const nights=(req.checkIn&&req.checkOut)?Math.round((new Date(req.checkOut)-new Date(req.checkIn))/86400000):0;
       const isExpiring = req.status==='en attente' && req.checkIn && new Date(req.checkIn) < new Date(new Date().toDateString());
       return `<div style="background:#fff;border:1px solid ${req.status==='en attente'?'#ffe0a0':'var(--gray-200)'};border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
@@ -8281,7 +8300,7 @@ async function loadExcursionBookingRequests(container){
       <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--gray-700);">Aucune demande${filter!=='all'?' '+(statusLabel[statusMap[filter]]||'').toLowerCase():''}</h3>
     </div>`
     :list.map(req=>{
-      const dt=req.date?new Date(req.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+      const dt=req.date?fmtDMY(req.date):'—';
       const isExpiring = req.status==='en attente' && req.date && new Date(req.date) < new Date(new Date().toDateString());
       return `<div style="background:#fff;border:1px solid ${req.status==='en attente'?'#ffe0a0':'var(--gray-200)'};border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
         ${req.status==='en attente'?'<div style="background:linear-gradient(90deg,#FFB400,#FFD666);height:4px;"></div>':''}
@@ -8580,7 +8599,7 @@ function buildExcursionEditFormInner(){
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
         ${(ed.availability||[]).length===0?'<span style="font-size:13px;color:var(--gray-400);">Aucune date pour l\'instant</span>':(ed.availability||[]).map(dt=>`
           <span style="background:#f0f9ff;border:1px solid #d0e8ff;color:var(--blue);font-size:13px;font-weight:600;padding:5px 8px 5px 12px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;">
-            ${new Date(dt).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})}
+            ${fmtDMY(dt)}
             <span onclick="edRemoveDate('${dt}')" style="cursor:pointer;font-weight:800;color:var(--red);">✕</span>
           </span>`).join('')}
       </div>
@@ -9387,7 +9406,7 @@ async function loadDetailReviews(hId){
   container.innerHTML = avisRows.map(r=>{
     const p = profMap[r.author_id];
     const name = p?.first_name || 'Voyageur';
-    const date = new Date(r.created_at).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    const date = fmtDMY(r.created_at);
     return `<div class="rev-item">
       <div class="rev-head">
         <div class="rev-av">${name[0]?.toUpperCase()||'?'}</div>
@@ -9425,7 +9444,7 @@ async function initBlockedDatesPicker(hId){
     if(promoDates.length > 0){
       const pcts = Object.values(appState._bkDatePromos);
       const minPct = Math.min(...pcts), maxPct = Math.max(...pcts);
-      const fmt = ds => new Date(ds+'T00:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
+      const fmt = ds => fmtDMY(ds+'T00:00:00');
       const rateLabel = minPct===maxPct ? `-${minPct}%` : `-${minPct}% à -${maxPct}%`;
       bannerEl.innerHTML = `<div style="background:#fdead9;border:1.5px solid #ea580c;border-radius:var(--r-md);padding:10px 14px;margin-bottom:14px;font-size:13px;color:#9a3f00;font-weight:700;">
         🏷️ Promo ${rateLabel} sur certaines dates entre le ${fmt(promoDates[0])} et le ${fmt(promoDates[promoDates.length-1])} — voir le calendrier ci-dessous.
@@ -9757,7 +9776,7 @@ function buildAdminDashboard(){
         <div>
           <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:4px;">STAYFINDER</div>
           <h1 style="font-size:26px;font-weight:900;color:#fff;margin:0;">⚙️ Administration</h1>
-          <div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;">Tableau de bord · ${today.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;">Tableau de bord · ${today.toLocaleDateString('fr-FR',{weekday:'long'})} ${fmtDMY(today)}</div>
         </div>
         <div style="display:flex;gap:10px;">
           <button onclick="navigate('home')" style="background:rgba(255,255,255,.15);color:#fff;padding:9px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.25);font-size:13px;font-weight:600;cursor:pointer;">← Retour site</button>
