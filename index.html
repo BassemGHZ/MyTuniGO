@@ -614,6 +614,51 @@ function fmtMY(d){
 function isMultiRoomType(h){
   return !!h && h.type==='Hôtel';
 }
+
+/* ===================== MESSAGES NON LUS (pastille) ===================== */
+// Calcule le nombre de conversations ayant un message non lu pour l'utilisateur
+// connecté : le dernier message de la conversation vient de l'autre participant
+// et est plus récent que la dernière lecture enregistrée (last_read_a/last_read_b
+// sur la table conversations).
+async function computeUnreadConversationsCount(){
+  const uid = auth.currentUser?.id;
+  if(!uid) return 0;
+  const { data: convs, error } = await _sb.from('conversations')
+    .select('id,participant_a,participant_b,last_read_a,last_read_b')
+    .or(`participant_a.eq.${uid},participant_b.eq.${uid}`);
+  if(error || !convs || !convs.length) return 0;
+  const convIds = convs.map(c=>c.id);
+  const { data: msgs } = await _sb.from('messages')
+    .select('conversation_id,sender_id,created_at')
+    .in('conversation_id', convIds)
+    .order('created_at', {ascending:false});
+  const lastMsgMap = {};
+  (msgs||[]).forEach(m=>{ if(!lastMsgMap[m.conversation_id]) lastMsgMap[m.conversation_id]=m; });
+  let count = 0;
+  convs.forEach(c=>{
+    const last = lastMsgMap[c.id];
+    if(!last || last.sender_id===uid) return; // rien, ou le dernier message est de moi
+    const myLastRead = c.participant_a===uid ? c.last_read_a : c.last_read_b;
+    if(!myLastRead || new Date(last.created_at) > new Date(myLastRead)) count++;
+  });
+  return count;
+}
+
+async function refreshUnreadMessagesBadge(){
+  if(!auth.currentUser){ appState._unreadMsgCount = 0; updateUnreadMsgBadgeDOM(); return; }
+  try{ appState._unreadMsgCount = await computeUnreadConversationsCount(); }
+  catch(e){ console.warn('refreshUnreadMessagesBadge:', e.message); }
+  updateUnreadMsgBadgeDOM();
+}
+
+// Met à jour les pastilles déjà présentes dans le DOM (menu déroulant ouvert,
+// tiroir mobile, nav mobile...) sans tout reconstruire.
+function updateUnreadMsgBadgeDOM(){
+  const n = appState._unreadMsgCount||0;
+  document.querySelectorAll('.msg-unread-dot').forEach(el=>{ el.style.display = n>0 ? 'inline-block' : 'none'; });
+  const mnBadge = document.getElementById('mnav-msg-badge');
+  if(mnBadge){ mnBadge.style.display = n>0 ? 'flex' : 'none'; mnBadge.textContent = n>9 ? '9+' : String(n); }
+}
 /* ===================== DATA ===================== */
 /* ===================== DEVICE DETECTION ===================== */
 // ── Device detection ─────────────────────────────────────────────────────────
@@ -1137,6 +1182,7 @@ function renderAuthArea(){
     area.innerHTML = `<button class="btn-login" onclick="openModal('login')">Se connecter</button>
       <button class="btn-register" onclick="openModal('register')">S'inscrire</button>`;
   }
+  refreshUnreadMessagesBadge();
 }
 
 function toggleDropdown(){
@@ -1165,7 +1211,7 @@ function toggleDropdown(){
     <div class="ud-item" onclick="navigate('excursions');closeDropdown()">✈️ Explorer les excursions</div>
     <div class="ud-item" onclick="navigate('reservations');closeDropdown()">📅 Mes réservations</div>
     <div class="ud-item" onclick="navigate('favoris');closeDropdown()">❤️ Mes favoris</div>
-    <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages</div>
+    <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages${(appState._unreadMsgCount||0)>0?' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:middle;"></span>':''}</div>
     <div style="padding:4px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);border-top:1px solid var(--gray-100);margin-top:4px;padding-top:10px;">Espace hôte</div>
     <div class="ud-item" onclick="navigate('booking-requests');closeDropdown()">📨 Gérer les réservations</div>
     <div class="ud-item" onclick="navigate('manage-excursions');closeDropdown()">🗂️ Gérer les excursions</div>
@@ -1233,7 +1279,9 @@ function openMobileDrawer(){
 
     // Nav items
     +(u ? items.map(function(item){
-      return '<div class="drawer-nav-item" data-page="'+item.page+'" data-auth="'+(item.auth?'1':'0')+'"><span class="di-icon">'+item.icon+'</span><span>'+item.label+'</span></div>';
+      const dot = (item.page==='messages' && (appState._unreadMsgCount||0)>0)
+        ? ' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;"></span>' : '';
+      return '<div class="drawer-nav-item" data-page="'+item.page+'" data-auth="'+(item.auth?'1':'0')+'"><span class="di-icon">'+item.icon+'</span><span>'+item.label+dot+'</span></div>';
     }).join('') : '')
 
     // Admin
@@ -8017,6 +8065,15 @@ async function loadConversation(container){
     return;
   }
 
+  // Marque la conversation comme lue par cet utilisateur (fait disparaître la
+  // pastille "message non lu" sur le menu), sans bloquer l'affichage.
+  (async()=>{
+    const readCol = conv.participant_a===uid ? 'last_read_a' : 'last_read_b';
+    const { error: readErr } = await _sb.from('conversations').update({ [readCol]: new Date().toISOString() }).eq('id', convId);
+    if(readErr){ console.warn('mark conversation read:', readErr.message); return; }
+    refreshUnreadMessagesBadge();
+  })();
+
   const otherName = otherProf ? (otherProf.first_name||'Utilisateur') : 'Utilisateur';
   const otherAvatar = otherName.slice(0,2).toUpperCase();
   const h = hotels.find(x=>x.annonceId===conv.logement_id);
@@ -10796,7 +10853,7 @@ function buildMobileNav(){
   if(window.innerWidth > 768) return '';
   const u = auth.currentUser;
   const pg = appState.page;
-  const unreadMsgs = 0; // TODO: brancher sur un vrai compteur "messages non lus" Supabase (colonne read)
+  const unreadMsgs = appState._unreadMsgCount||0;
 
   const items = [
     {icon:'🏠', label:'Accueil',   page:'home'},
