@@ -8120,17 +8120,40 @@ async function loadConversation(container){
     <!-- Messages list -->
     <div id="conv-messages" style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:14px;min-height:320px;max-height:480px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;">
       ${(msgs||[]).length===0?'<div style="text-align:center;padding:40px;color:var(--gray-400);font-size:14px;">Démarrez la conversation avec '+otherName+' !</div>'
-      :(msgs||[]).map(m=>{
-        const mine = m.sender_id === uid;
-        const t=new Date(m.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-        return `<div style="display:flex;flex-direction:${mine?'row-reverse':'row'};align-items:flex-end;gap:8px;">
+      :(()=>{
+        // Regroupe visuellement les messages par jour (à la WhatsApp) : un
+        // repère "Aujourd'hui / Hier / JJ/MM/AAAA" s'affiche dès que la date
+        // change, pour que la date d'envoi soit lisible d'un coup d'œil sans
+        // devoir repasser sur chaque bulle.
+        const dayLabel = ds=>{
+          const d = new Date(ds); d.setHours(0,0,0,0);
+          const today = new Date(); today.setHours(0,0,0,0);
+          const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+          if(d.getTime()===today.getTime()) return "Aujourd'hui";
+          if(d.getTime()===yesterday.getTime()) return 'Hier';
+          return fmtDMY(ds);
+        };
+        let lastDay = null;
+        return (msgs||[]).map(m=>{
+          const mine = m.sender_id === uid;
+          const t=new Date(m.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+          const thisDay = new Date(m.created_at).toDateString();
+          let sep = '';
+          if(thisDay !== lastDay){
+            sep = `<div style="display:flex;align-items:center;justify-content:center;margin:6px 0;">
+              <span style="background:var(--gray-100);color:var(--gray-600);font-size:12px;font-weight:700;padding:5px 16px;border-radius:20px;">${dayLabel(m.created_at)}</span>
+            </div>`;
+            lastDay = thisDay;
+          }
+          return sep + `<div style="display:flex;flex-direction:${mine?'row-reverse':'row'};align-items:flex-end;gap:8px;">
           ${!mine?`<div style="width:32px;height:32px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${otherAvatar}</div>`:''}
           <div style="max-width:72%;">
             <div style="background:${mine?'var(--blue)':'var(--gray-100)'};color:${mine?'#fff':'var(--gray-900)'};padding:10px 14px;border-radius:${mine?'18px 18px 4px 18px':'18px 18px 18px 4px'};font-size:14px;line-height:1.5;">${(m.content||'').replace(/</g,'&lt;')}</div>
             <div style="font-size:11px;color:var(--gray-400);margin-top:3px;text-align:${mine?'right':'left'};">${t}</div>
           </div>
         </div>`;
-      }).join('')}
+        }).join('');
+      })()}
     </div>
 
     <!-- Input zone -->
