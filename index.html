@@ -588,6 +588,25 @@
 
 <script>
 /* ===================== DATE FORMATTING (harmonisé JJ/MM/AAAA) ===================== */
+// Renvoie la date-calendrier LOCALE d'un objet Date, au format AAAA-MM-JJ
+// (année-mois-jour, comme un ISO string mais sans conversion en UTC).
+// À utiliser partout où l'on compare/stocke "la date du jour" telle que
+// l'utilisateur la vit sur son fuseau horaire (ex: "aujourd'hui", les
+// dates d'un calendrier de réservation, un champ <input type="date">).
+//
+// ⚠️ NE PAS utiliser `date.toISOString().split('T')[0]` pour ça : cette
+// méthode convertit d'abord en UTC, donc pour un utilisateur en France
+// (UTC+1/+2), entre minuit et 1h-2h du matin heure locale, toISOString()
+// renvoie encore la date de LA VEILLE (l'UTC n'a pas encore basculé au
+// jour suivant). Résultat observé : un calendrier de réservation laissait
+// encore sélectionnable une date pourtant déjà entièrement passée, juste
+// après minuit heure locale (bug signalé sur les réservations d'excursion).
+function localISODate(d){
+  d = d || new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+
 // Formate une date (Date, ISO string ou timestamp) au format JJ/MM/AAAA,
 // utilisé partout sur le site où une date complète est affichée à l'utilisateur.
 function fmtDMY(d){
@@ -1889,7 +1908,7 @@ function renderHeroMonth(year,month){
   const firstDay = new Date(year,month,1).getDay();
   const offset = firstDay===0?6:firstDay-1;
   const today = new Date(); today.setHours(0,0,0,0);
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = localISODate(today);
   const ci = appState.searchCheckIn||'', co = appState.searchCheckOut||'';
   const days=['L','M','M','J','V','S','D'];
   let html = '<div style="flex:1;min-width:130px;">';
@@ -2186,18 +2205,18 @@ function validateSearchDates(){
   if(!inEl || !outEl) return;
   const ci = inEl.value;
   const co = outEl.value;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localISODate(new Date());
   // Checkin cannot be in the past
   if(ci && ci < today){ inEl.value = today; }
   // Checkout must be after checkin
   if(ci && co && co <= ci){
     const minCo = new Date(ci);
     minCo.setDate(minCo.getDate()+1);
-    outEl.value = minCo.toISOString().split('T')[0];
+    outEl.value = localISODate(minCo);
     showToast('📅 Date de départ ajustée','var(--blue)');
   }
   // Set min on checkout
-  if(ci && outEl) outEl.min = new Date(new Date(ci).getTime()+86400000).toISOString().split('T')[0];
+  if(ci && outEl) outEl.min = localISODate(new Date(new Date(ci).getTime()+86400000));
 }
 
 function doSearch(){
@@ -2338,7 +2357,7 @@ async function loadResultsAvailability(){
 let _resultsDatePromosLoaded = false;
 async function loadResultsDatePromos(){
   if(_resultsDatePromosLoaded) return;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localISODate(new Date());
   const { data, error } = await _sb.from('date_discounts').select('annonce_id').gte('date', today);
   if(error){ console.warn('loadResultsDatePromos:', error.message); return; }
   _resultsDatePromosLoaded = true;
@@ -2420,7 +2439,7 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms){
   let d = new Date(checkIn);
   const end = new Date(checkOut);
   while(d < end){
-    const ds = d.toISOString().split('T')[0];
+    const ds = localISODate(d);
     const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
     const nightPrice = pct>0 ? Math.round(h.price*(1-pct/100)) : h.price;
     total += nightPrice;
@@ -2938,14 +2957,14 @@ function buildDetail(){
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Arrivée</label>
             <input type="date" id="bk-ci" value="${appState.checkIn||appState.searchCheckIn}"
-              min="${new Date().toISOString().split('T')[0]}"
+              min="${localISODate(new Date())}"
               onchange="updateBk();markBlockedDatesOnPicker('bk-co',appState.selectedHotelId,this.value)"
               style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
           </div>
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Départ</label>
             <input type="date" id="bk-co" value="${appState.checkOut||appState.searchCheckOut}"
-              min="${appState.checkIn ? new Date(new Date(appState.checkIn).getTime()+86400000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}"
+              min="${appState.checkIn ? localISODate(new Date(new Date(appState.checkIn).getTime()+86400000)) : localISODate(new Date())}"
               onchange="updateBk()"
               style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
           </div>
@@ -3041,7 +3060,7 @@ function updateBk(){
     // Set min date for checkout = checkin + 1 day
     const minCo = new Date(ci);
     minCo.setDate(minCo.getDate()+1);
-    const minCoStr = minCo.toISOString().split('T')[0];
+    const minCoStr = localISODate(minCo);
     if(coEl) coEl.min = minCoStr;
     // If checkout <= checkin, auto-correct to checkin + 1
     if(co && co <= ci){
@@ -3055,7 +3074,7 @@ function updateBk(){
   }
 
   // Set min date for checkin = today
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localISODate(new Date());
   if(ciEl) ciEl.min = todayStr;
 
   // If checkin is in the past, reset it
@@ -3105,7 +3124,7 @@ function isDateRangeAvailable(hId, checkIn, checkOut){
   if(appState._bkUnavailable && appState._bkHotelId===hId){
     const start=new Date(checkIn), end=new Date(checkOut);
     for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
-      if(appState._bkUnavailable.has(d.toISOString().split('T')[0])) return false;
+      if(appState._bkUnavailable.has(localISODate(d))) return false;
     }
     return true;
   }
@@ -3119,7 +3138,7 @@ function isDateRangeAvailable(hId, checkIn, checkOut){
   const start = new Date(checkIn);
   const end   = new Date(checkOut);
   for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
-    const ds = d.toISOString().split('T')[0];
+    const ds = localISODate(d);
     if(cal.blocked.includes(ds)) return false;
   }
   return true;
@@ -3405,7 +3424,7 @@ function submitBooking(hId,total){
     commission:comm.commission, netToHost:comm.netToHost,
     checkIn:appState.checkIn||'', checkOut:appState.checkOut||'',
     rooms:appState.rooms||1, nights, status:'confirmée',
-    createdAt:new Date().toISOString().split('T')[0]
+    createdAt:localISODate(new Date())
   };
   appState.reservations.unshift(newResa);
   appState.confirmedBooking={hotel:h,name,email,total,checkIn:appState.checkIn,checkOut:appState.checkOut,rooms:appState.rooms,ref};
@@ -4002,8 +4021,8 @@ async function annPublish(){
     name: ad.name, city: ad.city, country: ad.country,
     address: ad.address, price_night: ad.price_night||0,
     stars: ad.stars||3, status: 'en attente',
-    createdAt: new Date().toISOString().split('T')[0],
-    updatedAt: new Date().toISOString().split('T')[0],
+    createdAt: localISODate(new Date()),
+    updatedAt: localISODate(new Date()),
     _ref: ref,
     stats:{vues:0,clics:0,reservations:0,revenus:0,tauxOccupation:0,noteMoyenne:0,avis:0,
            vuesMois:[0,0,0,0,0,0,0,0,0,0,0,0],
@@ -5797,7 +5816,7 @@ function buildExcursionDetail(){
               <div id="exc-spots-left" style="text-align:center;margin-top:4px;"></div>
               <input type="hidden" id="exc-date" value="${appState.excBookingDate||''}">
             `:`
-              <input type="date" id="exc-date" min="${new Date().toISOString().split('T')[0]}"
+              <input type="date" id="exc-date" min="${localISODate(new Date())}"
                 style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
             `}
           </div>
@@ -5848,7 +5867,7 @@ function buildExcBookingCalendar(e){
   const firstDay=new Date(year,month,1).getDay();
   const offset=firstDay===0?6:firstDay-1;
   const daysInMonth=new Date(year,month+1,0).getDate();
-  const todayStr=today.toISOString().split('T')[0];
+  const todayStr=localISODate(today);
   const selectedDate=appState.excBookingDate||'';
 
   let cells='';
@@ -5894,7 +5913,7 @@ function excBookCalNav(dir, excId){
 }
 
 function excSelectDate(ds){
-  const today=new Date().toISOString().split('T')[0];
+  const today=localISODate(new Date());
   if(ds<today)return;
   const allExc=[...excursions,...(appState.myExcursions||[])];
   const e=allExc.find(x=>x.id===appState.selectedExcursionId);
@@ -5979,7 +5998,7 @@ async function bookExcursion(excId){
   // (onglet resté ouvert après minuit, état conservé en mémoire, champ
   // de secours modifié à la main). Le calendrier bloque déjà le choix
   // d'une date passée, mais rien ne revérifiait ici avant l'enregistrement.
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localISODate(new Date());
   if(date < todayStr){
     showToast('⚠️ Cette date est passée — veuillez en choisir une nouvelle','var(--red)');
     appState.excBookingDate = null;
@@ -6006,7 +6025,7 @@ async function bookExcursion(excId){
   // page de choix carte/PayPal — réservation immédiate depuis la fiche.
   if(!exc.excursionId){
     // Excursion de démonstration (mock) — pas de vraie table correspondante
-    appState.excursionBookings.push({id:ref,excId,title:exc.title||'Excursion',date,pax,total,status:'confirmée',paymentMethod:'Paiement sur place',createdAt:new Date().toISOString().split('T')[0]});
+    appState.excursionBookings.push({id:ref,excId,title:exc.title||'Excursion',date,pax,total,status:'confirmée',paymentMethod:'Paiement sur place',createdAt:localISODate(new Date())});
     showPaymentSuccess(ref, exc.title||'Excursion', total, 'Paiement sur place', false);
     return;
   }
@@ -6520,7 +6539,7 @@ function buildExcFormCalendar(fd){
   const offset=firstDay===0?6:firstDay-1;
   const daysInMonth=new Date(year,month+1,0).getDate();
   const selected=fd.availability||[];
-  const todayStr=today.toISOString().split('T')[0];
+  const todayStr=localISODate(today);
 
   let cells='';
   for(let i=0;i<offset;i++) cells+='<div></div>';
@@ -6561,7 +6580,7 @@ function excFormCalNav(dir){
 }
 
 function excFormToggleDate(ds){
-  const today=new Date().toISOString().split('T')[0];
+  const today=localISODate(new Date());
   if(ds<today)return;
   const fd=appState.excursionFormData;
   if(!fd.availability)fd.availability=[];
@@ -6699,7 +6718,7 @@ async function excFormPublish(){
     status:'en attente', rating:0, reviews:0,
     host:fd.firstname, hostAvatar:(fd.firstname||'??').slice(0,2).toUpperCase(),
     hostRating:0, hostTrips:0, featured:false, available:true,
-    createdAt:new Date().toISOString().split('T')[0],
+    createdAt:localISODate(new Date()),
   };
   appState.myExcursions.push(newExc);
   appState.lastPublishedExcId = newExc.id;
@@ -7658,7 +7677,7 @@ async function finalizeBooking(pb,method){
       total:pb.total, commission:comm.commission, netToHost:comm.netToHost,
       checkIn:pb.checkIn||'',checkOut:pb.checkOut||'',rooms:pb.rooms||1,nights:pb.nights||1,
       status:'confirmée',paymentMethod:methodLabels[method]||method,
-      createdAt:new Date().toISOString().split('T')[0]});
+      createdAt:localISODate(new Date())});
     appState.confirmedBooking={hotel:h,name:pb.name,email:pb.email,total:pb.total,
       commission:comm.commission,netToHost:comm.netToHost,
       checkIn:pb.checkIn,checkOut:pb.checkOut,rooms:pb.rooms,ref,paymentMethod:methodLabels[method]};
@@ -7668,7 +7687,7 @@ async function finalizeBooking(pb,method){
     await finalizeRealExcursionBooking(pb, ref, methodLabels[method]||method);
   } else {
     // Excursion de démonstration (mock) — pas de table réelle correspondante
-    appState.excursionBookings.push({id:ref,excId:pb.excId,title:pb.title,date:pb.date,pax:pb.pax,total:pb.total,status:'confirmée',paymentMethod:methodLabels[method]||method,createdAt:new Date().toISOString().split('T')[0]});
+    appState.excursionBookings.push({id:ref,excId:pb.excId,title:pb.title,date:pb.date,pax:pb.pax,total:pb.total,status:'confirmée',paymentMethod:methodLabels[method]||method,createdAt:localISODate(new Date())});
     appState.pendingBooking=null;
     showPaymentSuccess(ref,pb.title,pb.total,methodLabels[method]||method);
   }
@@ -8770,7 +8789,7 @@ function buildExcursionEditFormInner(){
           </span>`).join('')}
       </div>
       <div style="display:flex;gap:8px;">
-        <input type="date" id="ed-new-date" min="${new Date().toISOString().split('T')[0]}" style="flex:1;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+        <input type="date" id="ed-new-date" min="${localISODate(new Date())}" style="flex:1;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
         <button onclick="edAddDate()" style="background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">+ Ajouter</button>
       </div>
     </div>
@@ -8929,7 +8948,7 @@ function buildHostCalendar(){
   const firstDay = new Date(year,month-1,1).getDay();
   const daysInMonth = new Date(year,month,0).getDate();
   const monthName = new Date(year,month-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
-  const today = new Date().toISOString().split('T')[0];
+  const today = localISODate(new Date());
   const jours = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 
   // Get the annonce info
@@ -9159,7 +9178,7 @@ function navCalendar(dir){
   const cal = getCalForAnnonce(appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || 'ANN-K7L8M9N0');
   const firstDay = new Date(year,month-1,1).getDay();
   const daysInMonth = new Date(year,month,0).getDate();
-  const today = new Date().toISOString().split('T')[0];
+  const today = localISODate(new Date());
   const monthName = new Date(year,month-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   // Update label
   const labels = document.querySelectorAll('.cal-month-label');
@@ -9179,7 +9198,7 @@ function refreshHostCalendarLight(){
   const cal = getCalForAnnonce(_hostCalAnnonceId || 'ANN-K7L8M9N0');
   const firstDay = new Date(year,month-1,1).getDay();
   const daysInMonth = new Date(year,month,0).getDate();
-  const today = new Date().toISOString().split('T')[0];
+  const today = localISODate(new Date());
   renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
   updateCalStats(cal, daysInMonth);
   const bar = document.getElementById('promo-selection-bar');
@@ -9219,7 +9238,7 @@ function togglePromoSelection(dateStr){
       let d = new Date(from);
       const end = new Date(to);
       while(d <= end){
-        const ds = d.toISOString().split('T')[0];
+        const ds = localISODate(d);
         if(!_hostCalReservedSet.has(ds) && !cal.blocked.includes(ds)) sel.add(ds);
         d.setDate(d.getDate()+1);
       }
@@ -9400,7 +9419,7 @@ async function loadReservedDatesForAnnonce(annonceId){
     let d = new Date(r.check_in);
     const end = new Date(r.check_out);
     while(d < end){
-      days.add(d.toISOString().split('T')[0]);
+      days.add(localISODate(d));
       d.setDate(d.getDate()+1);
     }
   });
@@ -9526,7 +9545,7 @@ function renderBookingMonth(year, month, unavailable, today){
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
   const offset = firstDay === 0 ? 6 : firstDay - 1;
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = localISODate(today);
   const days = ['L','M','M','J','V','S','D'];
   const ci = appState.checkIn||'';
   const co = appState.checkOut||'';
@@ -9590,7 +9609,7 @@ function bkSelectDate(ds){
     let d = new Date(ci); d.setDate(d.getDate()+1);
     const end = new Date(ds);
     while(d < end){
-      if(unavailable.has(d.toISOString().split('T')[0])){ conflict = true; break; }
+      if(unavailable.has(localISODate(d))){ conflict = true; break; }
       d.setDate(d.getDate()+1);
     }
     if(conflict){
@@ -9624,7 +9643,7 @@ function validateDateAgainstBlocked(hId){
   if(ci && co){
     const start = new Date(ci), end = new Date(co);
     for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
-      const ds = d.toISOString().split('T')[0];
+      const ds = localISODate(d);
       if(blocked.includes(ds)){
         if(warnEl) warnEl.style.display='flex';
         return;
@@ -11215,7 +11234,7 @@ function syncIcal(platform){
     const simulatedDates = [0,1,2].map(i=>{
       const d = new Date(today);
       d.setDate(d.getDate() + 30 + i);
-      return d.toISOString().split('T')[0];
+      return localISODate(d);
     });
     simulatedDates.forEach(dt=>{
       if(!cal.blocked.includes(dt)) cal.blocked.push(dt);
