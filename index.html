@@ -2826,6 +2826,7 @@ function buildDetail(){
       </button>
     </div>
     <div class="det-meta">
+      <span style="background:var(--gray-100);color:var(--gray-700);font-size:13px;font-weight:700;padding:4px 12px;border-radius:20px;">${({'Hôtel':'🏨','Appartement':'🏢','Maison':'🏡','Studio':'🛋️','Chalet':'🏔️'})[h.type]||'🏠'} ${h.type||'Hébergement'}</span>
       <span class="stars-txt">${'★'.repeat(h.stars)}</span>
       <div class="r-badge">${h.rating}★</div>
       <strong>${h.ratingLabel}</strong>
