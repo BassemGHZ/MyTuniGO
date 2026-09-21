@@ -5974,6 +5974,22 @@ async function bookExcursion(excId){
     return;
   }
 
+  // Revalidation au moment de l'envoi : la date choisie peut être devenue
+  // passée entre sa sélection dans le calendrier et le clic sur "Réserver"
+  // (onglet resté ouvert après minuit, état conservé en mémoire, champ
+  // de secours modifié à la main). Le calendrier bloque déjà le choix
+  // d'une date passée, mais rien ne revérifiait ici avant l'enregistrement.
+  const todayStr = new Date().toISOString().split('T')[0];
+  if(date < todayStr){
+    showToast('⚠️ Cette date est passée — veuillez en choisir une nouvelle','var(--red)');
+    appState.excBookingDate = null;
+    const dateInput = document.getElementById('exc-date');
+    if(dateInput) dateInput.value='';
+    const cal = document.getElementById('exc-book-cal');
+    if(cal){ cal.style.border='2.5px solid var(--red)'; cal.style.borderRadius='var(--r-lg)'; setTimeout(()=>{cal.style.border='';},2500); }
+    return;
+  }
+
   // Get participants
   const paxEl = document.getElementById('exc-pax');
   const pax = parseInt((paxEl && paxEl.value) || 1);
