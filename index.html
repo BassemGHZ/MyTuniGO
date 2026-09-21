@@ -7992,7 +7992,7 @@ async function loadMessagesList(container){
   const [profRes, annRes, msgRes] = await Promise.all([
     otherIds.length ? _sb.from('profiles').select('id,first_name,last_name,email').in('id', otherIds) : Promise.resolve({data:[]}),
     logementIds.length ? _sb.from('annonces').select('id,name').in('id', logementIds) : Promise.resolve({data:[]}),
-    _sb.from('messages').select('conversation_id,content,created_at').in('conversation_id', convIds).order('created_at',{ascending:false})
+    _sb.from('messages').select('conversation_id,sender_id,content,created_at').in('conversation_id', convIds).order('created_at',{ascending:false})
   ]);
 
   const profMap = Object.fromEntries((profRes.data||[]).map(p=>[p.id,p]));
@@ -8000,13 +8000,34 @@ async function loadMessagesList(container){
   const lastMsgMap = {};
   (msgRes.data||[]).forEach(m=>{ if(!lastMsgMap[m.conversation_id]) lastMsgMap[m.conversation_id]=m; }); // premier = plus récent (déjà trié desc)
 
+  // Fil non consulté : le dernier message vient de l'autre participant et est
+  // plus récent que ma dernière lecture de cette conversation (mêmes colonnes
+  // que la pastille du menu Messages).
+  function isConvUnread(conv){
+    const last = lastMsgMap[conv.id];
+    if(!last || last.sender_id===uid) return false;
+    const myLastRead = conv.participant_a===uid ? conv.last_read_a : conv.last_read_b;
+    return !myLastRead || new Date(last.created_at) > new Date(myLastRead);
+  }
+
+  // Trie par activité réelle (dernier message), et non par date de création
+  // de la conversation — une vieille conversation qui vient de recevoir une
+  // réponse doit remonter en haut de la liste.
+  list.sort((a,b)=>{
+    const da = lastMsgMap[a.id]?.created_at || a.created_at;
+    const db = lastMsgMap[b.id]?.created_at || b.created_at;
+    return new Date(db) - new Date(da);
+  });
+
+  const unreadCount = list.filter(isConvUnread).length;
+
   container.innerHTML = `
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Messages</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
       <div>
         <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">💬 Messagerie</h1>
-        <p style="font-size:15px;color:var(--gray-500);">${list.length} conversation${list.length>1?'s':''}</p>
+        <p style="font-size:15px;color:var(--gray-500);">${list.length} conversation${list.length>1?'s':''}${unreadCount>0?` · <span style="color:var(--blue);font-weight:700;">${unreadCount} non lue${unreadCount>1?'s':''}</span>`:''}</p>
       </div>
     </div>
     ${list.map(conv=>{
@@ -8018,18 +8039,23 @@ async function loadMessagesList(container){
       const annHotel = hotels.find(x=>x.annonceId===conv.logement_id);
       const lastMsg = lastMsgMap[conv.id];
       const time = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '';
+      const lastMsgDate = lastMsg ? fmtDMY(lastMsg.created_at) : '';
       const startDate = conv.created_at ? fmtDMY(conv.created_at) : '';
+      const unread = isConvUnread(conv);
       return `<div onclick="appState.selectedConvId='${conv.id}';navigate('conversation')"
-        style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:16px;transition:all .2s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
-        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${avatar}</div>
+        style="background:${unread?'#f0f7ff':'#fff'};border:1.5px solid ${unread?'var(--blue-l)':'var(--gray-200)'};border-radius:var(--r-lg);padding:18px 20px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:16px;transition:all .2s;position:relative;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
+        ${unread?'<span style="position:absolute;top:0;bottom:0;left:0;width:4px;background:var(--blue);border-radius:var(--r-lg) 0 0 var(--r-lg);"></span>':''}
+        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;">${avatar}
+          ${unread?'<span style="position:absolute;top:-2px;right:-2px;width:13px;height:13px;border-radius:50%;background:var(--red);border:2px solid #fff;"></span>':''}
+        </div>
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-            <span style="font-size:15px;font-weight:600;color:var(--gray-900);">${otherName}</span>
-            <span style="font-size:12px;color:var(--gray-400);">${time}</span>
+            <span style="font-size:15px;font-weight:${unread?'800':'600'};color:var(--gray-900);">${otherName}${unread?' <span style="background:var(--blue);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px;vertical-align:middle;margin-left:6px;">NOUVEAU</span>':''}</span>
+            <span style="font-size:12px;color:${unread?'var(--blue)':'var(--gray-400)'};font-weight:${unread?'700':'400'};">${time}</span>
           </div>
           <div ${annHotel?`onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${annHotel.id}})"`:''} style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;${annHotel?'cursor:pointer;text-decoration:underline;':''}">🏠 ${ann?.name||''}</div>
-          <div style="font-size:13px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">${lastMsg?.content||'Démarrez la conversation…'}</div>
-          <div style="font-size:11px;color:var(--gray-400);">🗓️ Conversation débutée le ${startDate}</div>
+          <div style="font-size:13px;color:${unread?'var(--gray-900)':'var(--gray-500)'};font-weight:${unread?'600':'400'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">${lastMsg?.content||'Démarrez la conversation…'}</div>
+          <div style="font-size:11px;color:var(--gray-400);">${lastMsg?`🗓️ Dernier message le ${lastMsgDate} à ${time}`:`🗓️ Conversation débutée le ${startDate}`}</div>
         </div>
         <span style="font-size:18px;color:var(--gray-300);">›</span>
       </div>`;
