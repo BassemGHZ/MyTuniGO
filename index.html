@@ -659,6 +659,35 @@ function updateUnreadMsgBadgeDOM(){
   const mnBadge = document.getElementById('mnav-msg-badge');
   if(mnBadge){ mnBadge.style.display = n>0 ? 'flex' : 'none'; mnBadge.textContent = n>9 ? '9+' : String(n); }
 }
+
+/* ===================== DEMANDES DE RÉSERVATION EN ATTENTE (pastille) ===================== */
+// Compte les demandes de réservation "en attente" reçues sur MES annonces
+// (côté hôte), pour la pastille du menu "Gérer les réservations".
+async function computePendingBookingRequestsCount(){
+  const uid = auth.currentUser?.id;
+  if(!uid) return 0;
+  const { data: myAnns, error: annErr } = await _sb.from('annonces').select('id').eq('user_id', uid);
+  if(annErr || !myAnns || !myAnns.length) return 0;
+  const annIds = myAnns.map(a=>a.id);
+  const { count, error } = await _sb.from('reservations')
+    .select('id', {count:'exact', head:true})
+    .in('logement_id', annIds)
+    .eq('status','en attente');
+  if(error){ console.warn('computePendingBookingRequestsCount:', error.message); return 0; }
+  return count||0;
+}
+
+async function refreshPendingBookingBadge(){
+  if(!auth.currentUser){ appState._pendingReqCount = 0; updatePendingReqBadgeDOM(); return; }
+  try{ appState._pendingReqCount = await computePendingBookingRequestsCount(); }
+  catch(e){ console.warn('refreshPendingBookingBadge:', e.message); }
+  updatePendingReqBadgeDOM();
+}
+
+function updatePendingReqBadgeDOM(){
+  const n = appState._pendingReqCount||0;
+  document.querySelectorAll('.pending-req-dot').forEach(el=>{ el.style.display = n>0 ? 'inline-block' : 'none'; });
+}
 /* ===================== DATA ===================== */
 /* ===================== DEVICE DETECTION ===================== */
 // ── Device detection ─────────────────────────────────────────────────────────
@@ -1183,6 +1212,7 @@ function renderAuthArea(){
       <button class="btn-register" onclick="openModal('register')">S'inscrire</button>`;
   }
   refreshUnreadMessagesBadge();
+  refreshPendingBookingBadge();
 }
 
 function toggleDropdown(){
@@ -1213,7 +1243,7 @@ function toggleDropdown(){
     <div class="ud-item" onclick="navigate('favoris');closeDropdown()">❤️ Mes favoris</div>
     <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages${(appState._unreadMsgCount||0)>0?' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:middle;"></span>':''}</div>
     <div style="padding:4px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);border-top:1px solid var(--gray-100);margin-top:4px;padding-top:10px;">Espace hôte</div>
-    <div class="ud-item" onclick="navigate('booking-requests');closeDropdown()">📨 Gérer les réservations</div>
+    <div class="ud-item" onclick="navigate('booking-requests');closeDropdown()">📨 Gérer les réservations${(appState._pendingReqCount||0)>0?' <span class="pending-req-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:middle;"></span>':''}</div>
     <div class="ud-item" onclick="navigate('manage-excursions');closeDropdown()">🗂️ Gérer les excursions</div>
     <div class="ud-item" onclick="navigate('mesannonces');closeDropdown()">🏘️ Mes annonces</div>
     <div class="ud-item" onclick="checkAuthAndGo('annonce');closeDropdown()">📋 Déposer une annonce</div>
@@ -1279,8 +1309,12 @@ function openMobileDrawer(){
 
     // Nav items
     +(u ? items.map(function(item){
-      const dot = (item.page==='messages' && (appState._unreadMsgCount||0)>0)
-        ? ' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;"></span>' : '';
+      let dot = '';
+      if(item.page==='messages' && (appState._unreadMsgCount||0)>0){
+        dot = ' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;"></span>';
+      } else if(item.page==='booking-requests' && (appState._pendingReqCount||0)>0){
+        dot = ' <span class="pending-req-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;"></span>';
+      }
       return '<div class="drawer-nav-item" data-page="'+item.page+'" data-auth="'+(item.auth?'1':'0')+'"><span class="di-icon">'+item.icon+'</span><span>'+item.label+dot+'</span></div>';
     }).join('') : '')
 
