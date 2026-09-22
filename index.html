@@ -5960,14 +5960,19 @@ async function updateExcSpotsLeft(excId, ds){
 
   el.innerHTML = '<span style="font-size:12px;color:var(--gray-400);">⏳ Vérification des places…</span>';
   try{
-    const { data, error } = await _sb.from('excursion_bookings')
-      .select('participants')
-      .eq('excursion_id', e.excursionId)
-      .eq('date', ds)
-      .in('status', ['en attente','confirmée']);
+    // Lecture via RPC (et non un select direct sur excursion_bookings) :
+    // les règles RLS ne laissent normalement chaque utilisateur voir que
+    // SES PROPRES réservations, donc un select direct ici ne compte que
+    // les siennes et affiche un nombre de places restantes différent
+    // (et faux) selon qui regarde. fn_excursion_spots_taken() est une
+    // fonction serveur qui compte le total réel toutes réservations
+    // confondues, sans exposer le détail de qui a réservé.
+    const { data: usedCount, error } = await _sb.rpc('fn_excursion_spots_taken', {
+      p_excursion_id: e.excursionId, p_date: ds
+    });
     if(error){ el.innerHTML=''; return; }
 
-    const used = (data||[]).reduce((sum,b)=>sum+(b.participants||0),0);
+    const used = usedCount||0;
     const left = Math.max(0, e.groupSize - used);
 
     if(left<=0){
