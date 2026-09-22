@@ -5847,9 +5847,10 @@ function buildExcursionDetail(){
             <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${e.price}€</span></div>
           </div>
           <button id="exc-book-btn" onclick="bookExcursion('${e.id}')"
-            style="width:100%;background:var(--blue);color:#fff;padding:14px;border-radius:var(--r-md);font-size:16px;font-weight:800;border:none;cursor:pointer;margin-top:14px;transition:background .2s;"
+            ${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate]) ? 'disabled' : ''}
+            style="width:100%;background:${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate])?'var(--gray-400)':'var(--blue)'};color:#fff;padding:14px;border-radius:var(--r-md);font-size:16px;font-weight:800;border:none;cursor:${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate])?'not-allowed':'pointer'};margin-top:14px;transition:background .2s;"
             onmouseover="this.style.background='#002570'" onmouseout="this.style.background='var(--blue)'">
-            ✅ Réserver — 💵 Paiement sur place
+            ${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate]) ? '⛔ Complet pour cette date' : '✅ Réserver — 💵 Paiement sur place'}
           </button>
           <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;">
             ${e.freeCancellation?'<div style="font-size:13px;color:var(--green);font-weight:600;">✅ Annulation gratuite</div>':''}
@@ -5892,16 +5893,21 @@ function buildExcBookingCalendar(e){
     const isAvail=avail.includes(ds);
     const isPast=ds<todayStr;
     const isSel=ds===selectedDate;
+    // Date connue comme complète (toutes les places prises) : affichée
+    // barrée, en rouge, distincte des dates simplement passées ou
+    // indisponibles, pour que ce soit visible sans avoir à la sélectionner.
+    const isFull=!!(appState.excFullDates && appState.excFullDates[e.id+'|'+ds]);
     cells+='<div data-excdate="'+ds+'" style="'
       +'text-align:center;padding:8px 2px;border-radius:8px;'
-      +'cursor:'+(isAvail&&!isPast?'pointer':'default')+';'
+      +'cursor:'+(isFull?'not-allowed':(isAvail&&!isPast?'pointer':'default'))+';'
       +'font-size:13px;font-weight:'+(isAvail?'700':'400')+';'
-      +'background:'+(isSel?'var(--blue)':isAvail&&!isPast?'#e8f4ff':'transparent')+';'
-      +'color:'+(isSel?'#fff':isAvail&&!isPast?'var(--blue)':isPast?'var(--gray-300)':'var(--gray-400)')+';'
-      +'border:2px solid '+(isSel?'var(--blue)':isAvail&&!isPast?'#b3d4f0':'transparent')+';'
-      +'opacity:'+(isPast?'.35':'1')+';transition:all .12s;'
+      +'background:'+(isFull?'#fdeaea':(isSel?'var(--blue)':isAvail&&!isPast?'#e8f4ff':'transparent'))+';'
+      +'color:'+(isFull?'var(--red)':(isSel?'#fff':isAvail&&!isPast?'var(--blue)':isPast?'var(--gray-300)':'var(--gray-400)'))+';'
+      +'border:2px solid '+(isFull?'var(--red)':(isSel?'var(--blue)':isAvail&&!isPast?'#b3d4f0':'transparent'))+';'
+      +'text-decoration:'+(isFull?'line-through':'none')+';'
+      +'opacity:'+(isPast&&!isFull?'.35':'1')+';transition:all .12s;'
       +'">'
-      +(isAvail&&!isPast&&!isSel?'<div style="width:5px;height:5px;border-radius:50%;background:var(--blue);margin:0 auto 1px;"></div>':'')
+      +(isAvail&&!isPast&&!isSel&&!isFull?'<div style="width:5px;height:5px;border-radius:50%;background:var(--blue);margin:0 auto 1px;"></div>':'')
       +d+'</div>';
   }
 
@@ -5915,7 +5921,7 @@ function buildExcBookingCalendar(e){
       +['Lu','Ma','Me','Je','Ve','Sa','Di'].map(d=>'<div style="text-align:center;font-size:10px;font-weight:700;color:var(--gray-400);padding:3px 0;">'+d+'</div>').join('')
     +'</div>'
     +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;">'+cells+'</div>'
-    +(avail.length>0?'<div style="font-size:11px;color:var(--gray-400);margin-top:8px;text-align:center;">🔵 Dates disponibles</div>':'')
+    +(avail.length>0?'<div style="font-size:11px;color:var(--gray-400);margin-top:8px;text-align:center;">🔵 Dates disponibles &nbsp; 🔴 Complet</div>':'')
     +'</div>';
 }
 
@@ -5974,13 +5980,42 @@ async function updateExcSpotsLeft(excId, ds){
 
     const used = usedCount||0;
     const left = Math.max(0, e.groupSize - used);
+    const isFull = left<=0;
 
-    if(left<=0){
+    if(isFull){
       el.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--red);">⛔ Complet pour cette date</span>';
     } else if(left<=3){
       el.innerHTML = '<span style="font-size:12px;font-weight:700;color:#e6a800;">⚠️ Plus que '+left+' place'+(left>1?'s':'')+' disponible'+(left>1?'s':'')+'</span>';
     } else {
       el.innerHTML = '<span style="font-size:12px;color:var(--green);">✅ '+left+' places disponibles</span>';
+    }
+
+    // Mémorise les dates connues comme complètes, pour les afficher
+    // différemment dans le calendrier (barrées, en rouge) sans attendre
+    // que l'utilisateur les sélectionne une à une.
+    if(!appState.excFullDates) appState.excFullDates={};
+    const fullKey = excId+'|'+ds;
+    if(isFull) appState.excFullDates[fullKey]=true; else delete appState.excFullDates[fullKey];
+
+    // Grise et désactive le bouton "Réserver" quand la date est complète,
+    // pour ne pas laisser l'utilisateur tenter d'envoyer une demande qui
+    // sera de toute façon refusée côté serveur (CAPACITY_EXCEEDED).
+    const bookBtn = document.getElementById('exc-book-btn');
+    if(bookBtn){
+      bookBtn.disabled = isFull;
+      bookBtn.style.opacity = isFull ? '.5' : '';
+      bookBtn.style.cursor = isFull ? 'not-allowed' : 'pointer';
+      bookBtn.style.background = isFull ? 'var(--gray-400)' : 'var(--blue)';
+      bookBtn.onmouseover = isFull ? null : function(){this.style.background='#002570';};
+      bookBtn.onmouseout = isFull ? null : function(){this.style.background='var(--blue)';};
+      bookBtn.innerHTML = isFull ? '⛔ Complet pour cette date' : '✅ Réserver — 💵 Paiement sur place';
+    }
+
+    // Re-rendu du calendrier pour appliquer le style "complet" sur la
+    // date concernée (barrée, en rouge) dès qu'elle est connue.
+    if(e.availability && e.availability.length>0){
+      const calWrap=document.querySelector('#exc-book-cal');
+      if(calWrap) calWrap.innerHTML=buildExcBookingCalendar(e);
     }
 
     // Limite le sélecteur de participants aux places réellement restantes
@@ -5990,8 +6025,11 @@ async function updateExcSpotsLeft(excId, ds){
     if(paxEl){
       const current = parseInt(paxEl.value)||1;
       const maxSel = Math.max(1, Math.min(left, e.groupSize));
-      paxEl.innerHTML = Array.from({length:maxSel},(_, i)=>'<option value="'+(i+1)+'">'+(i+1)+' personne'+(i>0?'s':'')+'</option>').join('');
-      paxEl.value = Math.min(current, maxSel);
+      paxEl.innerHTML = maxSel>0
+        ? Array.from({length:maxSel},(_, i)=>'<option value="'+(i+1)+'">'+(i+1)+' personne'+(i>0?'s':'')+'</option>').join('')
+        : '<option value="1">1 personne</option>';
+      paxEl.value = Math.min(current, maxSel||1);
+      paxEl.disabled = isFull;
       updateExcTotal(e.price);
     }
   } catch(err){
