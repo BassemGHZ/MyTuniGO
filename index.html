@@ -2383,7 +2383,7 @@ function initResultsMaps(){
   const miniEl = document.getElementById('results-mini-map-inner');
   if(miniEl && !miniEl._leaflet_id && coords.length>0){
     const mmap = L.map(miniEl, {zoomControl:false, dragging:false, scrollWheelZoom:false, attributionControl:false});
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{subdomains:'abcd',detectRetina:true}).addTo(mmap);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{subdomains:'abc',attribution:'© OpenStreetMap contributors'}).addTo(mmap);
     coords.forEach(c=>{
       L.circleMarker([c.lat,c.lng],{radius:6,color:'#1E2D4E',fillColor:'#E84B10',fillOpacity:1,weight:2}).addTo(mmap);
     });
@@ -2397,7 +2397,7 @@ function initResultsMaps(){
     const fullEl = document.getElementById('results-full-map');
     if(fullEl && !fullEl._leaflet_id){
       const fmap = L.map(fullEl, {scrollWheelZoom:true}).setView(center, 6);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'© CartoDB',subdomains:'abcd',detectRetina:true}).addTo(fmap);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{subdomains:'abc',attribution:'© OpenStreetMap contributors'}).addTo(fmap);
       coords.forEach(c=>{
         const priceText = (c.price||'?')+'€';
         const icon = L.divIcon({
@@ -7126,9 +7126,9 @@ function initAnnEditMap(){
   if(annEditMap){ try{ annEditMap.remove(); }catch(e){} annEditMap=null; annEditMarker=null; }
 
   annEditMap = L.map('ann-edit-map', {scrollWheelZoom:false}).setView([36.8065, 10.1815], 6);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
-    subdomains:'abcd', maxZoom:19, detectRetina:true
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains:'abc', maxZoom:19
   }).addTo(annEditMap);
 
   annEditMap.on('click', function(e){
@@ -11750,9 +11750,9 @@ function initHotelMap(hId){
   if(!mapEl || mapEl._leaflet_id) return;
   setTimeout(()=>{
     const map = L.map('hotel-map-'+hId, {scrollWheelZoom:false}).setView(coords, 15);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
-      subdomains:'abcd', maxZoom:19, detectRetina:true
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      subdomains:'abc', maxZoom:19
     }).addTo(map);
     const icon = L.divIcon({
       html:'<div style="background:var(--blue);color:#fff;border-radius:50% 50% 50% 0;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 8px rgba(0,0,0,.3);transform:rotate(-45deg);"><span style="transform:rotate(45deg)">🏨</span></div>',
@@ -11773,9 +11773,9 @@ function initAnnMap(){
 
   // Initialize map synchronously (DOM element already exists)
   annMap = L.map('ann-map', {scrollWheelZoom:false}).setView([46.6034, 1.8883], 5);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
-    subdomains:'abcd', maxZoom:19, detectRetina:true
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains:'abc', maxZoom:19
   }).addTo(annMap);
 
   // Click on map to place marker
