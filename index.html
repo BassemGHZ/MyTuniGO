@@ -5807,7 +5807,7 @@ function buildExcursionDetail(){
                 <span>✅ Guide vérifié</span>
               </div>
             </div>
-            <button onclick="showToast('💬 Messagerie bientôt disponible','var(--blue)')" style="padding:8px 16px;background:#fff;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:13px;font-weight:600;cursor:pointer;">Contacter</button>
+            <button onclick="openMessageExcursionHost('${e.id}')" style="padding:8px 16px;background:#fff;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:13px;font-weight:600;cursor:pointer;">Contacter</button>
           </div>
         </div>
       </div>
@@ -7943,6 +7943,55 @@ async function openMessageHost(hId){
   }
 }
 
+// Même principe que openMessageHost() mais pour un prestataire d'excursion
+// (colonne excursion_id au lieu de logement_id sur la table conversations),
+// pour que les fils de discussion existent aussi côté excursions.
+async function openMessageExcursionHost(excId){
+  if(!auth.currentUser){openModal('login');return;}
+  const allExc = [...excursions, ...(appState.myExcursions||[])];
+  const e = allExc.find(x=>x.id===excId);
+
+  if(!e?.excursionId){
+    showToast('La messagerie est disponible uniquement pour les excursions publiées.','var(--red)');
+    return;
+  }
+  if(!e.ownerId){
+    showToast("Ce prestataire n'a pas encore de compte MyTunigo actif.",'var(--red)');
+    return;
+  }
+  if(auth.currentUser.id === e.ownerId){
+    showToast('Vous ne pouvez pas vous contacter vous-même.','var(--red)');
+    return;
+  }
+
+  try{
+    // Cherche une conversation existante entre ce client et cette excursion
+    const { data: existing, error: findErr } = await _sb.from('conversations')
+      .select('*')
+      .eq('excursion_id', e.excursionId)
+      .or(`participant_a.eq.${auth.currentUser.id},participant_b.eq.${auth.currentUser.id}`)
+      .maybeSingle();
+    if(findErr) throw findErr;
+
+    let conv = existing;
+    if(!conv){
+      const { data: created, error: createErr } = await _sb.from('conversations').insert([{
+        excursion_id: e.excursionId,
+        participant_a: auth.currentUser.id,
+        participant_b: e.ownerId
+      }]).select().single();
+      if(createErr) throw createErr;
+      conv = created;
+    }
+
+    appState.selectedConvId = conv.id;
+    navigate('conversation');
+  } catch(e){
+    console.error('openMessageExcursionHost error:', e.message);
+    showToast("Impossible d'ouvrir la conversation.",'var(--red)');
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════
    HOST PROFILE PAGE
 ══════════════════════════════════════════════════════════════════ */
@@ -8115,16 +8164,19 @@ async function loadMessagesList(container){
 
   const otherIds = [...new Set(list.map(c=>c.participant_a===uid?c.participant_b:c.participant_a).filter(Boolean))];
   const logementIds = [...new Set(list.map(c=>c.logement_id).filter(Boolean))];
+  const excursionIds = [...new Set(list.map(c=>c.excursion_id).filter(Boolean))];
   const convIds = list.map(c=>c.id);
 
-  const [profRes, annRes, msgRes] = await Promise.all([
+  const [profRes, annRes, excRes, msgRes] = await Promise.all([
     otherIds.length ? _sb.from('profiles').select('id,first_name,last_name,email').in('id', otherIds) : Promise.resolve({data:[]}),
     logementIds.length ? _sb.from('annonces').select('id,name').in('id', logementIds) : Promise.resolve({data:[]}),
+    excursionIds.length ? _sb.from('excursions').select('id,title').in('id', excursionIds) : Promise.resolve({data:[]}),
     _sb.from('messages').select('conversation_id,sender_id,content,created_at').in('conversation_id', convIds).order('created_at',{ascending:false})
   ]);
 
   const profMap = Object.fromEntries((profRes.data||[]).map(p=>[p.id,p]));
   const annMap = Object.fromEntries((annRes.data||[]).map(a=>[a.id,a]));
+  const excMap = Object.fromEntries((excRes.data||[]).map(x=>[x.id,x]));
   const lastMsgMap = {};
   (msgRes.data||[]).forEach(m=>{ if(!lastMsgMap[m.conversation_id]) lastMsgMap[m.conversation_id]=m; }); // premier = plus récent (déjà trié desc)
 
@@ -8164,6 +8216,7 @@ async function loadMessagesList(container){
       const otherName = other ? (other.first_name||'Utilisateur') : 'Utilisateur';
       const avatar = otherName.slice(0,2).toUpperCase();
       const ann = annMap[conv.logement_id];
+      const exc = excMap[conv.excursion_id];
       const lastMsg = lastMsgMap[conv.id];
       const time = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '';
       const lastMsgDate = lastMsg ? fmtDMY(lastMsg.created_at) : '';
@@ -8180,7 +8233,7 @@ async function loadMessagesList(container){
             <span style="font-size:15px;font-weight:${unread?'800':'600'};color:var(--gray-900);">${otherName}${unread?' <span style="background:var(--blue);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px;vertical-align:middle;margin-left:6px;">NOUVEAU</span>':''}</span>
             <span style="font-size:12px;color:${unread?'var(--blue)':'var(--gray-400)'};font-weight:${unread?'700':'400'};">${time}</span>
           </div>
-          <div style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;">🏠 ${ann?.name||''}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--blue-l);margin-bottom:3px;">${exc?'🧭 '+exc.title:'🏠 '+(ann?.name||'')}</div>
           <div style="font-size:13px;color:${unread?'var(--gray-900)':'var(--gray-500)'};font-weight:${unread?'600':'400'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">${lastMsg?.content||'Démarrez la conversation…'}</div>
           <div style="font-size:11px;color:var(--gray-400);">${lastMsg?`🗓️ Dernier message le ${lastMsgDate} à ${time}`:`🗓️ Conversation débutée le ${startDate}`}</div>
         </div>
@@ -8208,9 +8261,10 @@ async function loadConversation(container){
 
   const otherId = conv.participant_a===uid ? conv.participant_b : conv.participant_a;
 
-  const [{data: otherProf}, {data: ann}, {data: msgs, error: msgErr}] = await Promise.all([
+  const [{data: otherProf}, {data: ann}, {data: exc}, {data: msgs, error: msgErr}] = await Promise.all([
     _sb.from('profiles').select('id,first_name,last_name,email').eq('id', otherId).maybeSingle(),
-    _sb.from('annonces').select('id,name').eq('id', conv.logement_id).maybeSingle(),
+    conv.logement_id ? _sb.from('annonces').select('id,name').eq('id', conv.logement_id).maybeSingle() : Promise.resolve({data:null}),
+    conv.excursion_id ? _sb.from('excursions').select('id,title').eq('id', conv.excursion_id).maybeSingle() : Promise.resolve({data:null}),
     _sb.from('messages').select('*').eq('conversation_id', convId).order('created_at', {ascending:true})
   ]);
   if(msgErr){
@@ -8230,6 +8284,7 @@ async function loadConversation(container){
   const otherName = otherProf ? (otherProf.first_name||'Utilisateur') : 'Utilisateur';
   const otherAvatar = otherName.slice(0,2).toUpperCase();
   const h = hotels.find(x=>x.annonceId===conv.logement_id);
+  const excLocal = exc ? [...excursions,...(appState.myExcursions||[])].find(x=>x.excursionId===conv.excursion_id) : null;
 
   container.innerHTML = `
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('messages')">Messages</span><span class="bc-sep">›</span><span>${otherName}</span></div>
@@ -8239,7 +8294,9 @@ async function loadConversation(container){
       <div style="width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${otherAvatar}</div>
       <div style="flex:1;">
         <div style="font-size:16px;font-weight:700;">${otherName}</div>
-        <div style="font-size:13px;color:var(--blue-l);${h?'cursor:pointer;':''}" ${h?`onclick="navigate('detail',{selectedHotelId:${h.id}})"`:''}>🏠 ${ann?.name||''}</div>
+        ${exc
+          ? `<div style="font-size:13px;color:var(--blue-l);${excLocal?'cursor:pointer;':''}" ${excLocal?`onclick="navigate('excursion-detail',{selectedExcursionId:'${excLocal.id}'})"`:''}>🧭 ${exc.title||''}</div>`
+          : `<div style="font-size:13px;color:var(--blue-l);${h?'cursor:pointer;':''}" ${h?`onclick="navigate('detail',{selectedHotelId:${h.id}})"`:''}>🏠 ${ann?.name||''}</div>`}
       </div>
       ${h?`<button onclick="navigate('detail',{selectedHotelId:${h.id}})" style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir le logement</button>`:''}
     </div>
