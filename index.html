@@ -2948,6 +2948,19 @@ function buildDetail(){
             ${h.features.map(f=>`<div class="amen-item-det"><span style="font-size:18px;">${amenIcon(f)}</span> ${amenLabel(f)}</div>`).join('')}
           </div>
         </div>
+        <div class="det-section">
+          <div class="det-sec-title">🕐 Arrivée / Départ</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+            <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;">
+              <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px;">Arrivée (check-in)</div>
+              <div style="font-size:16px;font-weight:800;color:var(--gray-900);">à partir de ${h.checkin||'15:00'}</div>
+            </div>
+            <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;">
+              <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px;">Départ (check-out)</div>
+              <div style="font-size:16px;font-weight:800;color:var(--gray-900);">avant ${h.checkout||'11:00'}</div>
+            </div>
+          </div>
+        </div>
         ${buildHostCardHTML(h.id)}
         <div class="det-section">
           <div class="det-sec-title">💬 Avis clients</div>
