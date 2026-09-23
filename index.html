@@ -2376,7 +2376,19 @@ function toggleResultsMap(){
 
 function initResultsMaps(){
   const filtered = getFiltered();
-  const coords = filtered.filter(h=>h.lat&&h.lng).map(h=>({id:h.id,lat:h.lat,lng:h.lng,name:h.name,price:h.price||h.price_night,emoji:h.emoji}));
+  // Même logique que sur les cartes de résultats : si une recherche avec
+  // dates est en cours, le montant affiché sur la carte est le total du
+  // séjour (et non le tarif par nuit, qui ne correspond pas à ce qui sera
+  // effectivement payé pour ces dates).
+  let searchNightsMap = 0;
+  if(appState.searchCheckIn && appState.searchCheckOut){
+    searchNightsMap = Math.max(0, Math.round((new Date(appState.searchCheckOut)-new Date(appState.searchCheckIn))/86400000));
+  }
+  const coords = filtered.filter(h=>h.lat&&h.lng).map(h=>{
+    const nightly = h.price||h.price_night;
+    const total = searchNightsMap>0 ? nightly*searchNightsMap : 0;
+    return {id:h.id,lat:h.lat,lng:h.lng,name:h.name,price:nightly,displayPrice: total>0?total:nightly, isTotal: total>0, nights:searchNightsMap, emoji:h.emoji};
+  });
   const center = coords.length>0 ? [coords[0].lat, coords[0].lng] : [36.8065, 10.1815]; // Tunis par défaut
 
   // Mini map
@@ -2399,15 +2411,18 @@ function initResultsMaps(){
       const fmap = L.map(fullEl, {scrollWheelZoom:true}).setView(center, 6);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{subdomains:'abc',attribution:'© OpenStreetMap contributors'}).addTo(fmap);
       coords.forEach(c=>{
-        const priceText = (c.price||'?')+'€';
+        const priceText = (c.displayPrice||c.price||'?')+'€';
         const icon = L.divIcon({
           className:'',
           html:'<div style="background:var(--blue);color:#fff;padding:5px 10px;border-radius:20px;font-size:13px;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35);border:2px solid #fff;display:inline-block;">'+priceText+'</div>',
           iconSize:null,
           iconAnchor:[24,15]
         });
+        const popupPrice = c.isTotal
+          ? (c.displayPrice||'?')+'€ au total pour '+c.nights+' nuit'+(c.nights>1?'s':'')+' <span style="color:#999;">('+(c.price||'?')+'€/nuit)</span>'
+          : (c.price||'?')+'€ / nuit';
         L.marker([c.lat,c.lng],{icon, zIndexOffset:1000}).addTo(fmap)
-          .bindPopup('<strong>'+c.emoji+' '+c.name+'</strong><br>'+(c.price||'?')+'€ / nuit<br><a href="#" onclick="navigate(\'detail\',{selectedHotelId:'+c.id+'});return false;">Voir le logement →</a>');
+          .bindPopup('<strong>'+c.emoji+' '+c.name+'</strong><br>'+popupPrice+'<br><a href="#" onclick="navigate(\'detail\',{selectedHotelId:'+c.id+'});return false;">Voir le logement →</a>');
       });
       if(coords.length>1){const b=L.latLngBounds(coords.map(c=>[c.lat,c.lng]));fmap.fitBounds(b.pad(0.15));}
       _resultsFullMap = fmap;
