@@ -10234,20 +10234,27 @@ function switchAdminTab(tab){
 }
 
 let _adminAnnoncesCache = [];
+let _adminDeletionReqMap = {}; // item_id -> ligne deletion_requests ('en attente'), tous types confondus
 async function buildAdminAnnonces(content){
   content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">⏳ Chargement des annonces…</div>';
 
-  const { data, error } = await _sb.from('annonces').select('*').order('created_at', {ascending: false});
+  const [{ data, error }, { data: delReqs }] = await Promise.all([
+    _sb.from('annonces').select('*').order('created_at', {ascending: false}),
+    _sb.from('deletion_requests').select('*').eq('item_type','annonce').eq('status','en attente')
+  ]);
 
   if(error){
     content.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';
     return;
   }
 
+  (delReqs||[]).forEach(r=>{ _adminDeletionReqMap[r.item_id] = r; });
+
   const pending = (data||[]).filter(a=>a.status==='en attente');
   const pendingChanges = (data||[]).filter(a=>a.status!=='en attente' && a.pending_changes);
-  const others  = (data||[]).filter(a=>a.status!=='en attente' && !a.pending_changes);
-  const all = [...pending, ...pendingChanges, ...others];
+  const deletionAsked = (data||[]).filter(a=>a.status!=='en attente' && !a.pending_changes && _adminDeletionReqMap[a.id]);
+  const others  = (data||[]).filter(a=>a.status!=='en attente' && !a.pending_changes && !_adminDeletionReqMap[a.id]);
+  const all = [...pending, ...pendingChanges, ...deletionAsked, ...others];
   _adminAnnoncesCache = all;
 
   if(!all.length){
@@ -10260,11 +10267,11 @@ async function buildAdminAnnonces(content){
 
   content.innerHTML = `
     <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
-      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">📋 Annonces (${all.length}) — ${pending.length} en attente${pendingChanges.length?' · '+pendingChanges.length+' modification(s) à valider':''}</h2>
+      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">📋 Annonces (${all.length}) — ${pending.length} en attente${pendingChanges.length?' · '+pendingChanges.length+' modification(s) à valider':''}${deletionAsked.length?' · <span style="color:#cc0000;">'+deletionAsked.length+' demande(s) de suppression</span>':''}</h2>
       <button onclick="buildAdminAnnonces(document.getElementById('admin-content'))" style="background:#003580;color:#fff;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">🔄 Actualiser</button>
     </div>
     ${all.map(a=>`
-    <div id="ann-card-${a.id}" style="background:#fff;border:1px solid ${a.pending_changes?'#ffd699':'#e5e7eb'};border-radius:12px;padding:20px;margin-bottom:12px;">
+    <div id="ann-card-${a.id}" style="background:#fff;border:1px solid ${_adminDeletionReqMap[a.id]?'#fca5a5':(a.pending_changes?'#ffd699':'#e5e7eb')};border-radius:12px;padding:20px;margin-bottom:12px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="display:flex;gap:14px;flex:1;min-width:260px;">
           ${(a.photos&&a.photos.length)?`
@@ -10278,6 +10285,7 @@ async function buildAdminAnnonces(content){
               <strong style="font-size:15px;color:#111827;">${a.name||'—'}</strong>
               <span style="background:${statusBg[a.status]||'#f5f5f5'};color:${statusColor[a.status]||'#6b7280'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${a.status||'—'}</span>
               ${a.pending_changes?'<span style="background:#fff3d6;color:#a16800;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">✏️ Modifications en attente</span>':''}
+              ${_adminDeletionReqMap[a.id]?'<span style="background:#fff0f0;color:#cc0000;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">🗑️ Suppression demandée par l\'hôte</span>':''}
               ${a.photos&&a.photos.length>1?`<span style="font-size:11px;color:#6b7280;">📷 ${a.photos.length} photos</span>`:''}
             </div>
             <div style="font-size:13px;color:#6b7280;line-height:1.7;">
@@ -10308,9 +10316,33 @@ async function buildAdminAnnonces(content){
             style="background:#fff;color:#cc0000;border:1.5px solid #cc0000;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter les modifications</button>
           `:''}
           ${a.status==='publiée' && !a.pending_changes?`<button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
+          <button onclick="adminDeleteAnnonce('${a.id}','${(a.name||'').replace(/'/g,"\\'")}')"
+            style="background:#fff;color:#cc0000;border:1.5px solid #cc0000;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">🗑️ Supprimer définitivement</button>
         </div>
       </div>
     </div>`).join('')}`;
+}
+
+// Seul l'admin voit et peut appeler cette fonction (bouton présent uniquement
+// dans le tableau de bord admin) : suppression définitive, réservée à
+// l'administrateur — voir enable_admin_delete_annonces.sql pour la policy
+// RLS qui l'autorise réellement côté base (les hôtes n'ont plus ce droit).
+async function adminDeleteAnnonce(id, name){
+  if(!confirm('⚠️ Supprimer DÉFINITIVEMENT l\'annonce "'+name+'" ? Cette action est irréversible (réservations et avis liés conservés en base, mais l\'annonce disparaît totalement).')) return;
+
+  const { error } = await _sb.from('annonces').delete().eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  // Marque la demande de suppression correspondante (s'il y en a une) comme traitée.
+  await _sb.from('deletion_requests').update({status:'traitée'}).eq('item_type','annonce').eq('item_id', id).eq('status','en attente');
+
+  // Retire aussi l'entrée du tableau public en mémoire pour qu'elle
+  // disparaisse immédiatement des résultats de recherche déjà chargés.
+  const hIdx = hotels.findIndex(x=>x.annonceId===id);
+  if(hIdx>-1) hotels.splice(hIdx,1);
+
+  showToast('🗑️ Annonce supprimée définitivement','var(--red)');
+  buildAdminAnnonces(document.getElementById('admin-content'));
 }
 
 async function validateAnnonce(id, ref, name, email, firstname){
@@ -10627,16 +10659,22 @@ let _adminExcursionsCache = [];
 async function buildAdminExcursions(content){
   content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">⏳ Chargement des excursions…</div>';
 
-  const { data, error } = await _sb.from('excursions').select('*').order('created_at', {ascending: false});
+  const [{ data, error }, { data: delReqs }] = await Promise.all([
+    _sb.from('excursions').select('*').order('created_at', {ascending: false}),
+    _sb.from('deletion_requests').select('*').eq('item_type','excursion').eq('status','en attente')
+  ]);
 
   if(error){
     content.innerHTML = '<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';
     return;
   }
 
+  (delReqs||[]).forEach(r=>{ _adminDeletionReqMap[r.item_id] = r; });
+
   const pending = (data||[]).filter(a=>a.status==='en attente');
-  const others  = (data||[]).filter(a=>a.status!=='en attente');
-  const all = [...pending, ...others];
+  const deletionAsked = (data||[]).filter(a=>a.status!=='en attente' && _adminDeletionReqMap[a.id]);
+  const others  = (data||[]).filter(a=>a.status!=='en attente' && !_adminDeletionReqMap[a.id]);
+  const all = [...pending, ...deletionAsked, ...others];
   _adminExcursionsCache = all;
 
   if(!all.length){
@@ -10649,11 +10687,11 @@ async function buildAdminExcursions(content){
 
   content.innerHTML = `
     <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
-      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">✈️ Excursions (${all.length}) — ${pending.length} en attente</h2>
+      <h2 style="margin:0;font-size:18px;font-weight:800;color:#003580;">✈️ Excursions (${all.length}) — ${pending.length} en attente${deletionAsked.length?' · <span style="color:#cc0000;">'+deletionAsked.length+' demande(s) de suppression</span>':''}</h2>
       <button onclick="buildAdminExcursions(document.getElementById('admin-content'))" style="background:#003580;color:#fff;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">🔄 Actualiser</button>
     </div>
     ${all.map(a=>`
-    <div id="exc-card-${a.id}" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:12px;">
+    <div id="exc-card-${a.id}" style="background:#fff;border:1px solid ${_adminDeletionReqMap[a.id]?'#fca5a5':'#e5e7eb'};border-radius:12px;padding:20px;margin-bottom:12px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="display:flex;gap:14px;flex:1;min-width:260px;">
           ${(a.photos&&a.photos.length)?`
@@ -10665,6 +10703,7 @@ async function buildAdminExcursions(content){
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
               <strong style="font-size:15px;color:#111827;">✈️ ${a.title||'—'}</strong>
               <span style="background:${statusBg[a.status]||'#f5f5f5'};color:${statusColor[a.status]||'#6b7280'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${a.status||'—'}</span>
+              ${_adminDeletionReqMap[a.id]?'<span style="background:#fff0f0;color:#cc0000;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">🗑️ Suppression demandée par l\'hôte</span>':''}
               ${a.photos&&a.photos.length>1?`<span style="font-size:11px;color:#6b7280;">📷 ${a.photos.length} photos</span>`:''}
             </div>
             <div style="font-size:13px;color:#6b7280;line-height:1.7;">
@@ -10689,9 +10728,28 @@ async function buildAdminExcursions(content){
             style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter</button>
           `:''}
           ${a.status==='publiée'?`<button onclick="rejectExcursion('${a.id}','${a.ref||a.id}','${(a.title||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
+          <button onclick="adminDeleteExcursion('${a.id}','${(a.title||'').replace(/'/g,"\\'")}')"
+            style="background:#fff;color:#cc0000;border:1.5px solid #cc0000;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">🗑️ Supprimer définitivement</button>
         </div>
       </div>
     </div>`).join('')}`;
+}
+
+// Réservé à l'admin (bouton visible uniquement dans le tableau de bord admin) —
+// voir enable_admin_delete_annonces.sql pour la policy RLS correspondante.
+async function adminDeleteExcursion(id, title){
+  if(!confirm('⚠️ Supprimer DÉFINITIVEMENT l\'excursion "'+title+'" ? Cette action est irréversible.')) return;
+
+  const { error } = await _sb.from('excursions').delete().eq('id', id);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+
+  await _sb.from('deletion_requests').update({status:'traitée'}).eq('item_type','excursion').eq('item_id', id).eq('status','en attente');
+
+  const gIdx = excursions.findIndex(x=>x.excursionId===id);
+  if(gIdx>-1) excursions.splice(gIdx,1);
+
+  showToast('🗑️ Excursion supprimée définitivement','var(--red)');
+  buildAdminExcursions(document.getElementById('admin-content'));
 }
 
 async function validateExcursion(id, ref, title, email, firstname){
