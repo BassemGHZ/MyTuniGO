@@ -9629,9 +9629,13 @@ async function initBlockedDatesPicker(hId){
   appState._bkHotelId = hId;
 
   // Promotions par date précise (en plus de la promo globale h.discount)
+  // — ne garde que les dates à venir : sans ce filtre, une promo dont la
+  // période est déjà entièrement passée restait affichée indéfiniment
+  // (le bandeau montrait une plage de dates expirée).
   appState._bkDatePromos = {};
   if(h.annonceId){
-    const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', h.annonceId);
+    const todayStrPromo = localISODate(new Date());
+    const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
     (promoRows||[]).forEach(r=>{ appState._bkDatePromos[r.date] = r.discount_percent; });
   }
 
