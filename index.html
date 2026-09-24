@@ -174,8 +174,8 @@
   .deal-name{font-size:15px;font-weight:700;margin-bottom:3px;}
   .deal-loc{font-size:12px;color:var(--gray-500);margin-bottom:8px;}
   .deal-prices{display:flex;align-items:center;gap:8px;}
-  .deal-old{font-size:13px;color:var(--gray-500);text-decoration:line-through;}
-  .deal-new{font-size:18px;font-weight:800;}
+  .deal-old{font-size:13px;color:var(--red);text-decoration:line-through;font-weight:600;}
+  .deal-new{font-size:21px;font-weight:800;color:var(--gray-900);}
 
   /* ===== RESULTS PAGE ===== */
   .results-layout{max-width:1200px;margin:0 auto;padding:24px 20px;display:grid;grid-template-columns:280px 1fr;gap:24px;align-items:start;}
@@ -3079,10 +3079,15 @@ function calcBkHTML(h){
   const sub = computeNightlyTotal(h, ci, co, rooms);
   const avgUnit = Math.round(sub/(n*rooms));
   const taxes=Math.round(sub*.1), total=sub+taxes;
+  // Prix plein tarif (sans aucune promo) pour la même période, afin d'afficher
+  // l'ancien total barré en rouge quand une réduction (globale ou par date) s'applique.
+  const origSub = h.price*n*rooms;
+  const origTotal = origSub + Math.round(origSub*.1);
+  const hasDiscount = origTotal > total;
   const lineLabel = multiRoom ? `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.` : `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''}`;
   return `<div class="bk-row"><span>${lineLabel}</span><span>${sub}€</span></div>
     <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
-    <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${total}€</span></div>`;
+    <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
 }
 
 function updateBk(){
@@ -5872,14 +5877,14 @@ function buildExcursionDetail(){
           </div>
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">👥 Nombre de participants</label>
-            <select id="exc-pax" onchange="updateExcTotal(${e.price})" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            <select id="exc-pax" onchange="updateExcTotal(${e.price},${(e.oldPrice&&e.oldPrice>e.price)?e.oldPrice:0})" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
               ${Array.from({length:e.groupSize},(_, i)=>`<option value="${i+1}">${i+1} personne${i>0?'s':''}</option>`).join('')}
             </select>
           </div>
           <hr style="border:none;border-top:1px solid var(--gray-200);margin:14px 0;">
           <div id="exc-total-block">
             <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>${e.price}€ × 1 personne</span><span>${e.price}€</span></div>
-            <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${e.price}€</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${(e.oldPrice&&e.oldPrice>e.price)?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${e.oldPrice}€</span>`:''}<span>${e.price}€</span></span></div>
           </div>
           <button id="exc-book-btn" onclick="bookExcursion('${e.id}')"
             ${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate]) ? 'disabled' : ''}
@@ -5900,13 +5905,14 @@ function buildExcursionDetail(){
   return d;
 }
 
-function updateExcTotal(price){
+function updateExcTotal(price, oldPrice){
   const pax = parseInt(document.getElementById('exc-pax')?.value||1);
   const total = price * pax;
+  const origTotal = (oldPrice && oldPrice>price) ? oldPrice*pax : 0;
   const el = document.getElementById('exc-total-block');
   if(el) el.innerHTML = `
     <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>${price}€ × ${pax} personne${pax>1?'s':''}</span><span>${total}€</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${total}€</span></div>`;
+    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${origTotal?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
 }
 
 function buildExcBookingCalendar(e){
@@ -6132,6 +6138,7 @@ async function bookExcursion(excId){
     excursionRealId: exc.excursionId,
     instantBookExc: !!exc.instantBook,
     unitPrice: exc.price||0,
+    oldUnitPrice: (exc.oldPrice && exc.oldPrice>exc.price) ? exc.oldPrice : 0,
     title: exc.title||'Excursion',
     date, pax, total,
     emoji: exc.emoji||'✈️',
@@ -7526,6 +7533,11 @@ function buildPayment(){
     const h=hotels.find(x=>x.id===pb.hotelId)||{name:'Hébergement',city:'—',country:'—',emoji:'🏨'};
     itemName=h.name; itemLocation=h.city+', '+h.country; itemEmoji=h.emoji;
     const sub=Math.round(pb.total/1.1), taxes=pb.total-sub;
+    // Idem que sur la fiche du bien : prix plein tarif sur la même période pour
+    // afficher l'ancien total barré en rouge si une promo est appliquée.
+    const origSubPay = h.price*pb.nights*(pb.rooms||1);
+    const origTotalPay = origSubPay + Math.round(origSubPay*.1);
+    const hasDiscPay = origTotalPay > pb.total;
     summaryHTML=`<div class="sum-row"><span>Hébergement</span><span style="font-weight:600;">${h.name}</span></div>
       <div class="sum-row"><span>📍 Lieu</span><span>${h.city}, ${h.country}</span></div>
       <div class="sum-row"><span>📅 Arrivée</span><span>${pb.checkIn||'—'}</span></div>
@@ -7533,14 +7545,16 @@ function buildPayment(){
       <div class="sum-row"><span>🌙 Durée</span><span>${isMultiRoomType(h)?pb.rooms+' ch. · ':''}${pb.nights} nuit${pb.nights>1?'s':''}</span></div>
       <div class="sum-row"><span>Sous-total</span><span>${sub}€</span></div>
       <div class="sum-row"><span>Taxes (10%)</span><span>${taxes}€</span></div>
-      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span style="color:var(--blue)">${pb.total}€</span></div>`;
+      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span>${hasDiscPay?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotalPay}€</span>`:''}<span style="color:var(--blue)">${pb.total}€</span></span></div>`;
   } else {
     itemName=pb.title; itemLocation=pb.city+', '+pb.country; itemEmoji=pb.emoji||'✈️';
+    const origTotalExc = pb.oldUnitPrice ? pb.oldUnitPrice*pb.pax : 0;
+    const hasDiscExc = origTotalExc > pb.total;
     summaryHTML=`<div class="sum-row"><span>Excursion</span><span style="font-weight:600;">${pb.title}</span></div>
       <div class="sum-row"><span>📍 Lieu</span><span>${pb.city}, ${pb.country}</span></div>
       <div class="sum-row"><span>📅 Date</span><span>${pb.date||'—'}</span></div>
       <div class="sum-row"><span>👥 Participants</span><span>${pb.pax} personne${pb.pax>1?'s':''}</span></div>
-      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span style="color:var(--blue)">${pb.total}€</span></div>`;
+      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span>${hasDiscExc?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotalExc}€</span>`:''}<span style="color:var(--blue)">${pb.total}€</span></span></div>`;
   }
 
   const d=document.createElement('div');
