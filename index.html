@@ -5082,14 +5082,58 @@ async function toggleAnnonceStatus(id){
 // uniquement en suspendre la diffusion (toggleAnnonceStatus, bouton
 // "Suspendre" ci-dessus), ce qui la rend invisible aux voyageurs sans en
 // perdre l'historique (réservations, avis, statistiques). Pour une
-// suppression définitive, il doit passer par une demande à l'administrateur.
-function requestAnnonceDeletion(id){
+// suppression définitive, il doit passer par une demande à l'administrateur —
+// un vrai message enregistré côté serveur (table deletion_requests) et, en
+// best-effort, un e-mail envoyé automatiquement, plutôt qu'un simple
+// mailto: qui dépendait d'un client mail local (souvent absent/non
+// configuré, donc rien ne partait réellement).
+async function requestAnnonceDeletion(id){
+  if(!auth.currentUser){openModal('login');return;}
   const a=appState.myAnnonces.find(x=>x.id===id);
   const name = a ? a.name : 'cette annonce';
-  if(!confirm('Pour supprimer définitivement « '+name+' », votre demande doit être validée par l\'administrateur MyTunigo.\n\nSi l\'annonce est encore active, pensez à la suspendre en attendant (bouton "Suspendre").\n\nOuvrir un e-mail de demande de suppression ?')) return;
-  const subject = encodeURIComponent('Demande de suppression d\'annonce — '+name);
-  const body = encodeURIComponent('Bonjour,\n\nJe souhaite demander la suppression définitive de mon annonce :\n- Nom : '+name+'\n- Référence : '+id+'\n\nMerci de confirmer la suppression.\n\nCordialement.');
-  window.open('mailto:contact@mytunigo.com?subject='+subject+'&body='+body, '_blank');
+  if(!confirm('Envoyer une demande de suppression définitive de « '+name+' » à l\'administrateur MyTunigo ?\n\nSi l\'annonce est encore active, pensez à la suspendre en attendant (bouton "Suspendre").')) return;
+
+  const { error } = await _sb.from('deletion_requests').insert([{
+    item_type: 'annonce', item_id: id, item_name: name,
+    host_id: auth.currentUser.id, host_email: auth.currentUser.email||''
+  }]);
+  if(error){
+    console.error('requestAnnonceDeletion error:', error.message);
+    showToast('Erreur : '+error.message,'var(--red)');
+    return;
+  }
+
+  await sendDeletionRequestEmail('annonce', name, id);
+  showToast('✅ Demande de suppression envoyée à l\'administrateur','var(--green)');
+}
+
+// E-mail de demande de suppression, best-effort : même schéma que les autres
+// notifications transactionnelles du site (Edge Function notify-price-drop,
+// basée sur Resend). Si la Edge Function ne connaît pas encore ce type
+// ('deletion_request'), il suffit de lui ajouter un template correspondant —
+// la demande reste de toute façon tracée dans la table deletion_requests
+// même si cet envoi échoue.
+async function sendDeletionRequestEmail(itemType, itemName, itemId){
+  try{
+    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-price-drop', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+      },
+      body: JSON.stringify({
+        type: 'deletion_request',
+        recipient_email: 'contact@mytunigo.com',
+        host_name: ((auth.currentUser.firstName||'')+' '+(auth.currentUser.lastName||'')).trim()||'Un hôte',
+        host_email: auth.currentUser.email||'',
+        item_type: itemType,
+        property_name: itemName,
+        item_id: itemId
+      })
+    });
+  } catch(efErr){
+    console.error('notify-price-drop (deletion_request) error:', efErr.message);
+  }
 }
 
 /* ===================== ANNONCE DETAIL/STATS ===================== */
@@ -6232,14 +6276,27 @@ async function excToggleStatus(id){
 // Même règle que pour les hébergements : l'hôte/prestataire ne peut plus
 // supprimer une excursion lui-même, seulement en suspendre la diffusion
 // (excToggleStatus, bouton "Suspendre" ci-dessus). La suppression définitive
-// passe par une demande à l'administrateur.
-function requestExcursionDeletion(id){
+// passe par une demande à l'administrateur — enregistrée dans
+// deletion_requests + e-mail best-effort, voir requestAnnonceDeletion/
+// sendDeletionRequestEmail ci-dessus pour le détail.
+async function requestExcursionDeletion(id){
+  if(!auth.currentUser){openModal('login');return;}
   const e = (appState.myExcursions||[]).find(x=>x.id===id);
   const title = e ? e.title : 'cette excursion';
-  if(!confirm('Pour supprimer définitivement « '+title+' », votre demande doit être validée par l\'administrateur MyTunigo.\n\nSi l\'excursion est encore active, pensez à la suspendre en attendant (bouton "Suspendre").\n\nOuvrir un e-mail de demande de suppression ?')) return;
-  const subject = encodeURIComponent('Demande de suppression d\'excursion — '+title);
-  const body = encodeURIComponent('Bonjour,\n\nJe souhaite demander la suppression définitive de mon excursion :\n- Titre : '+title+'\n- Référence : '+id+'\n\nMerci de confirmer la suppression.\n\nCordialement.');
-  window.open('mailto:contact@mytunigo.com?subject='+subject+'&body='+body, '_blank');
+  if(!confirm('Envoyer une demande de suppression définitive de « '+title+' » à l\'administrateur MyTunigo ?\n\nSi l\'excursion est encore active, pensez à la suspendre en attendant (bouton "Suspendre").')) return;
+
+  const { error } = await _sb.from('deletion_requests').insert([{
+    item_type: 'excursion', item_id: id, item_name: title,
+    host_id: auth.currentUser.id, host_email: auth.currentUser.email||''
+  }]);
+  if(error){
+    console.error('requestExcursionDeletion error:', error.message);
+    showToast('Erreur : '+error.message,'var(--red)');
+    return;
+  }
+
+  await sendDeletionRequestEmail('excursion', title, id);
+  showToast('✅ Demande de suppression envoyée à l\'administrateur','var(--green)');
 }
 
 function excPromoFlash(id){
