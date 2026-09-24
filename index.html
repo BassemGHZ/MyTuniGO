@@ -2358,12 +2358,45 @@ let _resultsDatePromosLoaded = false;
 async function loadResultsDatePromos(){
   if(_resultsDatePromosLoaded) return;
   const today = localISODate(new Date());
-  const { data, error } = await _sb.from('date_discounts').select('annonce_id').gte('date', today);
+  // On récupère aussi la date et le % de réduction (et plus seulement l'id de
+  // l'annonce) afin de pouvoir calculer et afficher le vrai prix promo (prix
+  // initial barré + nouveau prix) sur les cartes de la liste de recherche,
+  // au lieu de se contenter d'une étiquette "Promo sur certaines dates" sans
+  // montant.
+  const { data, error } = await _sb.from('date_discounts').select('annonce_id,date,discount_percent').gte('date', today);
   if(error){ console.warn('loadResultsDatePromos:', error.message); return; }
   _resultsDatePromosLoaded = true;
   appState._resultsDatePromoAnnonceIds = new Set((data||[]).map(r=>r.annonce_id));
+  const map = {}, bestPct = {};
+  (data||[]).forEach(r=>{
+    if(!map[r.annonce_id]) map[r.annonce_id] = {};
+    map[r.annonce_id][r.date] = r.discount_percent;
+    bestPct[r.annonce_id] = Math.max(bestPct[r.annonce_id]||0, r.discount_percent||0);
+  });
+  appState._resultsDatePromoMap = map;
+  appState._resultsDatePromoBestPct = bestPct;
   if(appState.page==='results') refreshResults();
   else if(appState.page==='home') render();
+}
+
+// Total réel d'un séjour pour la liste de résultats, en tenant compte des
+// promos par date précise (date_discounts) ET de la promo flash globale de
+// l'annonce (h.discount) — la promo par date, plus précise, l'emporte pour
+// la nuit concernée. Miroir de computeNightlyTotal() (qui, lui, ne lit que
+// appState._bkDatePromos, chargé uniquement sur la fiche d'un bien).
+function computeResultsNightlyTotal(h, checkIn, checkOut){
+  if(!h || !checkIn || !checkOut) return 0;
+  const promos = (h.annonceId && appState._resultsDatePromoMap && appState._resultsDatePromoMap[h.annonceId]) || {};
+  let total = 0;
+  let d = new Date(checkIn);
+  const end = new Date(checkOut);
+  while(d < end){
+    const ds = localISODate(d);
+    const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
+    total += pct>0 ? Math.round(h.price*(1-pct/100)) : h.price;
+    d.setDate(d.getDate()+1);
+  }
+  return total;
 }
 
 let _resultsMiniMap = null;
@@ -2682,12 +2715,22 @@ function buildResults(){
 function resultCardHTML(h){
   const hasDiscount = h.discount>0;
   const hasDatePromo = !hasDiscount && h.annonceId && (appState._resultsDatePromoAnnonceIds||new Set()).has(h.annonceId);
-  const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : h.price;
+  // Prix "à la nuit" affiché quand aucune date n'est recherchée : pour une
+  // promo flash globale (hasDiscount) on connaît le %, pour une promo par
+  // date (hasDatePromo) on prend la meilleure réduction disponible pour
+  // donner un prix "à partir de" représentatif.
+  const bestDatePct = (h.annonceId && appState._resultsDatePromoBestPct) ? (appState._resultsDatePromoBestPct[h.annonceId]||0) : 0;
+  const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : (hasDatePromo && bestDatePct>0 ? Math.round(h.price*(1-bestDatePct/100)) : h.price);
   let searchNights = 0;
   if(appState.searchCheckIn && appState.searchCheckOut){
     searchNights = Math.max(0, Math.round((new Date(appState.searchCheckOut)-new Date(appState.searchCheckIn))/86400000));
   }
-  const totalForStay = searchNights>0 ? finalPrice*searchNights : 0;
+  // Total réel pour les dates recherchées (tient compte des promos par date
+  // précise + de la promo flash globale) ; en dehors d'une recherche datée,
+  // on retombe sur le prix "à la nuit" ci-dessus.
+  const totalForStay = searchNights>0 ? computeResultsNightlyTotal(h, appState.searchCheckIn, appState.searchCheckOut) : 0;
+  const origTotalForStay = searchNights>0 ? h.price*searchNights : 0;
+  const stayHasPromo = totalForStay>0 && origTotalForStay>totalForStay;
   return `<div class="result-card" onclick="navigate('detail',{selectedHotelId:${h.id}})" style="cursor:pointer;">
     <div class="rc-img" style="background:linear-gradient(135deg,#e8f4ff,#b3d4f0);overflow:hidden;position:relative;">
       ${photoOrEmoji(h)}
@@ -2713,23 +2756,26 @@ function resultCardHTML(h){
           ${h.payLater?'<span class="badge-green">✓ Payez sur place</span>':''}
         </div>
         <div>
-          ${hasDiscount?`<div style="display:flex;align-items:center;gap:7px;margin-bottom:1px;">
-            <span style="font-size:14px;color:var(--gray-400);text-decoration:line-through;">${h.price}€</span>
-            <span style="background:#d40000;color:#fff;font-size:11px;font-weight:800;padding:1px 7px;border-radius:10px;">-${h.discount}%</span>
-          </div>`:''}
           ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;margin-bottom:1px;">🏷️ Promo sur certaines dates</div>`:''}
           ${totalForStay>0?`
-          <!-- Recherche avec dates : le montant global du séjour est LE prix mis
-               en avant (au lieu d'afficher en plus le tarif par nuit, qui prêtait
-               à confusion sur ce qui serait effectivement payé). -->
-          <div class="rc-amount" style="${hasDiscount?'color:#d40000;':''}">${totalForStay}€</div>
+          <!-- Recherche avec dates : le montant global du séjour (calculé nuit par
+               nuit en tenant compte des promos par date précise ET de la promo
+               flash globale) est LE prix mis en avant. Quand une réduction
+               s'applique, le prix plein tarif est affiché barré en rouge juste
+               au-dessus, à la manière des offres de dernière minute. -->
+          ${stayHasPromo?`<div style="font-size:14px;color:var(--red);text-decoration:line-through;font-weight:600;margin-bottom:1px;">${origTotalForStay}€</div>`:''}
+          <div class="rc-amount" style="${stayHasPromo?'color:#d40000;':''}">${totalForStay}€</div>
           <div class="rc-excl">au total pour ${searchNights} nuit${searchNights>1?'s':''}, taxes incluses</div>
-          <div style="font-size:11px;color:var(--gray-400);margin-top:1px;">soit ${finalPrice}€ / nuit</div>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:1px;">soit ${Math.round(totalForStay/searchNights)}€ / nuit</div>
           `:`
-          <div class="rc-amount" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€</div>
-          <div class="rc-excl">par nuit, taxes incluses</div>
+          ${(hasDiscount||(hasDatePromo&&bestDatePct>0))?`<div style="display:flex;align-items:center;gap:7px;margin-bottom:1px;">
+            <span style="font-size:14px;color:var(--red);text-decoration:line-through;font-weight:600;">${h.price}€</span>
+            <span style="background:${hasDiscount?'#d40000':'#ea580c'};color:#fff;font-size:11px;font-weight:800;padding:1px 7px;border-radius:10px;">-${hasDiscount?h.discount:bestDatePct}%${hasDatePromo?' *':''}</span>
+          </div>`:''}
+          <div class="rc-amount" style="${(hasDiscount||(hasDatePromo&&bestDatePct>0))?'color:#d40000;':''}">${finalPrice}€</div>
+          <div class="rc-excl">par nuit, taxes incluses${hasDatePromo?' (sur certaines dates)':''}</div>
           `}
-          <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})" style="${hasDiscount?'background:#d40000;':hasDatePromo?'background:#ea580c;':''}">Voir dispo</button>
+          <button class="btn-choose" onclick="event.stopPropagation();navigate('detail',{selectedHotelId:${h.id}})" style="${hasDiscount||stayHasPromo?'background:#d40000;':hasDatePromo?'background:#ea580c;':''}">Voir dispo</button>
         </div>
       </div>
     </div>
