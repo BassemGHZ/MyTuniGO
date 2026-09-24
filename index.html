@@ -4983,9 +4983,9 @@ function buildMesAnnonces(){
                 style="background:#f0fdf4;color:#16a34a;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #86efac;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 ▶ ${e.status==='suspendue'?'Republier':'Suspendre'}
               </button>
-              <button onclick="excDelete('${e.id}')"
-                style="background:#fff0f0;color:var(--red);padding:8px 12px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #fca5a5;cursor:pointer;">
-                🗑
+              <button onclick="requestExcursionDeletion('${e.id}')" title="La suppression définitive doit être validée par l'administrateur"
+                style="background:#fff;color:var(--gray-600);padding:8px 12px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">
+                ✉️ Demander la suppression
               </button>
             </div>
           </div>
@@ -5054,7 +5054,7 @@ function buildMesAnnonces(){
               <button onclick="openPromoModal('${a.id}')" style="background:${a.discount>0?'#d40000':'#fff4e0'};color:${a.discount>0?'#fff':'#a05a00'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid ${a.discount>0?'#d40000':'#ffe0a0'};cursor:pointer;">${a.discount>0?'🔥 Promo '+a.discount+'%':'⚡ Promotion flash'}</button>
               ${a.status==='publiée'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#fff8e0;color:#a07000;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffe080;cursor:pointer;">⏸ Suspendre</button>`:''}
               ${a.status==='suspendue'||a.status==='en attente'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #a0e8c8;cursor:pointer;">▶ Republier</button>`:''}
-              <button onclick="deleteAnnonce('${a.id}')" style="background:#fff0f0;color:var(--red);padding:7px 12px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">🗑️</button>
+              <button onclick="requestAnnonceDeletion('${a.id}')" title="La suppression définitive doit être validée par l'administrateur" style="background:#fff;color:var(--gray-600);padding:7px 12px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">✉️ Demander la suppression</button>
             </div>
           </div>
         </div>
@@ -5078,12 +5078,18 @@ async function toggleAnnonceStatus(id){
   navigate('mesannonces');
 }
 
-async function deleteAnnonce(id){
-  if(!confirm('Supprimer définitivement cette annonce ?'))return;
-  const { error } = await _sb.from('annonces').delete().eq('id', id);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-  showToast('Annonce supprimée','var(--red)');
-  navigate('mesannonces');
+// L'hôte ne peut plus supprimer définitivement une annonce lui-même : il peut
+// uniquement en suspendre la diffusion (toggleAnnonceStatus, bouton
+// "Suspendre" ci-dessus), ce qui la rend invisible aux voyageurs sans en
+// perdre l'historique (réservations, avis, statistiques). Pour une
+// suppression définitive, il doit passer par une demande à l'administrateur.
+function requestAnnonceDeletion(id){
+  const a=appState.myAnnonces.find(x=>x.id===id);
+  const name = a ? a.name : 'cette annonce';
+  if(!confirm('Pour supprimer définitivement « '+name+' », votre demande doit être validée par l\'administrateur MyTunigo.\n\nSi l\'annonce est encore active, pensez à la suspendre en attendant (bouton "Suspendre").\n\nOuvrir un e-mail de demande de suppression ?')) return;
+  const subject = encodeURIComponent('Demande de suppression d\'annonce — '+name);
+  const body = encodeURIComponent('Bonjour,\n\nJe souhaite demander la suppression définitive de mon annonce :\n- Nom : '+name+'\n- Référence : '+id+'\n\nMerci de confirmer la suppression.\n\nCordialement.');
+  window.open('mailto:contact@mytunigo.com?subject='+subject+'&body='+body, '_blank');
 }
 
 /* ===================== ANNONCE DETAIL/STATS ===================== */
@@ -6223,23 +6229,17 @@ async function excToggleStatus(id){
   navigate('mesannonces');
 }
 
-async function excDelete(id){
+// Même règle que pour les hébergements : l'hôte/prestataire ne peut plus
+// supprimer une excursion lui-même, seulement en suspendre la diffusion
+// (excToggleStatus, bouton "Suspendre" ci-dessus). La suppression définitive
+// passe par une demande à l'administrateur.
+function requestExcursionDeletion(id){
   const e = (appState.myExcursions||[]).find(x=>x.id===id);
-  if(e && (e.bookingsCount||0) > 0){
-    showToast('⛔ Impossible : cette excursion a des réservations. Suspendez-la plutôt.','var(--red)');
-    return;
-  }
-  if(!confirm('Supprimer cette excursion ? Cette action est définitive.')) return;
-  const { error } = await _sb.from('excursions').delete().eq('id', id);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-  appState.myExcursions = (appState.myExcursions||[]).filter(x=>x.id!==id);
-
-  // Idem : retire immédiatement l'excursion supprimée du tableau public en mémoire.
-  const gIdx = excursions.findIndex(x=>x.excursionId===id);
-  if(gIdx>-1) excursions.splice(gIdx,1);
-
-  showToast('🗑️ Excursion supprimée', 'var(--red)');
-  navigate('mesannonces');
+  const title = e ? e.title : 'cette excursion';
+  if(!confirm('Pour supprimer définitivement « '+title+' », votre demande doit être validée par l\'administrateur MyTunigo.\n\nSi l\'excursion est encore active, pensez à la suspendre en attendant (bouton "Suspendre").\n\nOuvrir un e-mail de demande de suppression ?')) return;
+  const subject = encodeURIComponent('Demande de suppression d\'excursion — '+title);
+  const body = encodeURIComponent('Bonjour,\n\nJe souhaite demander la suppression définitive de mon excursion :\n- Titre : '+title+'\n- Référence : '+id+'\n\nMerci de confirmer la suppression.\n\nCordialement.');
+  window.open('mailto:contact@mytunigo.com?subject='+subject+'&body='+body, '_blank');
 }
 
 function excPromoFlash(id){
