@@ -2885,11 +2885,19 @@ function resetFilters(){
   appState.resultsPage=1;
   appState.filters = {minPrice:0, maxPrice:2000, minRating:0, types:[], amenities:[], promoOnly:false};
   appState.filterExpanded = {types:false, amenities:false, ratings:false};
+  // La zone de recherche (destination tapée dans la barre de recherche,
+  // appState.searchDest) n'était pas réinitialisée ici : quand une recherche
+  // ne donnait aucun résultat, cliquer sur "Réinitialiser" remettait bien les
+  // filtres à zéro mais la destination recherchée restait affichée et
+  // continuait de filtrer les résultats (donc toujours "aucun résultat").
+  appState.searchDest = '';
   // Reset input fields
   const mn = document.getElementById('pr-min');
   const mx = document.getElementById('pr-max');
   if(mn) mn.value = 0;
   if(mx) mx.value = 2000;
+  const destEl = document.getElementById('s-dest');
+  if(destEl) destEl.value = '';
   // Reset price slider thumbs
   setTimeout(priceDrawThumbs, 80);
   navigate('results');
