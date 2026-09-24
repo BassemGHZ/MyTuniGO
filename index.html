@@ -798,10 +798,10 @@ const hotels = [
 // annonces publiées — voir getPopularDestinations()
 
 const reviewsData = [
-  {name:"Sophie M.",country:"France",score:9.2,date:"Mars 2025",text:"Séjour absolument fantastique. L'hôtel est magnifique et le personnel aux petits soins. Je recommande vivement le restaurant gastronomique !"},
-  {name:"James T.",country:"UK",score:8.8,date:"Février 2025",text:"Location parfaite, chambres spacieuses et très propres. Le petit-déjeuner est copieux. Reviendrons sans hésiter !"},
-  {name:"Hiroshi K.",country:"Japon",score:9.5,date:"Janvier 2025",text:"Outstanding hotel with exceptional service. The view from our room was breathtaking. The spa treatments were world-class."},
-  {name:"Elena R.",country:"Espagne",score:9.0,date:"Décembre 2024",text:"Un hôtel de rêve ! La décoration est sublime et le spa merveilleux. Le personnel est toujours disponible. Un vrai coup de cœur."},
+  {name:"Sophie M.",country:"France",score:4.6,date:"Mars 2025",text:"Séjour absolument fantastique. L'hôtel est magnifique et le personnel aux petits soins. Je recommande vivement le restaurant gastronomique !"},
+  {name:"James T.",country:"UK",score:4.4,date:"Février 2025",text:"Location parfaite, chambres spacieuses et très propres. Le petit-déjeuner est copieux. Reviendrons sans hésiter !"},
+  {name:"Hiroshi K.",country:"Japon",score:4.8,date:"Janvier 2025",text:"Outstanding hotel with exceptional service. The view from our room was breathtaking. The spa treatments were world-class."},
+  {name:"Elena R.",country:"Espagne",score:4.5,date:"Décembre 2024",text:"Un hôtel de rêve ! La décoration est sublime et le spa merveilleux. Le personnel est toujours disponible. Un vrai coup de cœur."},
 ];
 
 const TYPES_ANN = [{id:'hotel',icon:'🏨',name:'Hôtel'},{id:'apt',icon:'🏢',name:'Appartement'},{id:'house',icon:'🏡',name:'Maison'},{id:'studio',icon:'🛋️',name:'Studio'},{id:'chalet',icon:'🏔️',name:'Chalet'}];
@@ -5483,89 +5483,89 @@ const excursions = [
   {id:'EX001', title:'Visite privée du Louvre au lever du soleil', city:'Paris', country:'France',
    category:'culture', categoryLabel:'Culture & Patrimoine', emoji:'🏛️',
    duration:'3h', durationMin:180, groupSize:8, minAge:6,
-   price:89, priceType:'personne', rating:9.6, reviews:312,
+   price:89, priceType:'personne', rating:4.8, reviews:312,
    language:['FR','EN'], difficulty:'facile',
    includes:['guide','billet','photos'],
    description:'Découvrez le Louvre avant l\'ouverture au public. Votre guide expert vous mènera à travers les salles mythiques sans la foule. Une expérience unique face à la Joconde, la Vénus de Milo et la Victoire de Samothrace.',
    highlights:['Accès avant ouverture','Groupe max 8 pers.','Guide certifié','Petit-déjeuner croissant'],
-   host:'Sophie Martin', hostAvatar:'SM', hostRating:9.8, hostTrips:245,
+   host:'Sophie Martin', hostAvatar:'SM', hostRating:4.9, hostTrips:245,
    available:true, freeCancellation:true, instantBook:true, featured:true},
 
   {id:'EX002', title:'Surf & Yoga — Retraite côtière à Biarritz', city:'Biarritz', country:'France',
    category:'sport', categoryLabel:'Sport & Aventure', emoji:'🏄',
    duration:'1 jour', durationMin:480, groupSize:12, minAge:16,
-   price:145, priceType:'personne', rating:9.4, reviews:187,
+   price:145, priceType:'personne', rating:4.7, reviews:187,
    language:['FR','EN','ES'], difficulty:'intermédiaire',
    includes:['guide','equipement','repas'],
    description:'Une journée complète entre vagues et sérénité. Session surf le matin avec moniteur certifié, déjeuner healthy face à l\'océan, et cours de yoga au coucher du soleil sur la plage. Idéal débutants.',
    highlights:['Cours surf 3h','Déjeuner bio inclus','Yoga coucher soleil','Matériel complet fourni'],
-   host:'Carlos Vidal', hostAvatar:'CV', hostRating:9.5, hostTrips:118,
+   host:'Carlos Vidal', hostAvatar:'CV', hostRating:4.8, hostTrips:118,
    available:true, freeCancellation:true, instantBook:false, featured:true},
 
   {id:'EX003', title:'Marché & Atelier cuisine marocaine à Marrakech', city:'Marrakech', country:'Maroc',
    category:'gastro', categoryLabel:'Gastronomie', emoji:'🍽️',
    duration:'4h', durationMin:240, groupSize:6, minAge:8,
-   price:65, priceType:'personne', rating:9.8, reviews:523,
+   price:65, priceType:'personne', rating:4.9, reviews:523,
    language:['FR','AR','EN'], difficulty:'facile',
    includes:['guide','repas','degust'],
    description:'Plongée dans les saveurs de la médina. Visite du souk des épices avec un chef local, sélection des ingrédients frais, puis atelier culinaire dans un riad traditionnel. Tagine, couscous et pastilla n\'auront plus de secrets pour vous.',
    highlights:['Visite souk épices','Cours cuisine dans riad','Déjeuner que vous préparez','Recettes à emporter'],
-   host:'Fatima Benali', hostAvatar:'FB', hostRating:9.9, hostTrips:402,
+   host:'Fatima Benali', hostAvatar:'FB', hostRating:5.0, hostTrips:402,
    available:true, freeCancellation:false, instantBook:true, featured:true},
 
   {id:'EX004', title:'Trek volcanique au lever du soleil — Santorin', city:'Santorin', country:'Grèce',
    category:'nature', categoryLabel:'Nature & Randonnée', emoji:'🌋',
    duration:'5h', durationMin:300, groupSize:10, minAge:14,
-   price:78, priceType:'personne', rating:9.2, reviews:89,
+   price:78, priceType:'personne', rating:4.6, reviews:89,
    language:['FR','EN','GR'], difficulty:'difficile',
    includes:['guide','transport','equipement'],
    description:'Randonnée sur la caldeira volcanique de Santorin au lever du soleil. Départ en bateau à 5h du matin, ascension du volcan Nea Kameni, bains dans les sources chaudes naturelles, retour avec vue panoramique sur Oia.',
    highlights:['Départ bateau à l\'aube','Ascension volcan actif','Sources chaudes naturelles','Photos Oia spectaculaires'],
-   host:'Nikos Papadopoulos', hostAvatar:'NP', hostRating:9.3, hostTrips:67,
+   host:'Nikos Papadopoulos', hostAvatar:'NP', hostRating:4.7, hostTrips:67,
    available:true, freeCancellation:true, instantBook:false, featured:false},
 
   {id:'EX005', title:'Cérémonie du thé & Calligraphie — Kyoto', city:'Kyoto', country:'Japon',
    category:'culture', categoryLabel:'Culture & Patrimoine', emoji:'🍵',
    duration:'2h30', durationMin:150, groupSize:4, minAge:12,
-   price:120, priceType:'personne', rating:9.9, reviews:156,
+   price:120, priceType:'personne', rating:5.0, reviews:156,
    language:['FR','EN','JP'], difficulty:'facile',
    includes:['guide','repas','photos'],
    description:'Initiez-vous aux arts traditionnels japonais dans une maison de thé du XVIIe siècle. Maître de cérémonie du thé en kimono, atelier calligraphie sumi-e, méditation zen dans un jardin karesansui. Une parenthèse de sérénité absolue.',
    highlights:['Maison de thé historique','Kimono fourni','Atelier calligraphie','Jardin zen privé'],
-   host:'Yuki Tanaka', hostAvatar:'YT', hostRating:9.9, hostTrips:312,
+   host:'Yuki Tanaka', hostAvatar:'YT', hostRating:5.0, hostTrips:312,
    available:true, freeCancellation:true, instantBook:true, featured:true},
 
   {id:'EX006', title:'Safari nocturne — Parc du Niokolo-Koba', city:'Dakar', country:'Sénégal',
    category:'nature', categoryLabel:'Nature & Randonnée', emoji:'🦁',
    duration:'2 jours', durationMin:1440, groupSize:8, minAge:10,
-   price:195, priceType:'personne', rating:9.1, reviews:43,
+   price:195, priceType:'personne', rating:4.5, reviews:43,
    language:['FR','EN','WO'], difficulty:'intermédiaire',
    includes:['guide','transport','repas','assurance'],
    description:'Partez à la découverte de la faune sauvage sénégalaise dans le plus grand parc national d\'Afrique de l\'Ouest. Nuit sous les étoiles en camp écologique, observations à l\'aube des lions, éléphants et hippopotames.',
    highlights:['Safari 4x4 jour et nuit','Camp éco sous les étoiles','Guide naturaliste','Observation faune sauvage'],
-   host:'Ibrahima Diallo', hostAvatar:'ID', hostRating:9.2, hostTrips:89,
+   host:'Ibrahima Diallo', hostAvatar:'ID', hostRating:4.6, hostTrips:89,
    available:true, freeCancellation:true, instantBook:false, featured:false},
 
   {id:'EX007', title:'Bain flottant & Massage Hammam — Istanbul', city:'Istanbul', country:'Turquie',
    category:'bienetre', categoryLabel:'Bien-être & Spa', emoji:'💆',
    duration:'3h', durationMin:180, groupSize:2, minAge:18,
-   price:95, priceType:'personne', rating:9.5, reviews:201,
+   price:95, priceType:'personne', rating:4.8, reviews:201,
    language:['FR','EN','TR'], difficulty:'facile',
    includes:['equipement','degust'],
    description:'Rituels de bien-être dans un hammam ottoman du XVIe siècle classé UNESCO. Gommage traditionnel au kese, massage à l\'huile d\'argan, bain flottant dans les bassins historiques, thé ottoman à la sortie.',
    highlights:['Hammam classé UNESCO','Gommage traditionnel','Massage argan 60min','Thé ottoman offert'],
-   host:'Ayşe Kaya', hostAvatar:'AK', hostRating:9.6, hostTrips:178,
+   host:'Ayşe Kaya', hostAvatar:'AK', hostRating:4.8, hostTrips:178,
    available:true, freeCancellation:true, instantBook:true, featured:false},
 
   {id:'EX008', title:'Soirée flamenco & tapas dans les caves de Grenade', city:'Grenade', country:'Espagne',
    category:'nightlife', categoryLabel:'Sorties & Soirées', emoji:'💃',
    duration:'3h30', durationMin:210, groupSize:15, minAge:16,
-   price:72, priceType:'personne', rating:9.3, reviews:378,
+   price:72, priceType:'personne', rating:4.7, reviews:378,
    language:['FR','EN','ES'], difficulty:'facile',
    includes:['guide','repas','billet'],
    description:'Vivez le flamenco authentique dans les caves troglodytes gitanes du Sacromonte. Spectacle privé avec danseurs et musiciens professionnels, dégustation de tapas andalouses et vins locaux, visite des caves historiques.',
    highlights:['Show flamenco privé','Caves troglodytes gitanes','Tapas & vins inclus','Ambiance authentique'],
-   host:'Maria Rodriguez', hostAvatar:'MR', hostRating:9.4, hostTrips:523,
+   host:'Maria Rodriguez', hostAvatar:'MR', hostRating:4.7, hostTrips:523,
    available:true, freeCancellation:false, instantBook:true, featured:true},
 ];
 
@@ -5838,7 +5838,7 @@ function buildExcursionDetail(){
             <div style="flex:1;">
               <div style="font-size:16px;font-weight:700;margin-bottom:3px;">${e.host}</div>
               <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--gray-500);">
-                ${e.hostRating!=null?`<span>⭐ ${e.hostRating}/10</span>`:`<span>🆕 Nouveau prestataire</span>`}
+                ${e.hostRating!=null?`<span>⭐ ${e.hostRating}/5</span>`:`<span>🆕 Nouveau prestataire</span>`}
                 ${e.hostTrips!=null?`<span>🗺️ ${e.hostTrips} excursions</span>`:''}
                 <span>✅ Guide vérifié</span>
               </div>
@@ -8125,7 +8125,7 @@ function buildHostProfile(){
                 <div style="font-size:14px;font-weight:700;margin-bottom:3px;">${h.name}</div>
                 <div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;">📍 ${h.city}</div>
                 <div style="display:flex;align-items:center;justify-content:space-between;">
-                  <span style="font-size:13px;color:var(--yellow-d);">${'★'.repeat(Math.round(h.rating/2))}</span>
+                  <span style="font-size:13px;color:var(--yellow-d);">${'★'.repeat(Math.round(h.rating))}</span>
                   <span style="font-size:14px;font-weight:800;">${h.price}€<span style="font-size:12px;font-weight:400;color:var(--gray-500);">/nuit</span></span>
                 </div>
               </div>
