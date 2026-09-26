@@ -9248,29 +9248,39 @@ function buildHostCalendar(){
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('mesannonces')">Mes annonces</span><span class="bc-sep">›</span><span>Calendrier</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">📅 Calendrier de disponibilité</h1>
-    <p style="font-size:15px;color:var(--gray-500);margin-bottom:16px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':'Sélectionnez une ou plusieurs dates, puis appliquez une réduction précise.'}</p>
+    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':'Sélectionnez une ou plusieurs dates, puis appliquez une réduction précise.'}</p>
 
-    <!-- Sélecteur de mode -->
-    <div style="display:flex;gap:8px;margin-bottom:20px;">
-      <button onclick="setCalMode('block')" style="flex:1;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid ${_calMode==='block'?'var(--blue)':'var(--gray-300)'};background:${_calMode==='block'?'var(--blue)':'#fff'};color:${_calMode==='block'?'#fff':'var(--gray-700)'};">🔒 Bloquer / débloquer</button>
-      <button onclick="setCalMode('promo')" style="flex:1;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid ${_calMode==='promo'?'#ea580c':'var(--gray-300)'};background:${_calMode==='promo'?'#ea580c':'#fff'};color:${_calMode==='promo'?'#fff':'var(--gray-700)'};">🏷️ Promotion par date</button>
+    <!-- Sélecteur de mode : segmented control (pastille active sur fond neutre) -->
+    <div style="display:inline-flex;gap:4px;padding:4px;background:var(--gray-100);border-radius:999px;margin-bottom:22px;">
+      <button onclick="setCalMode('block')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='block'?'#fff':'transparent'};color:${_calMode==='block'?'var(--blue)':'var(--gray-500)'};box-shadow:${_calMode==='block'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
+        <span style="font-size:16px;">🔒</span> Bloquer / débloquer
+      </button>
+      <button onclick="setCalMode('promo')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='promo'?'#fff':'transparent'};color:${_calMode==='promo'?'#ea580c':'var(--gray-500)'};box-shadow:${_calMode==='promo'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
+        <span style="font-size:16px;">🏷️</span> Promotion par date
+      </button>
     </div>
 
     ${_calMode==='promo' ? `
-    <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:16px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:160px;">
-        <span id="promo-selection-bar" style="font-size:14px;font-weight:700;color:var(--gray-800);">${_calPromoSelection.size} date(s) sélectionnée(s)</span>
-        <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez une date de <strong>début</strong>, puis une date de <strong>fin</strong> pour sélectionner toute la période (ou une seule date pour la cibler seule).</div>
+    <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏷️</div>
+        <div style="flex:1;min-width:160px;">
+          <div id="promo-selection-bar" style="font-size:14px;font-weight:800;color:var(--gray-800);">${_calPromoSelection.size>0 ? _calPromoSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée'}</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez une date de <strong>début</strong>, puis une date de <strong>fin</strong> pour toute la période (ou une seule date pour la cibler).</div>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="number" id="promo-date-pct" min="1" max="90" value="30" style="width:70px;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;text-align:center;">
-        <span style="font-size:14px;font-weight:700;color:var(--gray-600);">%</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px dashed #f0c080;">
+        <label for="promo-date-pct" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-600);">Réduction</label>
+        <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--gray-300);border-radius:var(--r-md);padding:6px 6px 6px 12px;">
+          <input type="number" id="promo-date-pct" min="1" max="90" value="30" style="width:44px;border:none;outline:none;font-size:15px;font-weight:800;text-align:center;color:var(--gray-900);">
+          <span style="font-size:14px;font-weight:700;color:var(--gray-500);padding-right:4px;">%</span>
+        </div>
+        <button id="promo-apply-btn" onclick="applyDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:#ea580c;color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:${_calPromoSelection.size===0?'not-allowed':'pointer'};opacity:${_calPromoSelection.size===0?'.5':'1'};">✓ Appliquer</button>
+        <button id="promo-cancel-btn" onclick="cancelPromoSelection()" style="background:#fff;color:var(--gray-600);padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:${_calPromoSelection.size===0?'not-allowed':'pointer'};opacity:${_calPromoSelection.size===0?'.5':'1'};">✕ Annuler la sélection</button>
       </div>
-      <button id="promo-apply-btn" onclick="applyDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:#ea580c;color:#fff;padding:10px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;opacity:${_calPromoSelection.size===0?'.5':'1'};">Appliquer</button>
-      <button onclick="cancelPromoSelection()" style="background:#fff;color:var(--gray-600);padding:10px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">Annuler la sélection</button>
     </div>
-    <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);">
-      💡 Astuce : entrez <strong>0%</strong> puis "Appliquer" sur des dates déjà en promo pour retirer leur réduction.
+    <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:15px;flex-shrink:0;">💡</span><span>Entrez <strong>0%</strong> puis « Appliquer » sur des dates déjà en promo pour retirer leur réduction.</span>
     </div>
     ` : ''}
 
@@ -9489,11 +9499,17 @@ function refreshHostCalendarLight(){
   renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
   updateCalStats(cal, daysInMonth);
   const bar = document.getElementById('promo-selection-bar');
-  if(bar) bar.textContent = _calPromoSelection.size+' date(s) sélectionnée(s)';
+  if(bar) bar.textContent = _calPromoSelection.size>0 ? _calPromoSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée';
   const applyBtn = document.getElementById('promo-apply-btn');
   if(applyBtn){
     applyBtn.disabled = _calPromoSelection.size===0;
     applyBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
+    applyBtn.style.cursor = _calPromoSelection.size===0 ? 'not-allowed' : 'pointer';
+  }
+  const cancelBtn = document.getElementById('promo-cancel-btn');
+  if(cancelBtn){
+    cancelBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
+    cancelBtn.style.cursor = _calPromoSelection.size===0 ? 'not-allowed' : 'pointer';
   }
 }
 
