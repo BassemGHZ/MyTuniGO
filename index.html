@@ -7149,7 +7149,8 @@ async function loadAnnonceEditOwner(container, id){
   if(container){
     const fresh = buildAnnonceEditFormOwner();
     if(container.parentNode){ container.replaceWith(fresh); }
-    setTimeout(initAnnEditMap, 200);
+    // Plus de carte interactive ici : la position GPS est verrouillée (voir
+    // buildAnnonceEditFormOwnerInner), initAnnEditMap n'est donc plus appelée.
   } else {
     navigate('annonce-edit-owner');
   }
@@ -7208,6 +7209,18 @@ function buildAnnonceEditFormOwnerInner(){
       <input type="${type||'text'}" value="${(ed[key]??'').toString().replace(/"/g,'&quot;')}" oninput="aeSet('${key}', this.${type==='number'?'valueAsNumber||0':'value'})"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;box-sizing:border-box;">
     </div>`;
+  // Champs "identité du bien" verrouillés : une fois l'annonce créée, l'hôte
+  // ne peut plus changer ces informations (nom, type, ville, pays, adresse,
+  // code postal, position GPS) — c'est le vecteur de fraude le plus direct
+  // (afficher un bien puis, une fois les avis obtenus, en changer discrètement
+  // la localisation ou la nature). Un changement légitime passe désormais par
+  // une demande à l'administrateur. Verrouillé aussi côté base de données
+  // (voir lock_annonce_identity_fields.sql) — ce n'est pas qu'un habillage.
+  const lockedField = (label, value) => `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label} <span style="color:var(--gray-400);font-weight:600;text-transform:none;">🔒 verrouillé</span></label>
+      <div style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:var(--r-md);font-size:14px;background:var(--gray-50);color:var(--gray-600);box-sizing:border-box;">${(value===undefined||value===null||value==='')?'—':value}</div>
+    </div>`;
   const area = (label, key, rows) => `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label}</label>
@@ -7218,33 +7231,23 @@ function buildAnnonceEditFormOwnerInner(){
     <!-- Infos générales -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📋 Informations générales</div>
-      ${field("Nom de l'hébergement",'name')}
-      <div style="margin-bottom:14px;">
-        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Type</label>
-        <select onchange="aeSet('type', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-          ${TYPES_ANN.map(t=>`<option value="${t.id}" ${ed.type===t.id?'selected':''}>${t.icon} ${t.name}</option>`).join('')}
-        </select>
+      <div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 14px;font-size:13px;color:#856404;margin-bottom:16px;">
+        🔒 Le nom, le type, la ville, le pays, l'adresse, le code postal et la position GPS ne sont plus modifiables une fois l'annonce créée, pour éviter qu'un bien déjà en ligne (avec avis) change discrètement de nature ou de localisation. Besoin de corriger une erreur ? <a href="mailto:contact@mytunigo.com?subject=${encodeURIComponent('Correction d\'identité — annonce '+(ed.id||''))}" style="color:#003580;font-weight:700;">Contactez l'administrateur</a>.
       </div>
+      ${lockedField("Nom de l'hébergement", ed.name)}
+      ${lockedField('Type', (TYPES_ANN.find(t=>t.id===ed.type)||{}).name || ed.type)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        ${field('Ville','city')}
-        ${field('Pays','country')}
-        ${field('Adresse','address')}
-        ${field('Code postal','zip')}
+        ${lockedField('Ville', ed.city)}
+        ${lockedField('Pays', ed.country)}
+        ${lockedField('Adresse', ed.address)}
+        ${lockedField('Code postal', ed.zip)}
         ${field('Surface (m²)','size','number')}
         ${field('Étoiles','stars','number')}
         ${field('Chambres','rooms','number')}
         ${field('Salles de bain','bathrooms','number')}
         ${field('Capacité (voyageurs)','capacity','number')}
       </div>
-      <div style="margin-top:8px;margin-bottom:10px;">
-        <button type="button" onclick="geocodeEditAddress()" style="background:var(--blue);color:#fff;padding:9px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">🔍 Localiser sur la carte</button>
-        <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">La carte se centre sur l'adresse ci-dessus</span>
-      </div>
-      <div style="font-size:13px;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-weight:600;">
-        🗺️ <span>Position GPS — <strong>cliquez sur la carte ou déplacez le marqueur</strong></span>
-      </div>
-      <div id="ann-edit-map" style="height:360px;border-radius:var(--r-lg);border:1.5px solid var(--gray-300);overflow:hidden;z-index:1;"></div>
-      <div id="ann-edit-map-coords" style="font-size:12px;color:${ed.lat&&ed.lng?'var(--green)':'var(--red)'};margin-top:6px;text-align:right;font-weight:600;">${ed.lat&&ed.lng?'✅ Coordonnées : '+parseFloat(ed.lat).toFixed(6)+', '+parseFloat(ed.lng).toFixed(6):'⚠️ Aucun point positionné — cliquez sur la carte'}</div>
+      ${lockedField('Position GPS', (ed.lat&&ed.lng) ? (parseFloat(ed.lat).toFixed(6)+', '+parseFloat(ed.lng).toFixed(6)) : '—')}
     </div>
 
     <!-- Description -->
@@ -7420,13 +7423,14 @@ async function saveAnnonceEditOwner(){
     finalPhotos = [...finalPhotos, ...newUrls];
   }
 
+  // Nom, type, ville, pays, adresse, code postal et position GPS ne sont
+  // plus jamais envoyés ici : ces champs sont verrouillés côté hôte (voir la
+  // note dans buildAnnonceEditFormOwnerInner) et protégés en base de données
+  // par un trigger (lock_annonce_identity_fields.sql) — les retirer d'ici est
+  // une seconde barrière, pas la seule.
   const updates = {
-    name: ed.name, type: ed.type,
-    type_label: (TYPES_ANN.find(t=>t.id===ed.type)||{}).name || '',
     stars: ed.stars||3, description: ed.description||'', access: ed.access||'',
     rooms: ed.rooms||1, bathrooms: ed.bathrooms||1, capacity: ed.capacity||2, size: ed.size||null,
-    address: ed.address||'', city: normalizeCityName(ed.city)||'', country: ed.country||'Tunisie', zip: ed.zip||'',
-    lat: ed.lat||null, lng: ed.lng||null,
     photos: finalPhotos,
     cancellation: ed.cancellation||'flexible',
     checkin: ed.checkin||'15:00', checkout: ed.checkout||'11:00',
