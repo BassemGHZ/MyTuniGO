@@ -5128,7 +5128,9 @@ async function sendDeletionRequestEmail(itemType, itemName, itemId){
       },
       body: JSON.stringify({
         type: 'deletion_request',
-        recipient_email: 'contact@mytunigo.com',
+        // admin@mytunigo.com : même adresse que celle déjà utilisée par
+        // notify-admin pour les validations d'annonces (ADMIN_EMAIL).
+        recipient_email: 'admin@mytunigo.com',
         host_name: ((auth.currentUser.firstName||'')+' '+(auth.currentUser.lastName||'')).trim()||'Un hôte',
         host_email: auth.currentUser.email||'',
         item_type: itemType,
