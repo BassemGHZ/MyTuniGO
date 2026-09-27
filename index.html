@@ -2044,7 +2044,7 @@ function buildHome(){
       <h1>La Tunisie, comme<br>vous ne l'avez jamais vue.</h1>
       <p>Villas, riads, excursions et expériences authentiques — réservez directement auprès d'hôtes tunisiens, sans intermédiaire.</p>
       <div class="search-box">
-        <div class="s-field" style="flex:2"><label>🔍 Destination</label><input type="text" id="s-dest" placeholder="Où allez-vous ?" value="${appState.searchDest}"></div>
+        <div class="s-field" style="flex:2;position:relative;" id="s-dest-field"><label>🔍 Destination</label><input type="text" id="s-dest" autocomplete="off" placeholder="Où allez-vous ?" value="${appState.searchDest}" oninput="updateDestSuggestions(this.value)" onfocus="updateDestSuggestions(this.value)"></div>
         <div class="s-field" style="position:relative;flex:1.6;" id="s-dates-field">
           <label>📅 Dates</label>
           <div id="s-dates-display" onclick="toggleHeroCalendar()" style="cursor:pointer;font-size:14px;font-weight:500;color:${appState.searchCheckIn?'var(--gray-900)':'var(--gray-400)'};padding:2px 0;">
@@ -2275,6 +2275,69 @@ function doSearch(){
 
 function searchByDest(dest){appState.searchDest=dest;appState.resultsPage=1;navigate('results');}
 
+/* ===================== AUTOCOMPLÉTION DESTINATION (hero) =====================
+   Suggestions à la frappe dans le champ "Destination" : gouvernorats,
+   villes/localités (table TUNISIA_ADDRESS) et noms des biens publiés. */
+function getDestSuggestionPool(){
+  const items = [];
+  const seen = new Set();
+  const add = (label, type) => {
+    if(!label) return;
+    const key = type+'|'+label.toLowerCase();
+    if(seen.has(key)) return;
+    seen.add(key);
+    items.push({label, type});
+  };
+  Object.keys(TUNISIA_ADDRESS).forEach(gov => add(gov, 'gouvernorat'));
+  Object.values(TUNISIA_ADDRESS).forEach(list => list.forEach(c => add(c.city, 'ville')));
+  hotels.forEach(h => { if(h.country==='Tunisie') add(h.name, 'bien'); });
+  return items;
+}
+
+function updateDestSuggestions(query){
+  const field = document.getElementById('s-dest-field');
+  if(!field) return;
+  let dd = document.getElementById('dest-suggest-dropdown');
+  if(!dd){
+    // Attaché au <body> (position:fixed) pour ne pas être rogné par
+    // l'"overflow:hidden" de la section héro — même technique que le
+    // calendrier de recherche (toggleHeroCalendar).
+    dd = document.createElement('div');
+    dd.id = 'dest-suggest-dropdown';
+    dd.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.25);max-height:320px;overflow-y:auto;';
+    document.body.appendChild(dd);
+    document.addEventListener('click', (e)=>{
+      if(e.target.id==='s-dest') return;
+      if(!dd.contains(e.target)) dd.style.display='none';
+    });
+    window.addEventListener('resize', ()=>{ dd.style.display='none'; });
+  }
+  const q = (query||'').trim().toLowerCase();
+  if(!q){ dd.style.display='none'; return; }
+  const icons = {gouvernorat:'📍', ville:'🏙️', bien:'🏠'};
+  const typeLabel = {gouvernorat:'Gouvernorat', ville:'Ville', bien:'Bien'};
+  const matches = getDestSuggestionPool().filter(it=>it.label.toLowerCase().includes(q)).slice(0,8);
+  if(matches.length===0){ dd.style.display='none'; return; }
+  dd.innerHTML = matches.map((it,i)=>
+    `<div onclick="pickDestSuggestion('${it.label.replace(/'/g,"\\'")}')" style="padding:10px 14px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px;${i<matches.length-1?'border-bottom:1px solid var(--gray-100);':''}" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">
+      <span>${icons[it.type]}</span><span style="flex:1;color:var(--gray-900);">${it.label}</span><span style="font-size:11px;color:var(--gray-400);">${typeLabel[it.type]}</span>
+    </div>`
+  ).join('');
+  const rect = field.getBoundingClientRect();
+  dd.style.top = (rect.bottom + 4) + 'px';
+  dd.style.left = rect.left + 'px';
+  dd.style.width = rect.width + 'px';
+  dd.style.display = 'block';
+}
+
+function pickDestSuggestion(label){
+  const input = document.getElementById('s-dest');
+  if(input) input.value = label;
+  appState.searchDest = label;
+  const dd = document.getElementById('dest-suggest-dropdown');
+  if(dd) dd.style.display = 'none';
+}
+
 /* ===================== RESULTS ===================== */
 function haversineKm(lat1, lng1, lat2, lng2){
   const R = 6371;
@@ -2374,7 +2437,14 @@ function getFiltered(){
     if(nf.loading) return exact;
     const exactIds = new Set(exact.map(h=>h.id));
     const nearby = (nf.results||[]).filter(h=>!exactIds.has(h.id)).map(h=>Object.assign({}, h, {_nearby:true}));
-    return exact.concat(nearby);
+    const combined = exact.concat(nearby);
+    // Toujours zéro résultat, même dans un rayon de 50 km : plutôt qu'une page
+    // vide, on retombe sur l'ensemble du catalogue Tunisie (bandeau explicite
+    // affiché sur la page résultats).
+    if(combined.length===0){
+      return getFilteredBase(true).map(h=>Object.assign({}, h, {_allFallback:true}));
+    }
+    return combined;
   }
   // Déclenche le chargement du repli 50km (résultat asynchrone, redessine ensuite)
   loadNearbyFallback(appState.searchDest);
@@ -2734,7 +2804,7 @@ function buildResults(){
     </aside>
     <div>
       <div class="results-head">
-        <div class="results-count">${filtered.length} hébergement${filtered.length!==1?'s':''} ${appState.searchDest?`à <strong>${appState.searchDest}</strong>`:''}</div>
+        <div class="results-count">${filtered.length} hébergement${filtered.length!==1?'s':''} ${(appState.searchDest && !filtered.some(h=>h._allFallback))?`à <strong>${appState.searchDest}</strong>`:''}</div>
         <select class="sort-sel" onchange="updateSort(this.value)">
           <option value="recommended" ${appState.sort==='recommended'?'selected':''}>Recommandés</option>
           <option value="price_asc" ${appState.sort==='price_asc'?'selected':''}>Prix le plus bas</option>
@@ -2742,8 +2812,16 @@ function buildResults(){
         </select>
       </div>
       ${(()=>{
+        if(!filtered.some(h=>h._allFallback)) return '';
+        return `<div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+          <span style="font-size:22px;">🔍</span>
+          <div style="font-size:14px;color:#4b5563;"><strong>Aucun hébergement trouvé pour "${appState.searchDest}"</strong>, même à proximité — voici tous nos hébergements disponibles en Tunisie.</div>
+        </div>`;
+      })()}
+      ${(()=>{
         const nf = appState._nearbyFallback;
         if(!nf || nf.query!==appState.searchDest || nf.loading) return '';
+        if(filtered.some(h=>h._allFallback)) return '';
         const nearbyCount = filtered.filter(h=>h._nearby).length;
         if(nearbyCount===0) return '';
         const exactCount = filtered.length - nearbyCount;
