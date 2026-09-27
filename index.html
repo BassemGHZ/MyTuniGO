@@ -5064,6 +5064,7 @@ function buildMesAnnonces(){
               <button onclick="loadAnnonceEditOwner(null,'${a.id}')" style="background:#eef2f7;color:#003580;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #b3c9e0;cursor:pointer;">✏️ Modifier l'annonce</button>
               <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">📊 Statistiques</button>
               <button onclick="navigate('host-calendar',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📅 Gestion du calendrier</button>
+              <button onclick="appState.bookingRequestsAnnonceId='${a.id}';appState.bookingRequestsFilter='all';navigate('booking-requests')" style="background:#fff4e0;color:#a05a00;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #ffe0a0;cursor:pointer;">📨 Réservations</button>
               ${a.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${a.hotelId}})" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #6bcf9e;cursor:pointer;">👁️ Voir l'annonce</button>`:''}
               <button onclick="openPromoModal('${a.id}')" style="background:${a.discount>0?'#d40000':'#fff4e0'};color:${a.discount>0?'#fff':'#a05a00'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid ${a.discount>0?'#d40000':'#ffe0a0'};cursor:pointer;">${a.discount>0?'🔥 Promo '+a.discount+'%':'⚡ Promotion flash'}</button>
               ${a.status==='publiée'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#fff8e0;color:#a07000;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffe080;cursor:pointer;">⏸ Suspendre</button>`:''}
@@ -8649,7 +8650,15 @@ async function loadBookingRequests(container){
   });
 
   const pendingCount = all.filter(r=>r.status==='en attente').length;
-  const list = all.filter(r=>filter==='all' || r.status===statusMap[filter]);
+  // Filtre optionnel par annonce, utilisé quand on arrive ici depuis le bouton
+  // "📨 Réservations" d'une annonce précise dans "Mes annonces" — permet à
+  // l'hôte d'accéder directement aux réservations d'un bien donné, sans avoir
+  // à les repérer au milieu de toutes ses annonces.
+  const annonceFilterId = appState.bookingRequestsAnnonceId || null;
+  const annonceFilterName = annonceFilterId ? (annMap[annonceFilterId]?.name || 'cette annonce') : null;
+  const list = all
+    .filter(r=>filter==='all' || r.status===statusMap[filter])
+    .filter(r=>!annonceFilterId || r.annonceId===annonceFilterId);
 
   const statusColor={'en attente':'#e6a800',confirmée:'var(--green)',refusée:'var(--red)',terminée:'#6c757d',annulée:'#cc0000'};
   const statusBg={'en attente':'#fff8e0',confirmée:'#e8f9f0',refusée:'#fff0f0',terminée:'#f1f3f5',annulée:'#fff0f0'};
@@ -8660,9 +8669,10 @@ async function loadBookingRequests(container){
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:28px;">
       <div>
-        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📨 Demandes de réservation</h1>
+        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📨 ${annonceFilterId ? 'Réservations — '+annonceFilterName : 'Demandes de réservation'}</h1>
         <p style="font-size:15px;color:var(--gray-500);">${all.length} demande${all.length>1?'s':''}${pendingCount>0?' · <strong style="color:#e6a800">'+pendingCount+' en attente</strong>':''}</p>
       </div>
+      ${annonceFilterId ? `<button onclick="appState.bookingRequestsAnnonceId=null;navigate('booking-requests')" style="background:var(--gray-50);color:var(--gray-700);padding:9px 16px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1.5px solid var(--gray-200);cursor:pointer;">Voir toutes mes annonces</button>` : ''}
     </div>
 
     <!-- Tabs -->
