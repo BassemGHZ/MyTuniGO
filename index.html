@@ -960,7 +960,7 @@ let appState = {
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
   annoncePage:0,
-  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
+  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',cityCustom:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
   annoncePublished:false,
   favorites:[],
   reservations:[
@@ -973,7 +973,7 @@ let appState = {
   excursionFilter:'toutes',
   selectedExcursionId:null,
   excursionFormPage:0,
-  excursionFormData:{title:'',category:'',duration:'',maxParticipants:10,price:0,priceType:'personne',description:'',highlights:['','','',''],included:'',notIncluded:'',meetingPoint:'',meetingTime:'',meetingTimeEnd:'',whatToBring:'',schedule:'',photos:[],availability:[],address:'',governorate:'',city:'',zip:'',country:'Tunisie',difficulty:'facile',minAge:0,languages:['Français']},
+  excursionFormData:{title:'',category:'',duration:'',maxParticipants:10,price:0,priceType:'personne',description:'',highlights:['','','',''],included:'',notIncluded:'',meetingPoint:'',meetingTime:'',meetingTimeEnd:'',whatToBring:'',schedule:'',photos:[],availability:[],address:'',governorate:'',city:'',cityCustom:'',zip:'',country:'Tunisie',difficulty:'facile',minAge:0,languages:['Français']},
   excursionFormPublished:false,
   excursionBookings:[],
   myExcursionBookings:[],
@@ -3851,7 +3851,7 @@ function annStep4(ad){
   <div class="sum-grid">
     <div class="sum-item"><div class="sl">Type</div><div class="sv">${typeObj?typeObj.icon+' '+typeObj.name:'—'}</div></div>
     <div class="sum-item"><div class="sl">Nom</div><div class="sv">${ad.name||'—'}</div></div>
-    <div class="sum-item"><div class="sl">Ville</div><div class="sv">${ad.city||'—'}, ${ad.country}</div></div>
+    <div class="sum-item"><div class="sl">Ville</div><div class="sv">${resolveCityName(ad)||'—'}, ${ad.country}</div></div>
     <div class="sum-item"><div class="sl">Capacité</div><div class="sv">${ad.capacity} voyageurs · ${ad.rooms} ch.</div></div>
     <div class="sum-item"><div class="sl">Catégorie</div><div class="sv">${'★'.repeat(ad.stars)}</div></div>
     <div class="sum-item"><div class="sl">Annulation</div><div class="sv" style="text-transform:capitalize">${ad.cancellation}</div></div>
@@ -3941,6 +3941,11 @@ function _addrCtx(prefix){
 
 function addrSetField(prefix, key, val){ _addrCtx(prefix).set(key, val); }
 
+// Ville réellement utilisable (nom saisi manuellement si "Autre" a été choisi).
+function resolveCityName(vals){
+  return vals.city === '__OTHER__' ? (vals.cityCustom||'').trim() : (vals.city||'');
+}
+
 function addrGovPicked(prefix, gov){
   const c = _addrCtx(prefix);
   c.set('governorate', gov); c.set('city',''); c.set('zip','');
@@ -3949,9 +3954,14 @@ function addrGovPicked(prefix, gov){
 
 function addrCityPicked(prefix, city){
   const c = _addrCtx(prefix);
+  if(city === '__OTHER__'){
+    c.set('city', '__OTHER__'); c.set('zip', ''); c.set('cityCustom','');
+    c.refresh();
+    return;
+  }
   const gov = c.data.governorate;
   const match = (TUNISIA_ADDRESS[gov]||[]).find(x=>x.city===city);
-  c.set('city', city); c.set('zip', match ? match.zip : '');
+  c.set('city', city); c.set('zip', match ? match.zip : ''); c.set('cityCustom','');
   c.refresh();
 }
 
@@ -3960,10 +3970,11 @@ function addressBlockHTML(prefix, vals){
   const citiesForGov = vals.governorate && TUNISIA_ADDRESS[vals.governorate]
     ? [...TUNISIA_ADDRESS[vals.governorate]].sort((a,b)=>a.city.localeCompare(b.city,'fr'))
     : [];
+  const isOther = vals.city === '__OTHER__';
   return `
   <div class="ann-full a-field"><label>Adresse (numéro et rue) *</label>
     <input id="${prefix}-address" type="text" placeholder="Ex : 24 avenue des Lilas" value="${vals.address||''}" oninput="addrSetField('${prefix}','address',this.value)"></div>
-  <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1fr;gap:14px;margin-bottom:14px;">
+  <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1fr;gap:14px;margin-bottom:${isOther?'10px':'14px'};">
     <div class="a-field"><label>Gouvernorat *</label>
       <select id="${prefix}-gov" onchange="addrGovPicked('${prefix}',this.value)">
         <option value="" ${!vals.governorate?'selected':''} disabled>Sélectionnez un gouvernorat</option>
@@ -3973,10 +3984,19 @@ function addressBlockHTML(prefix, vals){
       <select id="${prefix}-city" ${!vals.governorate?'disabled':''} onchange="addrCityPicked('${prefix}',this.value)">
         <option value="" ${!vals.city?'selected':''} disabled>${vals.governorate?'Sélectionnez une ville':"Choisissez d'abord un gouvernorat"}</option>
         ${citiesForGov.map(c=>`<option ${vals.city===c.city?'selected':''}>${c.city}</option>`).join('')}
+        ${vals.governorate?`<option value="__OTHER__" ${isOther?'selected':''}>✏️ Autre (saisir manuellement)</option>`:''}
       </select></div>
-    <div class="a-field"><label>Code postal</label>
-      <input id="${prefix}-zip" type="text" value="${vals.zip||''}" readonly style="background:var(--gray-100);color:var(--gray-600);cursor:not-allowed;"></div>
-  </div>`;
+    <div class="a-field"><label>Code postal${isOther?' *':''}</label>
+      ${isOther
+        ? `<input id="${prefix}-zip" type="text" placeholder="Ex : 8050" value="${vals.zip||''}" oninput="addrSetField('${prefix}','zip',this.value)">`
+        : `<input id="${prefix}-zip" type="text" value="${vals.zip||''}" readonly style="background:var(--gray-100);color:var(--gray-600);cursor:not-allowed;">`}
+    </div>
+  </div>
+  ${isOther?`
+  <div class="ann-full a-field" style="margin-top:-4px;">
+    <label>Nom de la ville / localité *</label>
+    <input id="${prefix}-city-other" type="text" placeholder="Ex : Sidi Bou Saïd" value="${vals.cityCustom||''}" oninput="addrSetField('${prefix}','cityCustom',this.value)">
+  </div>`:''}`;
 }
 
 function excAutoFill(){
@@ -4088,7 +4108,8 @@ function annValidate(){
     if(!ad.name.trim()||!ad.desc.trim()){showToast('⚠️ Remplissez le nom et la description.','var(--red)');return false;}
   }
   if(cur===1){
-    if(!ad.address.trim()||!ad.city.trim()||!ad.zip.trim()){showToast('⚠️ Remplissez l\'adresse, ville et code postal.','var(--red)');return false;}
+    if(!ad.address.trim()||!ad.governorate||!ad.city||!ad.zip.trim()){showToast('⚠️ Remplissez l\'adresse, le gouvernorat, la ville et le code postal.','var(--red)');return false;}
+    if(ad.city==='__OTHER__'&&!(ad.cityCustom||'').trim()){showToast('⚠️ Indiquez le nom de la ville ou localité.','var(--red)');return false;}
     if(!ad.lat||!ad.lng){showToast('⚠️ Cliquez sur la carte pour positionner votre bien.','var(--red)');return false;}
   }
   if(cur===3){
@@ -4151,7 +4172,7 @@ async function annPublish(){
     emoji: EMOJIS_MAP[ad.type] || '🏠',
     name: ad.name,
     description: ad.desc || '',
-    city: normalizeCityName(ad.city),
+    city: normalizeCityName(resolveCityName(ad)),
     governorate: ad.governorate || '',
     country: ad.country || 'Tunisie',
     address: ad.address || '',
@@ -6768,7 +6789,7 @@ function excFormStep3(fd){
       ${[
         ['Catégorie', cat.icon+' '+cat.label],
         ['Titre', fd.title||'—'],
-        ['Lieu', (fd.city||'—')+', '+(fd.country||'—')],
+        ['Lieu', (resolveCityName(fd)||'—')+', '+(fd.country||'—')],
         ['Durée', (fd.duration||'?')+' '+(fd.durationUnit==='j'?'jour(s)':'heure(s)')],
         ['Groupe max', (fd.groupSize||'?')+' personnes'],
         ['Difficulté', fd.difficulty||'—'],
@@ -6804,7 +6825,8 @@ function excFormValidate(){
   if(cur===0){
     if(!fd.category){showToast('⚠️ Choisissez une catégorie','var(--red)');return false;}
     if(!fd.title?.trim()){showToast('⚠️ Ajoutez un titre','var(--red)');return false;}
-    if(!fd.city?.trim()){showToast('⚠️ Indiquez la ville','var(--red)');return false;}
+    if(!fd.address?.trim()||!fd.governorate||!fd.city){showToast('⚠️ Remplissez l\'adresse, le gouvernorat et la ville','var(--red)');return false;}
+    if(fd.city==='__OTHER__'&&!(fd.cityCustom||'').trim()){showToast('⚠️ Indiquez le nom de la ville ou localité','var(--red)');return false;}
     if(!fd.description?.trim()||fd.description.length<50){showToast('⚠️ Description trop courte (min 50 car.)','var(--red)');return false;}
   }
   if(cur===2){
@@ -6966,7 +6988,7 @@ async function excFormPublish(){
     schedule: fd.schedule||'',
     address: fd.address||'',
     governorate: fd.governorate||'',
-    city: normalizeCityName(fd.city)||'',
+    city: normalizeCityName(resolveCityName(fd))||'',
     zip: fd.zip||'',
     country: fd.country||'Tunisie',
     duration: durationStr,
