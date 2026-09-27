@@ -2281,15 +2281,18 @@ function searchByDest(dest){appState.searchDest=dest;appState.resultsPage=1;navi
 function getDestSuggestionPool(){
   const items = [];
   const seen = new Set();
-  const add = (label, type) => {
+  const add = (label, type, value) => {
     if(!label) return;
     const key = type+'|'+label.toLowerCase();
     if(seen.has(key)) return;
     seen.add(key);
-    items.push({label, type});
+    items.push({label, type, value: value!=null ? value : label});
   };
   Object.keys(TUNISIA_ADDRESS).forEach(gov => add(gov, 'gouvernorat'));
-  Object.values(TUNISIA_ADDRESS).forEach(list => list.forEach(c => add(c.city, 'ville')));
+  Object.values(TUNISIA_ADDRESS).forEach(list => list.forEach(c => {
+    add(c.city+' — '+c.zip, 'ville', c.city);
+    add(c.zip+' — '+c.city, 'codepostal', c.zip);
+  }));
   hotels.forEach(h => { if(h.country==='Tunisie') add(h.name, 'bien'); });
   return items;
 }
@@ -2314,12 +2317,12 @@ function updateDestSuggestions(query){
   }
   const q = (query||'').trim().toLowerCase();
   if(!q){ dd.style.display='none'; return; }
-  const icons = {gouvernorat:'📍', ville:'🏙️', bien:'🏠'};
-  const typeLabel = {gouvernorat:'Gouvernorat', ville:'Ville', bien:'Bien'};
+  const icons = {gouvernorat:'📍', ville:'🏙️', bien:'🏠', codepostal:'✉️'};
+  const typeLabel = {gouvernorat:'Gouvernorat', ville:'Ville', bien:'Bien', codepostal:'Code postal'};
   const matches = getDestSuggestionPool().filter(it=>it.label.toLowerCase().includes(q)).slice(0,8);
   if(matches.length===0){ dd.style.display='none'; return; }
   dd.innerHTML = matches.map((it,i)=>
-    `<div onclick="pickDestSuggestion('${it.label.replace(/'/g,"\\'")}')" style="padding:10px 14px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px;${i<matches.length-1?'border-bottom:1px solid var(--gray-100);':''}" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">
+    `<div onclick="pickDestSuggestion('${it.value.replace(/'/g,"\\'")}')" style="padding:10px 14px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px;${i<matches.length-1?'border-bottom:1px solid var(--gray-100);':''}" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">
       <span>${icons[it.type]}</span><span style="flex:1;color:var(--gray-900);">${it.label}</span><span style="font-size:11px;color:var(--gray-400);">${typeLabel[it.type]}</span>
     </div>`
   ).join('');
@@ -2330,10 +2333,10 @@ function updateDestSuggestions(query){
   dd.style.display = 'block';
 }
 
-function pickDestSuggestion(label){
+function pickDestSuggestion(value){
   const input = document.getElementById('s-dest');
-  if(input) input.value = label;
-  appState.searchDest = label;
+  if(input) input.value = value;
+  appState.searchDest = value;
   const dd = document.getElementById('dest-suggest-dropdown');
   if(dd) dd.style.display = 'none';
 }
@@ -2357,6 +2360,7 @@ function getFilteredBase(ignoreCity){
       const matches = (h.city||'').toLowerCase().includes(q)
         || (h.governorate||'').toLowerCase().includes(q)
         || (h.name||'').toLowerCase().includes(q)
+        || (h.zip||'').toLowerCase().includes(q)
         || h.country.toLowerCase().includes(q);
       if(!matches) return false;
     }
@@ -12255,6 +12259,7 @@ async function loadPublishedAnnonces(){
         name: a.name || 'Hébergement',
         city: a.city || '',
         governorate: a.governorate || '',
+        zip: a.zip || '',
         country: a.country || 'Tunisie',
         type: a.type_label || a.type || 'Hébergement',
         stars: a.stars || 3,
