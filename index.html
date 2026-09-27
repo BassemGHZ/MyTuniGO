@@ -1544,9 +1544,9 @@ function oauthBlockHTML(){
       <svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0;"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.17.28-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
       Continuer avec Google
     </button>
-    <button type="button" class="btn-oauth" disabled title="Bientôt disponible">
+    <button type="button" class="btn-oauth" onclick="handleOAuthLogin('facebook')">
       <svg width="18" height="18" viewBox="0 0 18 18" style="flex-shrink:0;"><path fill="#1877F2" d="M18 9a9 9 0 1 0-10.4 8.89v-6.29H5.3V9h2.3V7c0-2.27 1.35-3.53 3.43-3.53.99 0 2.03.18 2.03.18v2.23h-1.14c-1.13 0-1.48.7-1.48 1.42V9h2.52l-.4 2.6h-2.12v6.29A9 9 0 0 0 18 9z"/></svg>
-      Continuer avec Facebook <span style="font-size:11px;font-weight:600;color:var(--gray-400);">(bientôt)</span>
+      Continuer avec Facebook
     </button>
     <div class="oauth-divider"><span>ou</span></div>`;
 }
@@ -1608,17 +1608,16 @@ function showModalAlert(msg, type='err'){
 }
 
 async function handleOAuthLogin(provider){
-  // Facebook n'est pas encore activé côté Supabase — bouton désactivé pour l'instant.
-  if(provider!=='google'){ return; }
   const { error } = await _sb.auth.signInWithOAuth({
-    provider: 'google',
+    provider,
     options: { redirectTo: window.location.origin + window.location.pathname }
   });
-  // En cas de succès, le navigateur est redirigé vers Google puis revient sur
-  // MyTunigo avec une session active — la restauration de session au chargement
+  // En cas de succès, le navigateur est redirigé vers Google/Facebook puis revient
+  // sur MyTunigo avec une session active — la restauration de session au chargement
   // (plus bas dans le fichier) prend alors le relais pour connecter l'utilisateur.
   if(error){
-    showModalAlert('Connexion Google indisponible pour le moment. Réessayez ou utilisez votre e-mail.');
+    const label = provider==='facebook' ? 'Facebook' : 'Google';
+    showModalAlert('Connexion '+label+' indisponible pour le moment. Réessayez ou utilisez votre e-mail.');
   }
 }
 
@@ -2290,7 +2289,14 @@ function getFilteredBase(ignoreCity){
     // Version 1 du site : uniquement la Tunisie (les autres pays des données
     // de démonstration restent en mémoire mais ne s'affichent nulle part).
     if(h.country!=='Tunisie') return false;
-    if(!ignoreCity && appState.searchDest && !h.city.toLowerCase().includes(appState.searchDest.toLowerCase()) && !h.country.toLowerCase().includes(appState.searchDest.toLowerCase())) return false;
+    if(!ignoreCity && appState.searchDest){
+      const q = appState.searchDest.toLowerCase();
+      const matches = (h.city||'').toLowerCase().includes(q)
+        || (h.governorate||'').toLowerCase().includes(q)
+        || (h.name||'').toLowerCase().includes(q)
+        || h.country.toLowerCase().includes(q);
+      if(!matches) return false;
+    }
     
     // Le filtre budget compare le prix total du séjour si des dates de
     // début/fin sont sélectionnées, sinon le prix unitaire par nuit.
@@ -12170,6 +12176,7 @@ async function loadPublishedAnnonces(){
         minNights: a.min_stay || 1,
         name: a.name || 'Hébergement',
         city: a.city || '',
+        governorate: a.governorate || '',
         country: a.country || 'Tunisie',
         type: a.type_label || a.type || 'Hébergement',
         stars: a.stars || 3,
