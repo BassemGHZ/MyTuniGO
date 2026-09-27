@@ -2281,19 +2281,23 @@ function searchByDest(dest){appState.searchDest=dest;appState.resultsPage=1;navi
 function getDestSuggestionPool(){
   const items = [];
   const seen = new Set();
-  const add = (label, type, value) => {
+  // "match" = le texte réellement comparé à la saisie de l'utilisateur
+  // (distinct de "label", qui peut afficher ville+CP ensemble). On ne
+  // veut PAS qu'une recherche sur "cheb" fasse remonter l'entrée
+  // Code postal juste parce que son libellé contient aussi "Chebba".
+  const add = (label, type, value, match) => {
     if(!label) return;
     const key = type+'|'+label.toLowerCase();
     if(seen.has(key)) return;
     seen.add(key);
-    items.push({label, type, value: value!=null ? value : label});
+    items.push({label, type, value: value!=null ? value : label, match: (match!=null ? match : label).toLowerCase()});
   };
-  Object.keys(TUNISIA_ADDRESS).forEach(gov => add(gov, 'gouvernorat'));
+  Object.keys(TUNISIA_ADDRESS).forEach(gov => add(gov, 'gouvernorat', gov, gov));
   Object.values(TUNISIA_ADDRESS).forEach(list => list.forEach(c => {
-    add(c.city+' — '+c.zip, 'ville', c.city);
-    add(c.zip+' — '+c.city, 'codepostal', c.zip);
+    add(c.city, 'ville', c.city, c.city);
+    add(c.zip, 'codepostal', c.zip, c.zip);
   }));
-  hotels.forEach(h => { if(h.country==='Tunisie') add(h.name, 'bien'); });
+  hotels.forEach(h => { if(h.country==='Tunisie') add(h.name, 'bien', h.name, h.name); });
   return items;
 }
 
@@ -2319,7 +2323,7 @@ function updateDestSuggestions(query){
   if(!q){ dd.style.display='none'; return; }
   const icons = {gouvernorat:'📍', ville:'🏙️', bien:'🏠', codepostal:'✉️'};
   const typeLabel = {gouvernorat:'Gouvernorat', ville:'Ville', bien:'Bien', codepostal:'Code postal'};
-  const matches = getDestSuggestionPool().filter(it=>it.label.toLowerCase().includes(q)).slice(0,8);
+  const matches = getDestSuggestionPool().filter(it=>it.match.includes(q)).slice(0,8);
   if(matches.length===0){ dd.style.display='none'; return; }
   dd.innerHTML = matches.map((it,i)=>
     `<div onclick="pickDestSuggestion('${it.value.replace(/'/g,"\\'")}')" style="padding:10px 14px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px;${i<matches.length-1?'border-bottom:1px solid var(--gray-100);':''}" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">
