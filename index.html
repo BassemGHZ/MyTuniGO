@@ -17,12 +17,15 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root {
     --blue:#003580;--blue-l:#0071c2;--yellow:#FEBB02;--yellow-d:#e6a800;
-    --green:#0d9e6e;--red:#cc0000;
+    --green:#0d9e6e;--red:#cc0000;--navy-deep:#00224d;--serif:'Fraunces',Georgia,serif;
     --gray-50:#f8f9fa;--gray-100:#f1f3f5;--gray-200:#e9ecef;--gray-300:#dee2e6;
     --gray-400:#ced4da;--gray-500:#adb5bd;--gray-600:#6c757d;--gray-700:#495057;
     --gray-800:#343a40;--gray-900:#212529;
@@ -119,11 +122,12 @@
   .demo-hint{margin-top:10px;padding:9px 12px;background:var(--gray-50);border-radius:var(--r-md);font-size:12px;color:var(--gray-500);text-align:center;}
 
   /* ===== HERO ===== */
-  .hero{background:linear-gradient(135deg,#003580 0%,#0071c2 60%,#00a8e8 100%);padding:48px 20px 70px;overflow:hidden;position:relative;}
-  .hero::before{content:'';position:absolute;right:-80px;top:-80px;width:400px;height:400px;background:rgba(255,255,255,.04);border-radius:50%;}
+  .hero{background:var(--navy-deep);padding:56px 20px 76px;overflow:hidden;position:relative;}
+  .hero::before{content:'';position:absolute;right:-120px;top:-140px;width:480px;height:480px;background:rgba(254,187,2,.08);border-radius:50%;}
   .hero-inner{max-width:1200px;margin:0 auto;position:relative;z-index:1;}
-  .hero h1{color:#fff;font-size:32px;font-weight:800;margin-bottom:6px;}
-  .hero p{color:rgba(255,255,255,.85);font-size:17px;margin-bottom:28px;}
+  .hero-badge{display:inline-block;background:rgba(254,187,2,.14);border:1px solid rgba(254,187,2,.4);color:var(--yellow);font-size:12px;font-weight:700;padding:6px 14px;border-radius:999px;margin-bottom:20px;letter-spacing:.2px;}
+  .hero h1{font-family:var(--serif);color:#fff;font-size:33px;line-height:1.16;font-weight:600;letter-spacing:-.3px;margin-bottom:12px;text-transform:none;}
+  .hero p{color:#c7d3e8;font-size:16px;font-weight:400;text-transform:none;letter-spacing:normal;margin-bottom:26px;max-width:560px;}
   .search-box{background:#fff;border-radius:var(--r-lg);padding:12px;display:flex;gap:8px;align-items:stretch;box-shadow:0 8px 32px rgba(0,0,0,.25);flex-wrap:wrap;border:4px solid var(--yellow);}
   .s-field{display:flex;flex-direction:column;gap:2px;padding:6px 12px;border-radius:var(--r-sm);border:1.5px solid var(--gray-200);flex:1;min-width:140px;transition:border-color .2s;}
   .s-field:hover{border-color:var(--blue-l);}
@@ -439,16 +443,19 @@
     .btn-login{padding:7px 14px;font-size:13px;}
 
     /* ── Hero ── */
-    .hero{padding:40px 16px 32px;}
-    .hero-title,.hero h1{font-size:26px;line-height:1.2;}
-    .hero-sub{font-size:15px;margin-bottom:24px;}
+    .hero{padding:32px 16px 28px;}
+    .hero-badge{font-size:11px;padding:5px 12px;margin-bottom:14px;}
+    .hero-title,.hero h1{font-size:22px;line-height:1.24;letter-spacing:0;margin-bottom:10px;}
+    .hero-sub,.hero p{font-size:14px;margin-bottom:20px;}
 
     /* ── Search box: vertical stack on mobile ── */
     .s-box{flex-direction:column;padding:14px;border-radius:var(--r-lg);}
+    .search-box{flex-direction:column;padding:10px;border-width:3px;gap:0;}
     .s-fields{grid-template-columns:1fr;gap:0;}
-    .s-field{border-right:none;border-bottom:1.5px solid var(--gray-200);padding:10px 12px;}
+    .s-field{border-right:none;border-bottom:1.5px solid var(--gray-200);padding:10px 12px;min-width:0;}
     .s-field:last-of-type{border-bottom:none;}
     .s-btn{width:100%;margin-left:0;margin-top:10px;padding:14px;border-radius:var(--r-lg);}
+    .btn-search{width:100%;margin-top:8px;padding:14px;min-width:0;}
 
     /* ── Home sections ── */
     .home-section{padding:32px 16px;}
@@ -544,7 +551,8 @@
    SMALL MOBILE (≤390px) — iPhone SE, small phones
 ═══════════════════════════════════════════════════════ */
   @media(max-width:390px){
-    .hero-title,.hero h1{font-size:22px;}
+    .hero-title,.hero h1{font-size:20px;}
+    .hero-badge{font-size:10px;padding:4px 10px;}
     .hotel-img{width:90px;height:90px;}
     .hotel-card{height:auto;min-height:100px;}
     .deal-img{width:80px;height:80px;font-size:24px;}
@@ -1998,8 +2006,9 @@ function buildHome(){
   d.innerHTML=`
   <div class="hero">
     <div class="hero-inner">
-      <h1>Trouvez votre hébergement idéal</h1>
-      <p style="text-transform:uppercase;letter-spacing:2px;font-weight:700;">Vivez le monde, comme chez vous</p>
+      <div class="hero-badge">Made in Tunisie 🇹🇳</div>
+      <h1>La Tunisie, comme<br>vous ne l'avez jamais vue.</h1>
+      <p>Villas, riads, excursions et expériences authentiques — réservez directement auprès d'hôtes tunisiens, sans intermédiaire.</p>
       <div class="search-box">
         <div class="s-field" style="flex:2"><label>🔍 Destination</label><input type="text" id="s-dest" placeholder="Où allez-vous ?" value="${appState.searchDest}"></div>
         <div class="s-field" style="position:relative;flex:1.6;" id="s-dates-field">
