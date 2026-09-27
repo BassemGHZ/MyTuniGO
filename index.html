@@ -9373,7 +9373,7 @@ function buildHostCalendar(){
   const _annIdNow = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || null;
   if(_annIdNow === _hostCalAnnonceId){
     renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
-    updateCalStats(cal, daysInMonth);
+    updateCalStats(cal, daysInMonth, year, month);
   } else {
     (async ()=>{
       _hostCalAnnonceId = _annIdNow;
@@ -9383,9 +9383,15 @@ function buildHostCalendar(){
       if(_annIdNow){
         const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', _annIdNow);
         (promoRows||[]).forEach(r=>{ _hostCalPromoMap[r.date] = r.discount_percent; });
+        // Dates bloquées par l'hôte : chargées depuis la base (table
+        // blocked_dates) plutôt que de rester sur les données de démo
+        // codées en dur dans calendarData — sans ça, un blocage ne
+        // survivait qu'en mémoire et disparaissait au rechargement.
+        const { data: blockedRows, error: blockedErr } = await _sb.from('blocked_dates').select('date').eq('annonce_id', _annIdNow);
+        if(!blockedErr) cal.blocked = (blockedRows||[]).map(r=>r.date);
       }
       renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
-      updateCalStats(cal, daysInMonth);
+      updateCalStats(cal, daysInMonth, year, month);
     })();
   }
 
@@ -9475,10 +9481,16 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
   }
 }
 
-function updateCalStats(cal, daysInMonth){
+function updateCalStats(cal, daysInMonth, year, month){
   const el = document.getElementById('cal-stats');
   if(!el) return;
-  const blocked = cal.blocked.length;
+  // "Nuits bloquées" ne doit compter que les dates bloquées DU MOIS AFFICHÉ
+  // et qui ne sont pas déjà passées — une période de blocage antérieure à
+  // aujourd'hui n'a plus d'impact réel sur la disponibilité, elle ne doit
+  // donc plus être comptabilisée (le compteur retombe à 0 dans ce cas).
+  const today = localISODate(new Date());
+  const monthPrefix = year && month ? (year+'-'+String(month).padStart(2,'0')+'-') : null;
+  const blocked = cal.blocked.filter(d => (!monthPrefix || d.startsWith(monthPrefix)) && d >= today).length;
   const avail   = daysInMonth - blocked;
   const rate    = Math.round(avail/daysInMonth*100);
   el.innerHTML = [
@@ -9506,7 +9518,7 @@ function navCalendar(dir){
   labels.forEach(el=>{ el.textContent = monthName; el.style.textTransform='capitalize'; });
   // Re-render grid
   renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
-  updateCalStats(cal, daysInMonth);
+  updateCalStats(cal, daysInMonth, year, month);
   // Fallback: if label not found, full re-render
   if(!document.getElementById('cal-grid')) navigate('host-calendar');
 }
@@ -9521,7 +9533,7 @@ function refreshHostCalendarLight(){
   const daysInMonth = new Date(year,month,0).getDate();
   const today = localISODate(new Date());
   renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
-  updateCalStats(cal, daysInMonth);
+  updateCalStats(cal, daysInMonth, year, month);
   const bar = document.getElementById('promo-selection-bar');
   if(bar) bar.textContent = _calPromoSelection.size>0 ? _calPromoSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée';
   const applyBtn = document.getElementById('promo-apply-btn');
@@ -9660,33 +9672,62 @@ async function saveCalendarChanges(){
   showToast('✅ Calendrier enregistré ! Email récapitulatif envoyé.','var(--green)');
 }
 
-function toggleBlockDay(dateStr){
+// Bloquer/débloquer une date écrit désormais réellement en base (table
+// blocked_dates) — avant, le changement ne vivait qu'en mémoire côté
+// client (calendarData) et disparaissait dès qu'on rechargeait la page.
+// L'affichage est mis à jour tout de suite (optimiste) puis confirmé/annulé
+// selon le résultat de l'écriture Supabase.
+async function toggleBlockDay(dateStr){
   if(_hostCalReservedSet.has(dateStr)){
     showToast('⛔ Cette date est déjà réservée — impossible de la modifier.','var(--red)');
     return;
   }
-  const cal = getCalForAnnonce(appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || 'ANN-K7L8M9N0');
+  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || 'ANN-K7L8M9N0';
+  const cal = getCalForAnnonce(annId);
   const wasBlocked = cal.blocked.includes(dateStr);
-  if(wasBlocked){
-    cal.blocked = cal.blocked.filter(d=>d!==dateStr);
-    showToast('📅 Disponible','var(--green)');
-  } else {
-    cal.blocked.push(dateStr);
-    showToast('🔒 Bloqué','var(--gray-700)');
-  }
-  // Update cell style
-  const cell = document.querySelector('[data-date="'+dateStr+'"]');
-  if(cell){
-    const nowBlocked = cal.blocked.includes(dateStr);
-    cell.style.background = nowBlocked ? 'var(--gray-400)' : '#e8f9f0';
-    cell.style.color = nowBlocked ? '#fff' : 'var(--gray-900)';
-    cell.style.border = nowBlocked ? '1px solid var(--gray-400)' : '1px solid #6bcf9e';
-    if(nowBlocked){ cell.classList.add('cal-blocked'); }
+  const nowBlocked = !wasBlocked;
+
+  function paintCell(blocked){
+    const cell = document.querySelector('[data-date="'+dateStr+'"]');
+    if(!cell) return;
+    cell.style.background = blocked ? 'var(--gray-400)' : '#e8f9f0';
+    cell.style.color = blocked ? '#fff' : 'var(--gray-900)';
+    cell.style.border = blocked ? '1px solid var(--gray-400)' : '1px solid #6bcf9e';
+    if(blocked){ cell.classList.add('cal-blocked'); }
     else { cell.classList.remove('cal-blocked'); }
   }
-  // Update stats
-  const daysInMonth = new Date(appState.calendarView.year, appState.calendarView.month, 0).getDate();
-  updateCalStats(cal, daysInMonth);
+  function refreshStats(){
+    const daysInMonth = new Date(appState.calendarView.year, appState.calendarView.month, 0).getDate();
+    updateCalStats(cal, daysInMonth, appState.calendarView.year, appState.calendarView.month);
+  }
+
+  // 1) Mise à jour optimiste de l'affichage
+  if(wasBlocked) cal.blocked = cal.blocked.filter(d=>d!==dateStr);
+  else cal.blocked.push(dateStr);
+  paintCell(nowBlocked);
+  refreshStats();
+
+  // 2) Écriture réelle en base
+  let error;
+  if(nowBlocked){
+    ({ error } = await _sb.from('blocked_dates')
+      .upsert({ annonce_id: annId, date: dateStr, host_id: auth.currentUser?.id }, { onConflict: 'annonce_id,date' }));
+  } else {
+    ({ error } = await _sb.from('blocked_dates').delete().eq('annonce_id', annId).eq('date', dateStr));
+  }
+
+  if(error){
+    // Échec en base : on annule le changement affiché pour ne pas laisser
+    // croire que le blocage a été enregistré alors qu'il ne l'a pas été.
+    if(nowBlocked) cal.blocked = cal.blocked.filter(d=>d!==dateStr);
+    else cal.blocked.push(dateStr);
+    paintCell(wasBlocked);
+    refreshStats();
+    showToast('Erreur : '+error.message,'var(--red)');
+    return;
+  }
+
+  showToast(nowBlocked ? '🔒 Bloqué' : '📅 Disponible', nowBlocked ? 'var(--gray-700)' : 'var(--green)');
 }
 
 /* ── Add host info to hotel detail ── */
