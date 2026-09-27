@@ -5063,7 +5063,7 @@ function buildMesAnnonces(){
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button onclick="loadAnnonceEditOwner(null,'${a.id}')" style="background:#eef2f7;color:#003580;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #b3c9e0;cursor:pointer;">✏️ Modifier l'annonce</button>
               <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">📊 Statistiques</button>
-              <button onclick="navigate('host-calendar',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📅 Calendrier</button>
+              <button onclick="navigate('host-calendar',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📅 Gestion du calendrier</button>
               ${a.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${a.hotelId}})" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #6bcf9e;cursor:pointer;">👁️ Voir l'annonce</button>`:''}
               <button onclick="openPromoModal('${a.id}')" style="background:${a.discount>0?'#d40000':'#fff4e0'};color:${a.discount>0?'#fff':'#a05a00'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid ${a.discount>0?'#d40000':'#ffe0a0'};cursor:pointer;">${a.discount>0?'🔥 Promo '+a.discount+'%':'⚡ Promotion flash'}</button>
               ${a.status==='publiée'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#fff8e0;color:#a07000;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffe080;cursor:pointer;">⏸ Suspendre</button>`:''}
@@ -9271,7 +9271,7 @@ function buildHostCalendar(){
         <span style="font-size:16px;">🔒</span> Bloquer / débloquer
       </button>
       <button onclick="setCalMode('promo')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='promo'?'#fff':'transparent'};color:${_calMode==='promo'?(_calPromoDirection==='increase'?'#7c3aed':'#ea580c'):'var(--gray-500)'};box-shadow:${_calMode==='promo'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
-        <span style="font-size:16px;">🏷️</span> Tarifs par date
+        <span style="font-size:16px;">🏷️</span> Gestion des tarifs
       </button>
     </div>
 
