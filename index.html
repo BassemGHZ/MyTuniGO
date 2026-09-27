@@ -960,7 +960,7 @@ let appState = {
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
   annoncePage:0,
-  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
+  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
   annoncePublished:false,
   favorites:[],
   reservations:[
@@ -973,7 +973,7 @@ let appState = {
   excursionFilter:'toutes',
   selectedExcursionId:null,
   excursionFormPage:0,
-  excursionFormData:{title:'',category:'',duration:'',maxParticipants:10,price:0,priceType:'personne',description:'',highlights:['','','',''],included:'',notIncluded:'',meetingPoint:'',meetingTime:'',meetingTimeEnd:'',whatToBring:'',schedule:'',photos:[],availability:[],city:'',country:'',difficulty:'facile',minAge:0,languages:['Français']},
+  excursionFormData:{title:'',category:'',duration:'',maxParticipants:10,price:0,priceType:'personne',description:'',highlights:['','','',''],included:'',notIncluded:'',meetingPoint:'',meetingTime:'',meetingTimeEnd:'',whatToBring:'',schedule:'',photos:[],availability:[],address:'',governorate:'',city:'',zip:'',country:'Tunisie',difficulty:'facile',minAge:0,languages:['Français']},
   excursionFormPublished:false,
   excursionBookings:[],
   myExcursionBookings:[],
@@ -3668,23 +3668,9 @@ function annStep0(ad){return `<div class="ann-card">
 </div>`;}
 
 function annStep1(ad){
-  const countries = ['Tunisie'];
-  const opts = countries.map(c=>'<option '+(ad.country===c?'selected':'')+'>'+c+'</option>').join('');
-
   return `<div class="ann-card">
   <div class="ann-sec">Adresse de l'hébergement</div>
-
-  <div class="ann-full a-field"><label>Adresse (numéro et rue) *</label>
-    <input id="af-address" type="text" placeholder="Ex : 24 avenue des Lilas" value="${ad.address}" oninput="annSet('address',this.value)"></div>
-  <div style="display:grid;grid-template-columns:2fr 1fr 2fr;gap:14px;margin-bottom:14px;">
-    <div class="a-field"><label>Ville *</label><select id="af-city" oninput="annSet('city',this.value)">
-      <option value="" ${!ad.city?'selected':''} disabled>Sélectionnez une ville</option>
-      ${['Ariana','Béja','Ben Arous','Bizerte','Gabès','Gafsa','Jendouba','Kairouan','Kasserine','Kébili','Le Kef','Mahdia','Manouba','Médenine','Monastir','Nabeul','Sfax','Sidi Bouzid','Siliana','Sousse','Tataouine','Tozeur','Tunis','Zaghouan'].map(c=>`<option ${ad.city===c?'selected':''}>${c}</option>`).join('')}
-    </select></div>
-    <div class="a-field"><label>Code postal</label><input id="af-zip" type="text" placeholder="75001" value="${ad.zip}" oninput="annSet(\'zip\',this.value)"></div>
-    <div class="a-field"><label>Pays</label><select oninput="annSet(\'country\',this.value)">${opts}</select></div>
-  </div>
-  </div>
+  ${addressBlockHTML('ann', ad)}
   <div style="margin-top:12px;">
     <button onclick="geocodeAddress()" style="background:var(--blue);color:#fff;padding:9px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">🔍 Localiser sur la carte</button>
     <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">La carte se centre sur votre adresse</span>
@@ -3913,6 +3899,86 @@ function buildAnnCoords(cu, ad){
 
 function annSet(key,val){appState.annonceData[key]=val;}
 
+/* ===================== BLOC ADRESSE TUNISIE (partagé Annonce + Excursion) =====================
+   Gouvernorat → Ville / localité → Code postal (auto-rempli).
+   Utilisé à l'identique dans le formulaire "Hébergement" (préfixe "ann")
+   et dans le formulaire "Excursion" (préfixe "exc"). */
+const TUNISIA_ADDRESS = {
+  "Tunis": [{city:"Tunis Centre",zip:"1000"},{city:"Bab El Bhar",zip:"1001"},{city:"Bab Souika",zip:"1006"},{city:"Lafayette",zip:"1002"},{city:"El Omrane",zip:"1005"},{city:"El Menzah",zip:"1004"},{city:"Mutuelleville",zip:"1082"}],
+  "Ariana": [{city:"Ariana Ville",zip:"2080"},{city:"El Menzah 5",zip:"2091"},{city:"Ennasr",zip:"2037"},{city:"Raoued",zip:"2056"},{city:"La Soukra",zip:"2036"},{city:"Charguia",zip:"2035"}],
+  "Ben Arous": [{city:"Ben Arous",zip:"2013"},{city:"Mégrine",zip:"2033"},{city:"Rades",zip:"2040"},{city:"Hammam Lif",zip:"2050"},{city:"Bou Mhel",zip:"2097"},{city:"Ezzahra",zip:"2034"}],
+  "Manouba": [{city:"Manouba",zip:"2010"},{city:"Denden",zip:"2011"},{city:"Douar Hicher",zip:"2086"},{city:"Oued Ellil",zip:"2021"},{city:"Mornaguia",zip:"1110"}],
+  "Nabeul": [{city:"Nabeul",zip:"8000"},{city:"Hammamet",zip:"8050"},{city:"Korba",zip:"8070"},{city:"Menzel Temime",zip:"8080"},{city:"Kelibia",zip:"8090"},{city:"Beni Khiar",zip:"8060"}],
+  "Zaghouan": [{city:"Zaghouan",zip:"1100"},{city:"El Fahs",zip:"1140"},{city:"Bir Mcherga",zip:"1142"}],
+  "Bizerte": [{city:"Bizerte",zip:"7000"},{city:"Menzel Bourguiba",zip:"7050"},{city:"Mateur",zip:"7030"},{city:"Ras Jebel",zip:"7070"},{city:"Sejnane",zip:"7010"}],
+  "Béja": [{city:"Béja",zip:"9000"},{city:"Medjez el-Bab",zip:"9070"},{city:"Testour",zip:"9060"},{city:"Nefza",zip:"9010"}],
+  "Jendouba": [{city:"Jendouba",zip:"8100"},{city:"Tabarka",zip:"8110"},{city:"Aïn Draham",zip:"8130"},{city:"Bou Salem",zip:"8170"}],
+  "Le Kef": [{city:"Le Kef",zip:"7100"},{city:"Dahmani",zip:"7170"},{city:"Tajerouine",zip:"7210"},{city:"Sakiet Sidi Youssef",zip:"7130"}],
+  "Siliana": [{city:"Siliana",zip:"6100"},{city:"Gaâfour",zip:"6110"},{city:"Makthar",zip:"6140"},{city:"Bou Arada",zip:"6180"}],
+  "Sousse": [{city:"Sousse",zip:"4000"},{city:"Hammam Sousse",zip:"4011"},{city:"Sahloul",zip:"4054"},{city:"Akouda",zip:"4022"},{city:"Port El Kantaoui",zip:"4089"},{city:"Msaken",zip:"4070"}],
+  "Monastir": [{city:"Monastir",zip:"5000"},{city:"Moknine",zip:"5050"},{city:"Jemmal",zip:"5020"},{city:"Ksar Hellal",zip:"5070"},{city:"Sayada",zip:"5035"}],
+  "Mahdia": [{city:"Mahdia",zip:"5100"},{city:"Ksour Essef",zip:"5180"},{city:"El Jem",zip:"5160"},{city:"Chebba",zip:"5170"}],
+  "Sfax": [{city:"Sfax",zip:"3000"},{city:"Sakiet Ezzit",zip:"3021"},{city:"Sakiet Eddaïer",zip:"3011"},{city:"Chihia",zip:"3041"},{city:"Agareb",zip:"3030"}],
+  "Kairouan": [{city:"Kairouan",zip:"3100"},{city:"Haffouz",zip:"3130"},{city:"Sbikha",zip:"3110"},{city:"Oueslatia",zip:"3190"}],
+  "Kasserine": [{city:"Kasserine",zip:"1200"},{city:"Sbeitla",zip:"1250"},{city:"Feriana",zip:"1240"},{city:"Thala",zip:"1210"}],
+  "Sidi Bouzid": [{city:"Sidi Bouzid",zip:"9100"},{city:"Regueb",zip:"9170"},{city:"Meknassy",zip:"9140"},{city:"Jelma",zip:"9110"}],
+  "Gabès": [{city:"Gabès",zip:"6000"},{city:"Mareth",zip:"6080"},{city:"El Hamma",zip:"6020"},{city:"Matmata",zip:"6070"}],
+  "Médenine": [{city:"Médenine",zip:"4100"},{city:"Djerba Houmt Souk",zip:"4180"},{city:"Midoun",zip:"4116"},{city:"Zarzis",zip:"4170"},{city:"Ben Gardane",zip:"4160"}],
+  "Tataouine": [{city:"Tataouine",zip:"3200"},{city:"Ghomrassen",zip:"3220"},{city:"Remada",zip:"3260"}],
+  "Gafsa": [{city:"Gafsa",zip:"2100"},{city:"Métlaoui",zip:"2130"},{city:"Redeyef",zip:"2133"},{city:"Moularès",zip:"2110"}],
+  "Tozeur": [{city:"Tozeur",zip:"2200"},{city:"Nefta",zip:"2240"},{city:"Degueche",zip:"2260"}],
+  "Kébili": [{city:"Kébili",zip:"4200"},{city:"Douz",zip:"4260"},{city:"El Faouar",zip:"4280"},{city:"Souk Lahad",zip:"4270"}],
+};
+
+// Table de correspondance entre le préfixe du formulaire et son état/ses fonctions.
+// Évaluée à l'appel (pas au chargement du script), donc l'ordre de déclaration
+// des fonctions annSet/annRefresh/excSet/excRefresh n'a pas d'importance.
+function _addrCtx(prefix){
+  return prefix==='ann'
+    ? { data: appState.annonceData, set: annSet, refresh: annRefresh }
+    : { data: appState.excursionFormData, set: excSet, refresh: excRefresh };
+}
+
+function addrSetField(prefix, key, val){ _addrCtx(prefix).set(key, val); }
+
+function addrGovPicked(prefix, gov){
+  const c = _addrCtx(prefix);
+  c.set('governorate', gov); c.set('city',''); c.set('zip','');
+  c.refresh();
+}
+
+function addrCityPicked(prefix, city){
+  const c = _addrCtx(prefix);
+  const gov = c.data.governorate;
+  const match = (TUNISIA_ADDRESS[gov]||[]).find(x=>x.city===city);
+  c.set('city', city); c.set('zip', match ? match.zip : '');
+  c.refresh();
+}
+
+function addressBlockHTML(prefix, vals){
+  const govs = Object.keys(TUNISIA_ADDRESS).sort((a,b)=>a.localeCompare(b,'fr'));
+  const citiesForGov = vals.governorate && TUNISIA_ADDRESS[vals.governorate]
+    ? [...TUNISIA_ADDRESS[vals.governorate]].sort((a,b)=>a.city.localeCompare(b.city,'fr'))
+    : [];
+  return `
+  <div class="ann-full a-field"><label>Adresse (numéro et rue) *</label>
+    <input id="${prefix}-address" type="text" placeholder="Ex : 24 avenue des Lilas" value="${vals.address||''}" oninput="addrSetField('${prefix}','address',this.value)"></div>
+  <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1fr;gap:14px;margin-bottom:14px;">
+    <div class="a-field"><label>Gouvernorat *</label>
+      <select id="${prefix}-gov" onchange="addrGovPicked('${prefix}',this.value)">
+        <option value="" ${!vals.governorate?'selected':''} disabled>Sélectionnez un gouvernorat</option>
+        ${govs.map(g=>`<option ${vals.governorate===g?'selected':''}>${g}</option>`).join('')}
+      </select></div>
+    <div class="a-field"><label>Ville / localité *</label>
+      <select id="${prefix}-city" ${!vals.governorate?'disabled':''} onchange="addrCityPicked('${prefix}',this.value)">
+        <option value="" ${!vals.city?'selected':''} disabled>${vals.governorate?'Sélectionnez une ville':"Choisissez d'abord un gouvernorat"}</option>
+        ${citiesForGov.map(c=>`<option ${vals.city===c.city?'selected':''}>${c.city}</option>`).join('')}
+      </select></div>
+    <div class="a-field"><label>Code postal</label>
+      <input id="${prefix}-zip" type="text" value="${vals.zip||''}" readonly style="background:var(--gray-100);color:var(--gray-600);cursor:not-allowed;"></div>
+  </div>`;
+}
+
 function excAutoFill(){
   const cu = auth.currentUser;
   if(!cu) return;
@@ -4086,6 +4152,7 @@ async function annPublish(){
     name: ad.name,
     description: ad.desc || '',
     city: normalizeCityName(ad.city),
+    governorate: ad.governorate || '',
     country: ad.country || 'Tunisie',
     address: ad.address || '',
     zip: ad.zip || '',
@@ -6455,17 +6522,8 @@ function excFormStep0(fd){
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
       <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.title||'').length}/70</div></div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-      <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Ville *</label>
-        <select id="ef-city" oninput="excSet('city',this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-          <option value="" ${!fd.city?'selected':''} disabled>Sélectionnez une ville</option>
-          ${['Ariana','Béja','Ben Arous','Bizerte','Gabès','Gafsa','Jendouba','Kairouan','Kasserine','Kébili','Le Kef','Mahdia','Manouba','Médenine','Monastir','Nabeul','Sfax','Sidi Bouzid','Siliana','Sousse','Tataouine','Tozeur','Tunis','Zaghouan'].map(c=>`<option ${fd.city===c?'selected':''}>${c}</option>`).join('')}
-        </select></div>
-      <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Pays *</label>
-        <select oninput="excSet('country',this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-          ${['Tunisie'].map(c=>`<option ${fd.country===c?'selected':''}>${c}</option>`).join('')}
-        </select></div>
-    </div>
+    <div style="margin-bottom:6px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;">Adresse de l'excursion</div>
+    ${addressBlockHTML('exc', fd)}
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Description *</label>
       <textarea id="ef-desc" maxlength="250" placeholder="Décrivez votre excursion : ce que les participants vont vivre, découvrir, ressentir…"
@@ -6906,7 +6964,10 @@ async function excFormPublish(){
     meeting_time: fd.meetingTime||'',
     meeting_time_end: fd.meetingTimeEnd||'',
     schedule: fd.schedule||'',
+    address: fd.address||'',
+    governorate: fd.governorate||'',
     city: normalizeCityName(fd.city)||'',
+    zip: fd.zip||'',
     country: fd.country||'Tunisie',
     duration: durationStr,
     price: fd.price||0,
@@ -11864,11 +11925,11 @@ function buildFooter(){
       </div>
       <div class="footer-col">
         <h4>Destinations</h4>
-        <a onclick="navigate('results')">France</a>
-        <a onclick="navigate('results')">Maroc</a>
-        <a onclick="navigate('results')">Tunisie</a>
-        <a onclick="navigate('results')">Espagne</a>
-        <a onclick="navigate('results')">Sénégal</a>
+        <a onclick="searchByDest('Tunis')">Tunis</a>
+        <a onclick="searchByDest('Hammamet')">Hammamet</a>
+        <a onclick="searchByDest('Djerba')">Djerba</a>
+        <a onclick="searchByDest('Sousse')">Sousse</a>
+        <a onclick="searchByDest('Tozeur')">Tozeur</a>
       </div>
       <div class="footer-col">
         <h4>Support</h4>
