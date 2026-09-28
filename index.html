@@ -2295,7 +2295,6 @@ function getDestSuggestionPool(){
   Object.keys(TUNISIA_ADDRESS).forEach(gov => add(gov, 'gouvernorat', gov, gov));
   Object.values(TUNISIA_ADDRESS).forEach(list => list.forEach(c => {
     add(c.city, 'ville', c.city, c.city);
-    add(c.zip, 'codepostal', c.zip, c.zip);
   }));
   hotels.forEach(h => { if(h.country==='Tunisie') add(h.name, 'bien', h.name, h.name); });
   return items;
@@ -2321,8 +2320,8 @@ function updateDestSuggestions(query){
   }
   const q = (query||'').trim().toLowerCase();
   if(!q){ dd.style.display='none'; return; }
-  const icons = {gouvernorat:'📍', ville:'🏙️', bien:'🏠', codepostal:'✉️'};
-  const typeLabel = {gouvernorat:'Gouvernorat', ville:'Ville', bien:'Bien', codepostal:'Code postal'};
+  const icons = {gouvernorat:'📍', ville:'🏙️', bien:'🏠'};
+  const typeLabel = {gouvernorat:'Gouvernorat', ville:'Ville', bien:'Bien'};
   const matches = getDestSuggestionPool().filter(it=>it.match.includes(q)).slice(0,8);
   if(matches.length===0){ dd.style.display='none'; return; }
   dd.innerHTML = matches.map((it,i)=>
@@ -2364,7 +2363,6 @@ function getFilteredBase(ignoreCity){
       const matches = (h.city||'').toLowerCase().includes(q)
         || (h.governorate||'').toLowerCase().includes(q)
         || (h.name||'').toLowerCase().includes(q)
-        || (h.zip||'').toLowerCase().includes(q)
         || h.country.toLowerCase().includes(q);
       if(!matches) return false;
     }
