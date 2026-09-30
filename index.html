@@ -10132,6 +10132,9 @@ async function initBlockedDatesPicker(hId){
 
   miniCal.style.display = 'block';
   const today = new Date();
+  // Prix de base par nuit (après remise globale éventuelle sur l'annonce),
+  // utilisé pour calculer le prix réel affiché jour par jour dans le mini-calendrier.
+  const basePricePerNight = h.discount>0 ? Math.round(h.price*(1-h.discount/100)) : h.price;
 
   function getCalMonths(){
     const ciVal = document.getElementById('bk-ci')?.value;
@@ -10152,7 +10155,7 @@ async function initBlockedDatesPicker(hId){
     miniCal.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:8px;">📅 Cliquez pour choisir vos dates</div>'
       + (hasDiscountDates?'<div style="background:#fdead9;border:1px solid #ea580c;border-radius:var(--r-sm);padding:8px 12px;margin-bottom:10px;font-size:12px;color:#ea580c;font-weight:700;">🏷️ Certaines dates sont en promotion — repérez-les en orange ci-dessous !</div>':'')
       + (hasIncreaseDates?'<div style="background:#f0e6fd;border:1px solid #7c3aed;border-radius:var(--r-sm);padding:8px 12px;margin-bottom:10px;font-size:12px;color:#7c3aed;font-weight:700;">📈 Certaines dates ont un tarif majoré (haute saison) — repérez-les en violet ci-dessous !</div>':'')
-      + months.map(({year,month})=>renderBookingMonth(year, month, unavailable, today)).join('')
+      + months.map(({year,month})=>renderBookingMonth(year, month, unavailable, today, basePricePerNight)).join('')
       + '<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">'
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;display:inline-block;"></span>Disponible</span>'
       + '<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500);"><span style="width:12px;height:12px;border-radius:3px;background:#ffdddd;border:1px solid #ffaaaa;display:inline-block;"></span>Indisponible</span>'
@@ -10172,7 +10175,7 @@ async function initBlockedDatesPicker(hId){
   if(coEl) coEl.addEventListener('change', ()=>{ validateDateAgainstBlocked(hId); refresh(); });
 }
 
-function renderBookingMonth(year, month, unavailable, today){
+function renderBookingMonth(year, month, unavailable, today, basePricePerNight){
   const monthNames=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
@@ -10206,14 +10209,17 @@ function renderBookingMonth(year, month, unavailable, today){
     if(isCi||isCo){ bg='var(--blue)'; border='1px solid var(--blue)'; color='#fff'; }
     else if(inRange){ bg='#cce0ff'; border='1px solid #99c2ff'; color='var(--blue)'; }
     const fw = ds===todayStr ? '800':'500';
-    const promoTooltip = (promoPct && !isCi && !isCo)
-      ? ` class="promo-cell" data-tooltip="${promoPct>0?'🏷️ Promotion -'+promoPct+'%':'📈 Tarif majoré +'+Math.abs(promoPct)+'%'}"`
-      : '';
-    html += '<div '+promoTooltip+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
+    // Prix réel du jour (prix de base +/- la promo/majoration spécifique à
+    // cette date), affiché directement au lieu du pourcentage — plus simple
+    // à lire pour l'hôte et le voyageur.
+    const dayPrice = promoPct>0 ? Math.round(basePricePerNight*(1-promoPct/100))
+      : promoPct<0 ? Math.round(basePricePerNight*(1+Math.abs(promoPct)/100))
+      : basePricePerNight;
+    html += '<div '+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
       +'text-align:center;padding:5px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;position:relative;"'
       +(clickable?' onmouseover="this.style.transform=\'scale(1.1)\'" onmouseout="this.style.transform=\'\'"':'')
       +'>'+(isUnavail&&!isCi&&!isCo?'<s>'+day+'</s>':day)
-      +(promoPct&&!isCi&&!isCo?'<div style="font-size:6px;font-weight:800;line-height:1;">'+(promoPct>0?'-':'+')+Math.abs(promoPct)+'%</div>':'')
+      +(!isUnavail&&!isPast&&!isCi&&!isCo?'<div style="font-size:8px;font-weight:700;line-height:1.3;opacity:.85;">'+dayPrice+'€</div>':'')
       +'</div>';
   }
   html += '</div></div>';
