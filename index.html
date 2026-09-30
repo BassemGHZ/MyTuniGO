@@ -10216,10 +10216,10 @@ function renderBookingMonth(year, month, unavailable, today, basePricePerNight){
       : promoPct<0 ? Math.round(basePricePerNight*(1+Math.abs(promoPct)/100))
       : basePricePerNight;
     html += '<div '+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
-      +'text-align:center;padding:5px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;position:relative;"'
+      +'text-align:center;padding:6px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;position:relative;"'
       +(clickable?' onmouseover="this.style.transform=\'scale(1.1)\'" onmouseout="this.style.transform=\'\'"':'')
       +'>'+(isUnavail&&!isCi&&!isCo?'<s>'+day+'</s>':day)
-      +(!isUnavail&&!isPast&&!isCi&&!isCo?'<div style="font-size:8px;font-weight:700;line-height:1.3;opacity:.85;">'+dayPrice+'€</div>':'')
+      +(!isUnavail&&!isPast&&!isCi&&!isCo?'<div style="font-size:11px;font-weight:800;line-height:1.3;opacity:.95;">'+dayPrice+'€</div>':'')
       +'</div>';
   }
   html += '</div></div>';
