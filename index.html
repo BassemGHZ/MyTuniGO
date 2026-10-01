@@ -7548,7 +7548,7 @@ function buildAnnonceEditFormOwnerInner(){
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📋 Informations générales</div>
       <div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 14px;font-size:13px;color:#856404;margin-bottom:16px;">
-        🔒 Le nom, le type, la ville, le pays, l'adresse, le code postal et la position GPS ne sont plus modifiables une fois l'annonce créée, pour éviter qu'un bien déjà en ligne (avec avis) change discrètement de nature ou de localisation. Besoin de corriger une erreur ? <a href="mailto:contact@mytunigo.com?subject=${encodeURIComponent('Correction d\'identité — annonce '+(ed.id||''))}" style="color:#003580;font-weight:700;">Contactez l'administrateur</a>.
+        🔒 Seuls la description, les équipements, la politique & règles de séjour et les photos sont modifiables une fois l'annonce créée. Tout le reste (identité, caractéristiques, contact) est verrouillé pour éviter qu'un bien déjà en ligne (avec avis) change discrètement de nature. Besoin de corriger une erreur ? <a href="mailto:contact@mytunigo.com?subject=${encodeURIComponent('Correction d\'identité — annonce '+(ed.id||''))}" style="color:#003580;font-weight:700;">Contactez l'administrateur</a>.
       </div>
       ${lockedField("Nom de l'hébergement", ed.name)}
       ${lockedField('Type', (TYPES_ANN.find(t=>t.id===ed.type)||{}).name || ed.type)}
@@ -7557,11 +7557,11 @@ function buildAnnonceEditFormOwnerInner(){
         ${lockedField('Pays', ed.country)}
         ${lockedField('Adresse', ed.address)}
         ${lockedField('Code postal', ed.zip)}
-        ${field('Surface (m²)','size','number')}
-        ${ed.type==='hotel' ? field('Étoiles','stars','number') : ''}
-        ${field('Chambres','rooms','number')}
-        ${field('Salles de bain','bathrooms','number')}
-        ${field('Capacité (voyageurs)','capacity','number')}
+        ${lockedField('Surface (m²)', ed.size)}
+        ${ed.type==='hotel' ? lockedField('Étoiles', ed.stars?'★'.repeat(ed.stars):'') : ''}
+        ${lockedField('Chambres', ed.rooms)}
+        ${lockedField('Salles de bain', ed.bathrooms)}
+        ${lockedField('Capacité (voyageurs)', ed.capacity)}
       </div>
       ${lockedField('Position GPS', (ed.lat&&ed.lng) ? (parseFloat(ed.lat).toFixed(6)+', '+parseFloat(ed.lng).toFixed(6)) : '—')}
     </div>
@@ -7605,10 +7605,10 @@ function buildAnnonceEditFormOwnerInner(){
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📞 Contact</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        ${field('Prénom','firstname')}
-        ${field('Nom','lastname')}
-        ${field('Email','email','email')}
-        ${field('Téléphone','phone','tel')}
+        ${lockedField('Prénom', ed.firstname)}
+        ${lockedField('Nom', ed.lastname)}
+        ${lockedField('Email', ed.email)}
+        ${lockedField('Téléphone', ed.phone)}
       </div>
     </div>
 
