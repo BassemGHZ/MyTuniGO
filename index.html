@@ -3979,7 +3979,7 @@ function annStep4(ad){
     <div class="sum-item"><div class="sl">Nom</div><div class="sv">${ad.name||'—'}</div></div>
     <div class="sum-item"><div class="sl">Ville</div><div class="sv">${resolveCityName(ad)||'—'}, ${ad.country}</div></div>
     <div class="sum-item"><div class="sl">Capacité</div><div class="sv">${ad.capacity} voyageurs · ${ad.rooms} ch.</div></div>
-    <div class="sum-item"><div class="sl">Catégorie</div><div class="sv">${'★'.repeat(ad.stars)}</div></div>
+    ${ad.type==='hotel'?`<div class="sum-item"><div class="sl">Catégorie</div><div class="sv">${'★'.repeat(ad.stars)}</div></div>`:''}
     <div class="sum-item"><div class="sl">Annulation</div><div class="sv" style="text-transform:capitalize">${ad.cancellation}</div></div>
     <div class="sum-item"><div class="sl">🌙 Nuits min.</div><div class="sv"><strong>${ad.minNights||1} nuit${(ad.minNights||1)>1?'s':''}</strong> minimum</div></div>
     <div class="sum-item"><div class="sl">📅 Nuits max.</div><div class="sv">${ad.maxNights||30} nuits maximum</div></div>
@@ -5948,7 +5948,7 @@ function buildExcursions(){
         <span style="font-size:18px;">🔍</span>
         <div id="exc-search-field" style="position:relative;flex:1;min-width:140px;">
           <input type="text" id="exc-search" placeholder="Ville, activité, catégorie, mot-clé…" value="${search}" autocomplete="off"
-            oninput="appState.excursionSearch=this.value;updateExcSuggestions(this.value);"
+            oninput="appState.excursionSearch=this.value;updateExcSuggestions(this.value);if(!this.value.trim()){hideExcSuggestions();refreshExcursions();}"
             onfocus="updateExcSuggestions(this.value)"
             onkeydown="if(event.key==='Enter'){appState.excursionSearch=this.value;hideExcSuggestions();refreshExcursions();}"
             style="border:none;font-size:15px;width:100%;color:var(--gray-900);outline:none;background:transparent;">
@@ -7549,7 +7549,7 @@ function buildAnnonceEditFormOwnerInner(){
         ${lockedField('Adresse', ed.address)}
         ${lockedField('Code postal', ed.zip)}
         ${field('Surface (m²)','size','number')}
-        ${field('Étoiles','stars','number')}
+        ${ed.type==='hotel' ? field('Étoiles','stars','number') : ''}
         ${field('Chambres','rooms','number')}
         ${field('Salles de bain','bathrooms','number')}
         ${field('Capacité (voyageurs)','capacity','number')}
@@ -10928,7 +10928,7 @@ function renderAdminAnnonceModal(id){
       ${editField('Chambres','am-rooms',a.rooms,'number')}
       ${editField('Salles de bain','am-bathrooms',a.bathrooms,'number')}
       ${editField('Capacité','am-capacity',a.capacity,'number')}
-      ${editField('Étoiles','am-stars',a.stars,'number')}
+      ${a.type==='hotel' ? editField('Étoiles','am-stars',a.stars,'number') : ''}
       ${editField('Heure arrivée','am-checkin',a.checkin)}
       ${editField('Heure départ','am-checkout',a.checkout)}
       ${editField('Séjour min (nuits)','am-min-stay',a.min_stay,'number')}
@@ -10975,7 +10975,7 @@ function renderAdminAnnonceModal(id){
       ${field('Chambres', a.rooms)}
       ${field('Salles de bain', a.bathrooms)}
       ${field('Capacité', a.capacity)}
-      ${field('Étoiles', a.stars)}
+      ${a.type==='hotel' ? field('Étoiles', a.stars) : ''}
       ${field('Arrivée / Départ', (a.checkin||'—')+' / '+(a.checkout||'—'))}
       ${field('Séjour min/max', (a.min_stay||1)+' - '+(a.max_stay||30)+' nuits')}
       ${field('Annulation', a.cancellation)}
