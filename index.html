@@ -5946,10 +5946,14 @@ function buildExcursions(){
       <!-- Search bar -->
       <div style="background:#fff;border-radius:var(--r-lg);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;max-width:620px;border:3px solid var(--yellow);box-shadow:0 8px 32px rgba(0,0,0,.25);">
         <span style="font-size:18px;">🔍</span>
-        <input type="text" id="exc-search" placeholder="Ville, activité, mot-clé…" value="${search}"
-          onkeydown="if(event.key==='Enter'){appState.excursionSearch=this.value;refreshExcursions();}"
-          style="border:none;font-size:15px;flex:1;min-width:140px;color:var(--gray-900);outline:none;background:transparent;">
-        <button onclick="appState.excursionSearch=document.getElementById('exc-search').value;refreshExcursions()"
+        <div id="exc-search-field" style="position:relative;flex:1;min-width:140px;">
+          <input type="text" id="exc-search" placeholder="Ville, activité, catégorie, mot-clé…" value="${search}" autocomplete="off"
+            oninput="appState.excursionSearch=this.value;updateExcSuggestions(this.value);"
+            onfocus="updateExcSuggestions(this.value)"
+            onkeydown="if(event.key==='Enter'){appState.excursionSearch=this.value;hideExcSuggestions();refreshExcursions();}"
+            style="border:none;font-size:15px;width:100%;color:var(--gray-900);outline:none;background:transparent;">
+        </div>
+        <button onclick="appState.excursionSearch=document.getElementById('exc-search').value;hideExcSuggestions();refreshExcursions()"
           style="background:var(--yellow);color:var(--gray-900);padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:800;border:none;cursor:pointer;width:100%;">🔍 Rechercher</button>
       </div>
     </div>
@@ -6069,6 +6073,76 @@ function refreshExcursions(){
   const wrap = document.querySelector('[data-exc-list]');
   if(wrap){ const n=buildExcursions(); wrap.parentNode.replaceChild(n,wrap); return; }
   navigate('excursions');
+}
+
+/* ===== Autocomplétion de la recherche Excursions (catégorie / titre) ===== */
+function getExcSuggestionPool(){
+  const items = [];
+  const seen = new Set();
+  const add = (label, type, value) => {
+    if(!label) return;
+    const key = type+'|'+label.toLowerCase();
+    if(seen.has(key)) return;
+    seen.add(key);
+    items.push({label, type, value});
+  };
+  EXCURSION_CATS.forEach(c => add(c.icon+' '+c.label, 'categorie', c.id));
+  const allExc = [...excursions, ...(appState.myExcursions||[])];
+  allExc.forEach(e => add(e.title, 'excursion', e.title));
+  return items;
+}
+
+function updateExcSuggestions(query){
+  const field = document.getElementById('exc-search-field');
+  if(!field) return;
+  let dd = document.getElementById('exc-suggest-dropdown');
+  if(!dd){
+    dd = document.createElement('div');
+    dd.id = 'exc-suggest-dropdown';
+    dd.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.25);max-height:320px;overflow-y:auto;';
+    document.body.appendChild(dd);
+    document.addEventListener('click', (e)=>{
+      if(e.target.id==='exc-search') return;
+      if(!dd.contains(e.target)) dd.style.display='none';
+    });
+    window.addEventListener('resize', ()=>{ dd.style.display='none'; });
+  }
+  const q = (query||'').trim().toLowerCase();
+  if(!q){ dd.style.display='none'; return; }
+  const icons = {categorie:'🏷️', excursion:'✈️'};
+  const typeLabel = {categorie:'Catégorie', excursion:'Excursion'};
+  const matches = getExcSuggestionPool().filter(it=>it.label.toLowerCase().includes(q)).slice(0,8);
+  if(matches.length===0){ dd.style.display='none'; return; }
+  dd.innerHTML = matches.map((it,i)=>
+    `<div onclick="pickExcSuggestion('${it.type}','${it.value.replace(/'/g,"\\'")}')" style="padding:10px 14px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px;${i<matches.length-1?'border-bottom:1px solid var(--gray-100);':''}" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">
+      <span>${icons[it.type]}</span><span style="flex:1;color:var(--gray-900);">${it.label}</span><span style="font-size:11px;color:var(--gray-400);">${typeLabel[it.type]}</span>
+    </div>`
+  ).join('');
+  const rect = field.getBoundingClientRect();
+  dd.style.top = (rect.bottom + 4) + 'px';
+  dd.style.left = rect.left + 'px';
+  dd.style.width = rect.width + 'px';
+  dd.style.display = 'block';
+}
+
+function hideExcSuggestions(){
+  const dd = document.getElementById('exc-suggest-dropdown');
+  if(dd) dd.style.display = 'none';
+}
+
+function pickExcSuggestion(type, value){
+  const input = document.getElementById('exc-search');
+  if(type==='categorie'){
+    appState.excursionFilter = value;
+    appState.excursionSearch = '';
+    if(input) input.value = '';
+  } else {
+    appState.excursionSearch = value;
+    appState.excursionFilter = 'toutes';
+    if(input) input.value = value;
+  }
+  hideExcSuggestions();
+  refreshExcursions();
 }
 
 /* ===================== EXCURSION DETAIL ===================== */
