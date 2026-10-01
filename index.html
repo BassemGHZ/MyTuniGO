@@ -3782,6 +3782,14 @@ function annStep0(ad){return `<div class="ann-card">
     <div class="a-field"><label>Salles de bain</label><input type="number" min="1" value="${ad.bathrooms}" oninput="annSet('bathrooms',+this.value)"></div>
     <div class="a-field"><label>Capacité</label><input type="number" min="1" value="${ad.capacity}" oninput="annSet('capacity',+this.value)"></div>
   </div>
+  ${ad.type==='hotel' ? `
+  <div class="ann-row">
+    <div class="a-field" style="flex:1;"><label>Classification de l'hôtel (étoiles) *</label>
+      <select onchange="annSet('stars',+this.value)">
+        ${[1,2,3,4,5].map(n=>`<option value="${n}" ${(+ad.stars||0)===n?'selected':''}>${'★'.repeat(n)} (${n} étoile${n>1?'s':''})</option>`).join('')}
+      </select>
+    </div>
+  </div>` : ''}
   <div class="ann-full a-field"><label>Description *</label>
     <textarea placeholder="Décrivez votre hébergement : ambiance, points forts, emplacement…" oninput="annSet('desc',this.value)">${ad.desc}</textarea>
     <div class="hint">Minimum 80 caractères recommandés.</div></div>
@@ -4232,6 +4240,7 @@ function annValidate(){
   if(cur===0){
     if(!ad.type){showToast('⚠️ Sélectionnez un type de logement.','var(--red)');return false;}
     if(!ad.name.trim()||!ad.desc.trim()){showToast('⚠️ Remplissez le nom et la description.','var(--red)');return false;}
+    if(ad.type==='hotel'&&!(+ad.stars>=1&&+ad.stars<=5)){showToast('⚠️ Sélectionnez la classification (étoiles) de l\'hôtel.','var(--red)');return false;}
   }
   if(cur===1){
     if(!ad.address.trim()||!ad.governorate||!ad.city||!ad.zip.trim()){showToast('⚠️ Remplissez l\'adresse, le gouvernorat, la ville et le code postal.','var(--red)');return false;}
