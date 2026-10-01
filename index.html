@@ -3397,10 +3397,15 @@ function goConfirm(hId){
   if(appState.checkIn && appState.checkOut){
     const nights = Math.round((new Date(appState.checkOut)-new Date(appState.checkIn))/86400000);
 
-    // Get minNights: from hotel data directly (most reliable)
+    // Get minNights: from hotel data directly (most reliable), sauf si
+    // l'hôte a imposé une durée différente sur la date d'arrivée choisie
+    // via #host-calendar (onglet "Durée de séjour") — cette règle ne
+    // s'applique qu'à la période qu'il a sélectionnée, sinon on retombe
+    // sur la durée min/max par défaut définie à la création de l'annonce.
     const h = hotels.find(x=>x.id===hId);
-    const minN = h?.minNights || 1;
-    const maxN = h?.maxNights || 365;
+    const stayRule = appState._bkDateStayRules && appState._bkDateStayRules[appState.checkIn];
+    const minN = stayRule ? stayRule.min : (h?.minNights || 1);
+    const maxN = stayRule ? stayRule.max : (h?.maxNights || 365);
 
     // ── Validate minimum nights ──
     if(nights < minN){
@@ -9369,10 +9374,14 @@ async function handleBookingRequest(reqId, decision, hostMessage){
 let _hostCalReservedSet = new Set();
 let _hostCalAnnonceId = null;
 let _hostCalPromoMap = {}; // date -> discount_percent (positif = réduction, négatif = majoration)
-let _calMode = 'block'; // 'block' | 'promo'
+let _hostCalStayMap = {}; // date -> {min_nights, max_nights} — règle de séjour imposée sur cette date précise
+let _calMode = 'block'; // 'block' | 'promo' | 'stay'
 let _calPromoSelection = new Set();
 let _calPromoDirection = 'reduction'; // 'reduction' (prix plus bas) | 'increase' (prix plus haut, ex: haute saison)
 let _pendingPromoChanges = []; // changements de promo par date depuis le dernier "Enregistrer"
+let _calStaySelection = new Set();
+let _calStayRangeStart = null;
+let _pendingStayChanges = []; // changements de règles de séjour par date depuis le dernier "Enregistrer"
 
 function buildHostCalendar(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
@@ -9394,15 +9403,18 @@ function buildHostCalendar(){
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('mesannonces')">Mes annonces</span><span class="bc-sep">›</span><span>Calendrier</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">📅 Calendrier de disponibilité</h1>
-    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':'Sélectionnez une ou plusieurs dates, puis appliquez une réduction ou une majoration précise (ex: tarif de haute saison).'}</p>
+    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':_calMode==='promo'?'Sélectionnez une ou plusieurs dates, puis appliquez une réduction ou une majoration précise (ex: tarif de haute saison).':"Sélectionnez une période pour y imposer une durée de séjour différente (ex: 3 nuits minimum pendant les fêtes). En dehors de cette période, la durée min/max définie à la création de l'annonce continue de s'appliquer."}</p>
 
     <!-- Sélecteur de mode : segmented control (pastille active sur fond neutre) -->
-    <div style="display:inline-flex;gap:4px;padding:4px;background:var(--gray-100);border-radius:999px;margin-bottom:22px;">
+    <div style="display:inline-flex;gap:4px;padding:4px;background:var(--gray-100);border-radius:999px;margin-bottom:22px;flex-wrap:wrap;">
       <button onclick="setCalMode('block')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='block'?'#fff':'transparent'};color:${_calMode==='block'?'var(--blue)':'var(--gray-500)'};box-shadow:${_calMode==='block'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
         <span style="font-size:16px;">🔒</span> Bloquer / débloquer
       </button>
       <button onclick="setCalMode('promo')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='promo'?'#fff':'transparent'};color:${_calMode==='promo'?(_calPromoDirection==='increase'?'#7c3aed':'#ea580c'):'var(--gray-500)'};box-shadow:${_calMode==='promo'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
         <span style="font-size:16px;">🏷️</span> Gestion des tarifs
+      </button>
+      <button onclick="setCalMode('stay')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='stay'?'#fff':'transparent'};color:${_calMode==='stay'?'#0d9488':'var(--gray-500)'};box-shadow:${_calMode==='stay'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
+        <span style="font-size:16px;">🌙</span> Durée de séjour
       </button>
     </div>
 
@@ -9434,6 +9446,33 @@ function buildHostCalendar(){
     </div>
     <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);display:flex;align-items:center;gap:8px;">
       <span style="font-size:15px;flex-shrink:0;">💡</span><span>Entrez <strong>0%</strong> puis « Appliquer » sur des dates déjà ajustées pour retirer leur réduction ou majoration.</span>
+    </div>
+    ` : ''}
+
+    ${_calMode==='stay' ? `
+    <div style="background:#f0fdfa;border:1.5px solid #99e6db;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#0d9488;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🌙</div>
+        <div style="flex:1;min-width:160px;">
+          <div id="stay-selection-bar" style="font-size:14px;font-weight:800;color:var(--gray-800);">${_calStaySelection.size>0 ? _calStaySelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée'}</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez une date de <strong>début</strong>, puis une date de <strong>fin</strong> pour toute la période (ou une seule date pour la cibler).</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px dashed #99e6db;">
+        <div>
+          <label for="stay-min-nights" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-600);display:block;margin-bottom:4px;">Durée min. (nuits)</label>
+          <input type="number" id="stay-min-nights" min="1" max="365" value="${annonce?.min_stay||1}" style="width:80px;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;text-align:center;">
+        </div>
+        <div>
+          <label for="stay-max-nights" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-600);display:block;margin-bottom:4px;">Durée max. (nuits)</label>
+          <input type="number" id="stay-max-nights" min="1" max="365" value="${annonce?.max_stay||30}" style="width:80px;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;text-align:center;">
+        </div>
+        <button id="stay-apply-btn" onclick="applyDateStayRule()" ${_calStaySelection.size===0?'disabled':''} style="background:#0d9488;color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:${_calStaySelection.size===0?'not-allowed':'pointer'};opacity:${_calStaySelection.size===0?'.5':'1'};align-self:flex-end;">✓ Appliquer</button>
+        <button id="stay-cancel-btn" onclick="cancelStaySelection()" style="background:#fff;color:var(--gray-600);padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:${_calStaySelection.size===0?'not-allowed':'pointer'};opacity:${_calStaySelection.size===0?'.5':'1'};align-self:flex-end;">✕ Annuler la sélection</button>
+      </div>
+    </div>
+    <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:15px;flex-shrink:0;">💡</span><span>La durée par défaut (<strong>${annonce?.min_stay||1} - ${annonce?.max_stay||30} nuits</strong>) vient du formulaire de création et reste valable sur toutes les dates sans règle spécifique. Pour retirer une règle sur une période, resélectionnez-la et remettez les valeurs par défaut avant d'appliquer, ou laissez un champ vide puis « Appliquer ».</span>
     </div>
     ` : ''}
 
@@ -9477,16 +9516,22 @@ function buildHostCalendar(){
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--gray-400);"></div>Bloqué par vous (clic pour débloquer)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#ea580c;"></div>Réduction active</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#7c3aed;"></div>Majoration active</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#0d9488;"></div>Durée de séjour imposée</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#fff;border:2px solid var(--blue);"></div>Aujourd'hui</div>
         </div>
       </div>
       <div>
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:16px;">
-          <div style="font-size:15px;font-weight:700;margin-bottom:14px;">⚙️ Règles de séjour</div>
-          <div style="margin-bottom:12px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée minimum (nuits)</label>
-            <input type="number" min="1" max="30" value="${cal.minNights}" onchange="getCalForAnnonce(appState.selectedAnnonceId||'ANN-K7L8M9N0').minNights=+this.value" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;"></div>
-          <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée maximum (nuits)</label>
-            <input type="number" min="1" max="365" value="${cal.maxNights}" onchange="getCalForAnnonce(appState.selectedAnnonceId||'ANN-K7L8M9N0').maxNights=+this.value" style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;"></div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:14px;">⚙️ Règles de séjour par défaut</div>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée minimum (nuits) <span style="color:var(--gray-400);font-weight:600;text-transform:none;">🔒 verrouillé</span></label>
+            <div style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--r-md);font-size:15px;background:var(--gray-50);color:var(--gray-600);box-sizing:border-box;">${annonce?.min_stay||1}</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée maximum (nuits) <span style="color:var(--gray-400);font-weight:600;text-transform:none;">🔒 verrouillé</span></label>
+            <div style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--r-md);font-size:15px;background:var(--gray-50);color:var(--gray-600);box-sizing:border-box;">${annonce?.max_stay||30}</div>
+          </div>
+          <div style="font-size:12px;color:var(--gray-500);line-height:1.5;">Ces valeurs par défaut viennent de la Politique & règles de séjour modifiable dans « Modifier l'annonce ». Pour imposer une durée différente sur une période précise (ex : vacances), utilisez l'onglet <strong style="color:#0d9488;">🌙 Durée de séjour</strong> ci-dessus.</div>
         </div>
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:16px;">
           <div style="font-size:15px;font-weight:700;margin-bottom:10px;">📊 Ce mois</div>
@@ -9511,9 +9556,13 @@ function buildHostCalendar(){
       _pendingPromoChanges = [];
       _hostCalReservedSet = _annIdNow ? new Set(await loadReservedDatesForAnnonce(_annIdNow)) : new Set();
       _hostCalPromoMap = {};
+      _hostCalStayMap = {};
+      _pendingStayChanges = [];
       if(_annIdNow){
         const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', _annIdNow);
         (promoRows||[]).forEach(r=>{ _hostCalPromoMap[r.date] = r.discount_percent; });
+        const { data: stayRows } = await _sb.from('date_stay_rules').select('date,min_nights,max_nights').eq('annonce_id', _annIdNow);
+        (stayRows||[]).forEach(r=>{ _hostCalStayMap[r.date] = {min:r.min_nights, max:r.max_nights}; });
         // Dates bloquées par l'hôte : chargées depuis la base (table
         // blocked_dates) plutôt que de rester sur les données de démo
         // codées en dur dans calendarData — sans ça, un blocage ne
@@ -9550,7 +9599,8 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     const isPast    = dateStr < today;
     const price     = cal.priceOverrides[dateStr];
     const promoPct  = _hostCalPromoMap[dateStr];
-    const isSelected = _calMode==='promo' && _calPromoSelection.has(dateStr);
+    const stayRule  = _hostCalStayMap[dateStr];
+    const isSelected = (_calMode==='promo' && _calPromoSelection.has(dateStr)) || (_calMode==='stay' && _calStaySelection.has(dateStr));
     const clickable = !isPast && !isReserved && (_calMode==='block' || !isBlocked);
 
     const cell = document.createElement('div');
@@ -9560,6 +9610,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     else if(isBlocked){ bg='var(--gray-400)'; color='#fff'; border='1px solid var(--gray-400)'; }
     else if(promoPct>0){ bg='#ea580c'; color='#fff'; border='1px solid #ea580c'; } // réduction
     else if(promoPct<0){ bg='#7c3aed'; color='#fff'; border='1px solid #7c3aed'; } // majoration
+    else if(stayRule){ bg='#0d9488'; color='#fff'; border='1px solid #0d9488'; } // durée de séjour imposée
     else { bg='#e8f9f0'; color='var(--gray-900)'; border='1px solid #6bcf9e'; }
 
     cell.style.cssText =
@@ -9580,6 +9631,11 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
       pctEl.style.cssText = 'font-size:9px;color:#fff;font-weight:800;margin-top:1px;';
       pctEl.textContent = (promoPct>0?'-':'+')+Math.abs(promoPct)+'%';
       cell.appendChild(pctEl);
+    } else if(stayRule){
+      const stayEl = document.createElement('div');
+      stayEl.style.cssText = 'font-size:8px;color:#fff;font-weight:800;line-height:1.2;margin-top:1px;';
+      stayEl.textContent = stayRule.min+'-'+stayRule.max+'n';
+      cell.appendChild(stayEl);
     } else if(price){
       const priceEl = document.createElement('div');
       priceEl.style.cssText = 'font-size:9px;color:'+((isBlocked||isReserved)?'#fff':'var(--blue)')+';font-weight:700;margin-top:2px;';
@@ -9590,6 +9646,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     if(clickable){
       cell.addEventListener('click', function(){
         if(_calMode==='promo') togglePromoSelection(this.dataset.date);
+        else if(_calMode==='stay') toggleStaySelection(this.dataset.date);
         else toggleBlockDay(this.dataset.date);
       });
       if(_calMode==='block'){
@@ -9678,12 +9735,27 @@ function refreshHostCalendarLight(){
     cancelBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
     cancelBtn.style.cursor = _calPromoSelection.size===0 ? 'not-allowed' : 'pointer';
   }
+  const stayBar = document.getElementById('stay-selection-bar');
+  if(stayBar) stayBar.textContent = _calStaySelection.size>0 ? _calStaySelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée';
+  const stayApplyBtn = document.getElementById('stay-apply-btn');
+  if(stayApplyBtn){
+    stayApplyBtn.disabled = _calStaySelection.size===0;
+    stayApplyBtn.style.opacity = _calStaySelection.size===0 ? '.5' : '1';
+    stayApplyBtn.style.cursor = _calStaySelection.size===0 ? 'not-allowed' : 'pointer';
+  }
+  const stayCancelBtn = document.getElementById('stay-cancel-btn');
+  if(stayCancelBtn){
+    stayCancelBtn.style.opacity = _calStaySelection.size===0 ? '.5' : '1';
+    stayCancelBtn.style.cursor = _calStaySelection.size===0 ? 'not-allowed' : 'pointer';
+  }
 }
 
 function setCalMode(mode){
   _calMode = mode;
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
+  _calStaySelection = new Set();
+  _calStayRangeStart = null;
   render();
 }
 
@@ -9773,8 +9845,85 @@ async function applyDatePromo(){
   refreshHostCalendarLight();
 }
 
+// Sélection de plage pour le mode "Durée de séjour" — même logique de
+// clic début/fin que togglePromoSelection, dédoublée pour rester
+// indépendante de la sélection "Gestion des tarifs".
+function toggleStaySelection(dateStr){
+  if(!_calStayRangeStart){
+    _calStayRangeStart = dateStr;
+    _calStaySelection = new Set([dateStr]);
+  } else {
+    const start = _calStayRangeStart;
+    if(dateStr === start){
+      _calStayRangeStart = null;
+    } else {
+      const from = start < dateStr ? start : dateStr;
+      const to   = start < dateStr ? dateStr : start;
+      const cal = getCalForAnnonce(_hostCalAnnonceId || 'ANN-K7L8M9N0');
+      const sel = new Set();
+      let d = new Date(from);
+      const end = new Date(to);
+      while(d <= end){
+        const ds = localISODate(d);
+        if(!_hostCalReservedSet.has(ds) && !cal.blocked.includes(ds)) sel.add(ds);
+        d.setDate(d.getDate()+1);
+      }
+      _calStaySelection = sel;
+      _calStayRangeStart = null;
+    }
+  }
+  refreshHostCalendarLight();
+}
+
+function cancelStaySelection(){
+  _calStaySelection = new Set();
+  _calStayRangeStart = null;
+  refreshHostCalendarLight();
+}
+
+// Applique (ou retire) une durée de séjour min/max imposée sur la période
+// sélectionnée. Cette règle ne concerne QUE les dates sélectionnées : en
+// dehors, la durée min/max par défaut (définie à la création de l'annonce,
+// modifiable ensuite dans "Modifier l'annonce" → Politique & règles de
+// séjour) continue de s'appliquer — voir goConfirm() côté réservation.
+async function applyDateStayRule(){
+  if(_calStaySelection.size===0){ showToast('Sélectionnez au moins une date','var(--red)'); return; }
+  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id);
+  if(!annId){ showToast('Aucune annonce sélectionnée','var(--red)'); return; }
+  const dates = [..._calStaySelection];
+
+  const minRaw = document.getElementById('stay-min-nights')?.value;
+  const maxRaw = document.getElementById('stay-max-nights')?.value;
+
+  let action = '';
+  if(minRaw==='' || maxRaw===''){
+    // Champ vide = on retire la règle spécifique sur ces dates (retour au défaut).
+    const { error } = await _sb.from('date_stay_rules').delete().eq('annonce_id', annId).in('date', dates);
+    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+    dates.forEach(d=>delete _hostCalStayMap[d]);
+    showToast('Règle de séjour retirée sur '+dates.length+' date'+(dates.length>1?'s':''),'var(--gray-700)');
+    action = 'removed';
+  } else {
+    const minN = Math.max(1, parseInt(minRaw)||1);
+    const maxN = Math.max(minN, parseInt(maxRaw)||minN);
+    const annonceRow = appState.myAnnonces.find(a=>a.id===annId);
+    const rows = dates.map(d=>({ annonce_id: annId, date: d, min_nights: minN, max_nights: maxN, host_id: auth.currentUser?.id }));
+    const { error } = await _sb.from('date_stay_rules').upsert(rows, { onConflict: 'annonce_id,date' });
+    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+    dates.forEach(d=>_hostCalStayMap[d]={min:minN, max:maxN});
+    showToast('🌙 Durée imposée '+minN+'-'+maxN+' nuits sur '+dates.length+' date'+(dates.length>1?'s':''),'#0d9488');
+    action = 'applied';
+  }
+
+  _pendingStayChanges.push({ dates: dates.sort(), action });
+
+  _calStaySelection = new Set();
+  _calStayRangeStart = null;
+  refreshHostCalendarLight();
+}
+
 async function saveCalendarChanges(){
-  if(_pendingPromoChanges.length === 0){
+  if(_pendingPromoChanges.length === 0 && _pendingStayChanges.length === 0){
     showToast('✅ Calendrier enregistré !','var(--green)');
     return;
   }
@@ -9792,7 +9941,8 @@ async function saveCalendarChanges(){
           recipient_email: auth.currentUser.email,
           guest_name: auth.currentUser.firstName || 'vous',
           property_name: annonceRow?.name || 'votre hébergement',
-          changes: _pendingPromoChanges
+          changes: _pendingPromoChanges,
+          stay_rule_changes: _pendingStayChanges
         })
       });
     }
@@ -9800,6 +9950,7 @@ async function saveCalendarChanges(){
     console.error('notify-price-drop (batch) error:', efErr.message);
   }
   _pendingPromoChanges = [];
+  _pendingStayChanges = [];
   showToast('✅ Calendrier enregistré ! Email récapitulatif envoyé.','var(--green)');
 }
 
@@ -9998,10 +10149,17 @@ async function initBlockedDatesPicker(hId){
   // période est déjà entièrement passée restait affichée indéfiniment
   // (le bandeau montrait une plage de dates expirée).
   appState._bkDatePromos = {};
+  // Règles de séjour (min/max nuits) imposées par l'hôte sur des dates
+  // précises depuis #host-calendar — en dehors de ces dates, c'est la
+  // durée min/max par défaut de l'annonce (h.minNights/h.maxNights) qui
+  // continue de s'appliquer (voir goConfirm()).
+  appState._bkDateStayRules = {};
   if(h.annonceId){
     const todayStrPromo = localISODate(new Date());
     const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
     (promoRows||[]).forEach(r=>{ appState._bkDatePromos[r.date] = r.discount_percent; });
+    const { data: stayRows } = await _sb.from('date_stay_rules').select('date,min_nights,max_nights').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
+    (stayRows||[]).forEach(r=>{ appState._bkDateStayRules[r.date] = {min:r.min_nights, max:r.max_nights}; });
   }
 
   // Bandeau visible et robuste près du prix : période + taux, sans dépendre
