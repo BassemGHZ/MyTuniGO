@@ -5221,10 +5221,6 @@ function buildMesAnnonces(){
                 style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
                 📅 Calendrier
               </button>
-              <button onclick="excPromoFlash('${e.id}')"
-                style="background:#fff8ee;color:#d97706;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f59e0b;cursor:pointer;display:flex;align-items:center;gap:6px;">
-                ⚡ Promotion flash
-              </button>
               <button onclick="excToggleStatus('${e.id}')"
                 style="background:#f0fdf4;color:#16a34a;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #86efac;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 ▶ ${e.status==='suspendue'?'Republier':'Suspendre'}
@@ -5298,7 +5294,6 @@ function buildMesAnnonces(){
               <button onclick="navigate('host-calendar',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📅 Gestion du calendrier</button>
               <button onclick="appState.bookingRequestsAnnonceId='${a.id}';appState.bookingRequestsFilter='all';navigate('booking-requests')" style="background:#fff4e0;color:#a05a00;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #ffe0a0;cursor:pointer;">📨 Réservations</button>
               ${a.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${a.hotelId}})" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #6bcf9e;cursor:pointer;">👁️ Voir l'annonce</button>`:''}
-              <button onclick="openPromoModal('${a.id}')" style="background:${a.discount>0?'#d40000':'#fff4e0'};color:${a.discount>0?'#fff':'#a05a00'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid ${a.discount>0?'#d40000':'#ffe0a0'};cursor:pointer;">${a.discount>0?'🔥 Promo '+a.discount+'%':'⚡ Promotion flash'}</button>
               ${a.status==='publiée'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#fff8e0;color:#a07000;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffe080;cursor:pointer;">⏸ Suspendre</button>`:''}
               ${a.status==='suspendue'||a.status==='en attente'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #a0e8c8;cursor:pointer;">▶ Republier</button>`:''}
               <button onclick="requestAnnonceDeletion('${a.id}')" title="La suppression définitive doit être validée par l'administrateur" style="background:#fff;color:var(--gray-600);padding:7px 12px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">✉️ Demander la suppression</button>
@@ -5306,7 +5301,6 @@ function buildMesAnnonces(){
           </div>
         </div>
       </div>
-      ${a.discount>0?`<div style="background:linear-gradient(90deg,#d40000,#ff4444);padding:10px 20px;font-size:13px;color:#fff;font-weight:700;border-top:none;display:flex;align-items:center;justify-content:space-between;"><span>🔥 Offre de dernière minute active — ${a.discount}% de réduction jusqu'au ${a.promoExpiry?fmtDMY(a.promoExpiry):'—'}</span><button onclick="removePromo('${a.id}')" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;">Retirer</button></div>`:''}
       ${a.status==='en attente'?`<div style="background:#fff8e0;padding:10px 20px;font-size:13px;color:#856404;border-top:1px solid #ffe080;">⏳ Votre annonce est en cours de vérification par notre équipe. Délai estimé : 24h.</div>`:''}
       ${a.status==='suspendue'?`<div style="background:#fff0f0;padding:10px 20px;font-size:13px;color:var(--red);border-top:1px solid #ffcccc;">⛔ Cette annonce est suspendue. Republier pour la rendre visible aux voyageurs.</div>`:''}
     </div>`).join('')}
@@ -6628,22 +6622,6 @@ async function requestExcursionDeletion(id){
   showToast('✅ Demande de suppression envoyée à l\'administrateur','var(--green)');
 }
 
-function excPromoFlash(id){
-  const e = appState.myExcursions.find(x=>x.id===id);
-  if(!e) return;
-  const pct = prompt('Réduction flash (%) :', e.discount||'20');
-  if(pct===null || pct==='' || isNaN(+pct)) return;
-  const p = Math.max(0, Math.min(99, +pct));
-  // Always calculate from the BASE price, never from the discounted price
-  const base = e.basePrice || e.oldPrice || e.price;
-  e.basePrice = base;  // lock the original price forever
-  e.oldPrice  = base;
-  e.discount  = p;
-  e.price     = p > 0 ? Math.round(base * (1 - p/100)) : base;
-  showToast('⚡ Promotion flash de '+p+'% appliquée sur le prix de base ('+base+'€) !', 'var(--orange)');
-  navigate('mesannonces');
-}
-
 function toggleExcFavorite(excId){
   const key = 'exc-'+excId;
   if(!auth.currentUser){openModal('login');return;}
@@ -7797,164 +7775,6 @@ async function saveAnnonceEditOwner(){
   showToast(isLivePublished
     ? '✅ Modifications enregistrées — en attente de validation. Votre annonce actuelle reste visible en attendant.'
     : '✅ Annonce mise à jour — en attente de validation', 'var(--blue)');
-  navigate('mesannonces');
-}
-
-function openPromoModal(annonceId){
-  const a = appState.myAnnonces.find(x=>x.id===annonceId);
-  if(!a) return;
-  if(a.status !== 'publiée'){showToast('⚠️ Publiez l\'annonce avant d\'ajouter une promotion','var(--red)');return;}
-
-  const root = document.getElementById('modal-root');
-  root.innerHTML = '';
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
-
-  overlay.innerHTML = `
-    <div class="modal" style="max-width:420px;">
-      <div class="modal-header" style="background:linear-gradient(135deg,#d40000,#ff4444);">
-        <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
-        <h2>🔥 Offre de dernière minute</h2>
-        <p>Définissez une réduction pour ${a.name}</p>
-      </div>
-      <div class="modal-body">
-        <div style="background:#fff8e0;border:1px solid #ffe0a0;border-radius:var(--r-md);padding:12px 14px;font-size:13px;color:#856404;margin-bottom:18px;line-height:1.6;">
-          💡 L'offre apparaîtra dans la section <strong>Offres de dernière minute</strong> de la page d'accueil et sera visible par tous les voyageurs.
-        </div>
-
-        <div style="margin-bottom:16px;">
-          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Pourcentage de réduction</label>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">
-            ${[10,15,20,25,30].map(p=>`
-              <div onclick="document.getElementById('promo-pct').value=${p};updatePromoPreview(${a.price_night})"
-                style="padding:10px;text-align:center;border:1.5px solid var(--gray-300);border-radius:var(--r-md);cursor:pointer;font-size:15px;font-weight:700;transition:all .15s;"
-                onmouseover="this.style.borderColor='#d40000';this.style.background='#fff0f0'"
-                onmouseout="this.style.borderColor='var(--gray-300)';this.style.background='#fff'">
-                -${p}%
-              </div>`).join('')}
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="number" id="promo-pct" min="5" max="70" value="${a.discount||20}"
-              oninput="updatePromoPreview(${a.price_night})"
-              style="flex:1;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:16px;font-weight:700;text-align:center;">
-            <span style="font-size:20px;font-weight:700;color:var(--gray-600);">%</span>
-          </div>
-        </div>
-
-        <div id="promo-preview" style="background:linear-gradient(135deg,#fff0f0,#ffe8e8);border:1.5px solid #ffcccc;border-radius:var(--r-md);padding:14px 16px;margin-bottom:16px;">
-          <div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;">Aperçu de votre offre</div>
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            <div>
-              <span style="font-size:14px;color:var(--gray-500);text-decoration:line-through;" id="promo-old-price">${a.price_night}€</span>
-              <span style="font-size:22px;font-weight:800;color:#d40000;margin-left:8px;" id="promo-new-price">${Math.round(a.price_night*(1-(a.discount||20)/100))}€</span>
-              <span style="font-size:13px;color:var(--gray-500);">/nuit</span>
-            </div>
-            <div style="background:#d40000;color:#fff;font-size:13px;font-weight:800;padding:4px 12px;border-radius:4px;" id="promo-badge">-${a.discount||20}%</div>
-          </div>
-        </div>
-
-        <div style="margin-bottom:16px;">
-          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée de l'offre</label>
-          <select id="promo-duration" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-            <option value="3">3 jours</option>
-            <option value="7" selected>7 jours</option>
-            <option value="14">14 jours</option>
-            <option value="30">30 jours</option>
-          </select>
-        </div>
-
-        <button onclick="applyPromo('${a.id}')"
-          style="width:100%;background:linear-gradient(135deg,#d40000,#ff4444);color:#fff;padding:13px;border-radius:var(--r-md);font-size:16px;font-weight:800;border:none;cursor:pointer;">
-          🔥 Activer l'offre de dernière minute
-        </button>
-        ${a.discount>0?`<button onclick="removePromo('${a.id}')" style="width:100%;margin-top:8px;background:#fff0f0;color:var(--red);padding:10px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1.5px solid #ffcccc;cursor:pointer;">Retirer la promotion en cours</button>`:''}
-      </div>
-    </div>`;
-  root.appendChild(overlay);
-}
-
-function updatePromoPreview(basePrice){
-  const pct = parseInt(document.getElementById('promo-pct')?.value||20);
-  const newPrice = Math.round(basePrice*(1-pct/100));
-  const oldEl = document.getElementById('promo-old-price');
-  const newEl = document.getElementById('promo-new-price');
-  const badgeEl = document.getElementById('promo-badge');
-  if(oldEl) oldEl.textContent = basePrice+'€';
-  if(newEl) newEl.textContent = newPrice+'€';
-  if(badgeEl) badgeEl.textContent = '-'+pct+'%';
-}
-
-async function applyPromo(annonceId){
-  const a = appState.myAnnonces.find(x=>x.id===annonceId);
-  if(!a) return;
-  const pct = parseInt(document.getElementById('promo-pct')?.value||20);
-  const days = parseInt(document.getElementById('promo-duration')?.value||7);
-  if(pct<5||pct>70){showToast('⚠️ Réduction entre 5% et 70%','var(--red)');return;}
-
-  const expiresAt = new Date(Date.now()+days*86400000).toISOString();
-  const { error } = await _sb.from('annonces')
-    .update({ discount_percent: pct, promo_expires_at: expiresAt })
-    .eq('id', annonceId);
-
-  if(error){
-    console.error('applyPromo error:', error.message);
-    showToast('Erreur : '+error.message,'var(--red)');
-    return;
-  }
-
-  document.getElementById('modal-root').innerHTML = '';
-  showToast('🔥 Offre de dernière minute activée ! -'+pct+'%','#d40000');
-
-  // Met à jour immédiatement la copie en mémoire (hotels[]) pour que la
-  // promo soit visible sans avoir à recharger toute la page.
-  const hEntry = hotels.find(x=>x.annonceId===annonceId);
-  if(hEntry) hEntry.discount = pct;
-
-  // Email de confirmation à l'hôte lui-même
-  try{
-    if(auth.currentUser?.email){
-      const newPrice = Math.round(a.price_night * (1 - pct/100));
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-price-drop', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify({
-          type: 'promo_activated',
-          recipient_email: auth.currentUser.email,
-          guest_name: auth.currentUser.firstName || 'vous',
-          property_name: a.name,
-          old_price: a.price_night,
-          new_price: newPrice,
-          days
-        })
-      });
-    }
-  } catch(efErr){
-    console.error('notify-price-drop (promo) error:', efErr.message);
-  }
-
-  navigate('mesannonces');
-}
-
-async function removePromo(annonceId){
-  const a = appState.myAnnonces.find(x=>x.id===annonceId);
-  if(!a) return;
-  const { error } = await _sb.from('annonces')
-    .update({ discount_percent: 0, promo_expires_at: null })
-    .eq('id', annonceId);
-  if(error){
-    console.error('removePromo error:', error.message);
-    showToast('Erreur : '+error.message,'var(--red)');
-    return;
-  }
-  document.getElementById('modal-root').innerHTML = '';
-  showToast('Promotion retirée','var(--gray-700)');
-
-  const hEntry = hotels.find(x=>x.annonceId===annonceId);
-  if(hEntry) hEntry.discount = 0;
   navigate('mesannonces');
 }
 
