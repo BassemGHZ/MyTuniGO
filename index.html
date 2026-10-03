@@ -1100,6 +1100,12 @@ function render() {
     loadAnnonceEditOwner(_aeoc);
   }
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
+  else if(pg==='reservation-payment'){
+    const _rpc = document.createElement('div');
+    _rpc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de votre réservation…</div>';
+    app.appendChild(_rpc);
+    loadReservationPayment(_rpc);
+  }
   else if(pg==='admin') app.appendChild(buildAdminDashboard());
   else if(pg==='about')     app.appendChild(buildAboutPage());
   else if(pg==='cgu')       app.appendChild(buildCGUPage());
@@ -1142,7 +1148,7 @@ document.addEventListener('click', function(e){
   }
 });
 
-const NAV_ID_KEYS = ['selectedHotelId','selectedAnnonceId','selectedConvId','selectedExcursionId','selectedHostId'];
+const NAV_ID_KEYS = ['selectedHotelId','selectedAnnonceId','selectedConvId','selectedExcursionId','selectedHostId','selectedResaId'];
 
 function navigate(page, extra){
   const heroDD = document.getElementById('hero-cal-dropdown');
@@ -2902,7 +2908,7 @@ function resultCardHTML(h){
         <div style="display:flex;align-items:center;gap:6px;"><div class="r-badge">${h.rating}★</div><div><div style="font-size:12px;font-weight:700;color:var(--gray-700)">${h.ratingLabel}</div><div style="font-size:11px;color:var(--gray-500)">${h.reviews.toLocaleString()} avis</div></div></div>
         <div class="rc-badges">
           ${h.freeCancellation?'<span class="badge-green">✓ Annulation gratuite</span>':''}
-          ${h.payLater?'<span class="badge-green">✓ Payez sur place</span>':''}
+          <span class="badge-green">✓ Paiement après accord de l'hôte</span>
         </div>
         <div>
           ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;margin-bottom:1px;">🏷️ Promo sur certaines dates</div>`:''}
@@ -3222,14 +3228,14 @@ function buildDetail(){
           <div id="bk-mini-cal" style="margin-bottom:12px;display:none;"></div>
           <hr class="bk-div">
           <div id="bk-calc">${calcBkHTML(h)}</div>
-          <button class="btn-reserve" onclick="goConfirm(${h.id})" style="margin-bottom:8px;">⚡ Réserver maintenant</button>
+          <button class="btn-reserve" onclick="goConfirm(${h.id})" style="margin-bottom:8px;">📨 Demander à réserver</button>
           <button onclick="openMessageHost(${h.id})" style="width:100%;background:#fff;color:var(--gray-700);padding:10px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--gray-300);cursor:pointer;margin-top:6px;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">💬 Contacter l'hôte</button>
           <div id="bk-avail-warn" style="display:none;background:#fff0f0;border:1px solid #ffcccc;border-radius:var(--r-md);padding:10px 14px;margin-top:8px;font-size:13px;color:var(--red);font-weight:600;align-items:center;gap:8px;">
             ⛔ Ces dates sont indisponibles selon le calendrier de l'hôte. Veuillez choisir d'autres dates.
           </div>
           <div class="bk-guarantees">
             ${h.freeCancellation?'<div class="bk-g">✅ Annulation gratuite</div>':''}
-            ${h.payLater?'<div class="bk-g">💳 Payez sur place</div>':''}
+            <div class="bk-g">💳 Aucun paiement avant l'accord de l'hôte</div>
             <div class="bk-g">🔒 Paiement sécurisé</div>
           </div>
         </div>
@@ -3479,34 +3485,27 @@ function buildConfirm(){
           <div class="cf-field"><label>Demandes spéciales</label><input type="text" id="cf-notes" placeholder="Chambre non-fumeur, arrivée tardive…"></div>
         </div>
 
-        <!-- Mode de paiement : sur place uniquement -->
+        <!-- Processus : demande -> accord de l'hôte -> paiement en ligne sous 24h -->
         <div style="margin:20px 0;">
-          <div style="font-weight:800;font-size:15px;margin-bottom:12px;">💰 Mode de paiement</div>
-          <div style="background:linear-gradient(135deg,#e8f9f0,#d4f0e0);border:2px solid var(--green);border-radius:var(--r-lg);padding:18px;display:flex;align-items:flex-start;gap:14px;">
-            <div style="width:24px;height:24px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">
-              <span style="color:#fff;font-size:14px;font-weight:900;">✓</span>
-            </div>
-            <div style="flex:1;">
-              <div style="font-size:15px;font-weight:800;color:#0a5c3e;margin-bottom:5px;">🏨 Paiement sur place</div>
-              <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:10px;">
-                Une fois votre demande acceptée par l'hôte, vous réglerez directement à l'hébergement à votre arrivée. Aucun prélèvement en ligne.
-              </div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <span style="font-size:11px;background:#fff;color:#0a5c3e;padding:3px 10px;border-radius:20px;font-weight:700;border:1px solid #6bcf9e;">💵 Espèces</span>
-                <span style="font-size:11px;background:#fff;color:#0a5c3e;padding:3px 10px;border-radius:20px;font-weight:700;border:1px solid #6bcf9e;">💳 CB sur place</span>
-                <span style="font-size:11px;background:#fff;color:#0a5c3e;padding:3px 10px;border-radius:20px;font-weight:700;border:1px solid #6bcf9e;">✅ 0€ prélevé maintenant</span>
-              </div>
-            </div>
-            <span style="background:#0a5c3e;color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;white-space:nowrap;flex-shrink:0;">🎉 0% commission</span>
+          <div style="font-weight:800;font-size:15px;margin-bottom:12px;">🔄 Comment se passe la réservation ?</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            ${[
+              ['1','📨','Vous envoyez votre demande',"Aucun paiement maintenant. D'autres voyageurs peuvent aussi demander ces dates : c'est l'hôte qui choisit."],
+              ['2','✅',"L'hôte vérifie la disponibilité","Il accepte ou refuse votre demande. Vous êtes prévenu par e-mail."],
+              ['3','💳','Vous payez en ligne sous 24h',"Si l'hôte accepte, vous recevez un e-mail avec un lien de paiement. Vous avez 24h pour payer et confirmer, sinon la demande est annulée et les dates libérées."],
+            ].map(([n,ic,t,txt])=>`<div style="display:flex;gap:12px;align-items:flex-start;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--r-md);padding:12px 14px;">
+              <div style="width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${n}</div>
+              <div><div style="font-size:14px;font-weight:700;color:var(--gray-900);margin-bottom:2px;">${ic} ${t}</div><div style="font-size:12.5px;color:var(--gray-600);line-height:1.5;">${txt}</div></div>
+            </div>`).join('')}
           </div>
         </div>
 
         <!-- Bouton principal -->
         <button id="main-confirm-btn" class="btn-confirm" onclick="handleConfirmChoice(${h.id},${total})">
-          ✅ Réserver — 💵 Paiement sur place
+          📨 Envoyer ma demande de réservation
         </button>
         <p style="font-size:12px;color:var(--gray-500);text-align:center;margin-top:10px;">
-          📨 Votre demande sera transmise à l'hôte, qui dispose de 24h pour l'examiner. Aucun paiement en ligne — vous réglerez sur place.
+          0€ débité maintenant. Le paiement en ligne ne vous sera demandé qu'après l'accord de l'hôte.
         </p>
       </div>
     </div>
@@ -3549,6 +3548,71 @@ function selectPayMode(mode){
     }
   }
 }
+
+/* ===================== PROCESSUS DE RÉSERVATION (logements) =====================
+   1. Le voyageur envoie une demande  -> 'en attente' (ne bloque PAS les dates :
+      plusieurs voyageurs peuvent demander la même période, l'hôte choisit ;
+      sans réponse, reste en attente jusqu'à la date d'arrivée)
+   2. L'hôte accepte                  -> 'acceptée' : dates bloquées, le
+      voyageur a 24h pour payer (ou refuse -> 'refusée')
+   3. Le voyageur paie en ligne       -> 'confirmée' ; les autres demandes en
+      attente sur ces dates passent en 'refusée' (motif dates_taken)
+      Sans paiement sous 24h          -> 'expirée', dates libérées
+   Les délais sont posés côté base (trigger), le passage en 'confirmée' et
+   les expirations passent par l'Edge Function "reservation-flow" (service
+   role) : le navigateur ne peut pas confirmer une réservation lui-même. */
+const RESA_FLOW_URL = 'https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/reservation-flow';
+const SB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk';
+
+async function callReservationFlow(payload, withUserToken){
+  let token = SB_ANON_KEY;
+  if(withUserToken){
+    const { data: { session } } = await _sb.auth.getSession();
+    if(session?.access_token) token = session.access_token;
+  }
+  const res = await fetch(RESA_FLOW_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+    body: JSON.stringify(payload)
+  });
+  let body = {};
+  try{ body = await res.json(); }catch(e){}
+  return { ok: res.ok, status: res.status, body };
+}
+
+// Expire les demandes acceptées dont le délai de paiement de 24h est
+// dépassé, et libère leurs dates. Tourne aussi côté serveur
+// toutes les 10 min (pg_cron) ; ici, c'est un filet de sécurité appelé avant
+// d'afficher ou de vérifier des disponibilités. Limité à 1 appel / minute.
+let _lastResaExpiryRun = 0;
+async function runReservationExpiry(force){
+  if(!force && Date.now()-_lastResaExpiryRun < 60000) return;
+  _lastResaExpiryRun = Date.now();
+  try{ await callReservationFlow({ action:'expire' }); }
+  catch(e){ console.warn('reservation-flow expire:', e.message); }
+}
+
+// "13h 05min" restantes avant une échéance (ISO), ou null si dépassée.
+function timeLeftLabel(deadlineIso){
+  if(!deadlineIso) return null;
+  const ms = new Date(deadlineIso) - new Date();
+  if(ms <= 0) return null;
+  const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
+  return h>0 ? h+'h '+String(m).padStart(2,'0')+'min' : m+' min';
+}
+
+function fmtDateTimeFR(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '—';
+  const pad = n => String(n).padStart(2,'0');
+  return fmtDMY(d)+' à '+pad(d.getHours())+'h'+pad(d.getMinutes());
+}
+
+const RESA_STATUS_LABEL = {
+  'en attente':"En attente de l'hôte", 'acceptée':'Acceptée — à payer', 'confirmée':'Confirmée',
+  'terminée':'Terminée', 'refusée':'Refusée', 'annulée':'Annulée', 'expirée':'Expirée'
+};
 
 /* ===================== VÉRIFICATION DE DISPONIBILITÉ (anti double-réservation) ===================== */
 async function checkAnnonceDatesAvailable(annonceId, checkIn, checkOut){
@@ -3608,10 +3672,13 @@ async function payOnSite(hId, total){
   const btn = document.getElementById('main-confirm-btn');
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Vérification des dates…';}
 
+  // Libère d'abord les demandes acceptées non payées sous 24h, pour ne pas
+  // bloquer ces dates à tort.
+  await runReservationExpiry(true);
   const available = await checkAnnonceDatesAvailable(h.annonceId, appState.checkIn, appState.checkOut);
   if(!available){
     showToast('⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre. Choisissez d\'autres dates.','var(--red)');
-    if(btn){btn.disabled=false;btn.innerHTML='✅ Réserver — 💵 Paiement sur place';}
+    if(btn){btn.disabled=false;btn.innerHTML='📨 Envoyer ma demande de réservation';}
     return;
   }
   if(btn){btn.innerHTML='<span class="spinner-sm"></span> Envoi…';}
@@ -3634,7 +3701,7 @@ async function payOnSite(hId, total){
     console.error('payOnSite error:', error.message);
     const conflict = error.code === '23P01' || /exclu|overlap/i.test(error.message||'');
     showToast(conflict ? '⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre.' : "La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
-    if(btn){btn.disabled=false;btn.innerHTML='✅ Réserver — 💵 Paiement sur place';}
+    if(btn){btn.disabled=false;btn.innerHTML='📨 Envoyer ma demande de réservation';}
     return;
   }
 
@@ -3670,7 +3737,7 @@ async function payOnSite(hId, total){
     hotel:h, name, email, total,
     checkIn:appState.checkIn, checkOut:appState.checkOut,
     rooms:appState.rooms, ref,
-    paymentMethod:'Paiement sur place'
+    paymentMethod:"En ligne, après l'accord de l'hôte"
   };
   navigate('confirm');
 }
@@ -3695,6 +3762,185 @@ function submitBooking(hId,total){
   navigate('confirm');
 }
 
+/* ===================== PAGE DE PAIEMENT (après accord de l'hôte) =====================
+   Le paiement réel n'est pas encore branché (Konnect / Flouci / Stripe…) :
+   cette page affiche l'interface définitive mais en MODE TEST — aucun débit.
+   La confirmation passe par l'Edge Function reservation-flow (action
+   confirm_payment), qui vérifie côté serveur que la réservation appartient
+   au voyageur, est bien 'acceptée' et que le délai de 24h n'est pas dépassé.
+   Le jour où un prestataire de paiement est branché, c'est son webhook qui
+   appellera cette même confirmation, et ce bouton redirigera vers sa page. */
+let _resaPayTimer = null;
+
+async function loadReservationPayment(container){
+  if(_resaPayTimer){ clearInterval(_resaPayTimer); _resaPayTimer=null; }
+  const box = html => { container.innerHTML = '<div class="confirm-wrap"><div class="confirm-card"><div class="confirm-body" style="text-align:center;padding:40px 28px;">'+html+'</div></div></div>'; };
+
+  if(!auth.currentUser){
+    appState._pendingPage = 'reservation-payment';
+    box('<div style="font-size:44px;margin-bottom:12px;">🔐</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Connectez-vous pour finaliser votre réservation</h2><p style="color:var(--gray-500);margin-bottom:18px;">Utilisez le compte avec lequel vous avez envoyé la demande.</p><button onclick="openModal(\'login\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Se connecter</button>');
+    openModal('login');
+    return;
+  }
+  const id = appState.selectedResaId;
+  if(!id){ navigate('reservations'); return; }
+
+  await runReservationExpiry(true);
+  const { data: r, error } = await _sb.from('reservations').select('*').eq('id', id).maybeSingle();
+  if(error || !r || r.guest_id !== auth.currentUser.id){
+    box('<div style="font-size:44px;margin-bottom:12px;">🔍</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Réservation introuvable</h2><p style="color:var(--gray-500);margin-bottom:18px;">Ce lien ne correspond à aucune réservation de votre compte.</p><button onclick="navigate(\'reservations\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">📅 Mes réservations</button>');
+    return;
+  }
+  const { data: ann } = await _sb.from('annonces').select('name,city,country,emoji,photos').eq('id', r.logement_id).maybeSingle();
+  const propName = ann?.name || 'Hébergement';
+  const backBtn = '<button onclick="navigate(\'reservations\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">📅 Mes réservations</button>';
+
+  if(r.status==='confirmée' || r.status==='terminée'){
+    box('<div style="font-size:44px;margin-bottom:12px;">✅</div><h2 style="font-size:20px;font-weight:800;color:var(--green);margin-bottom:8px;">Réservation déjà confirmée</h2><p style="color:var(--gray-500);margin-bottom:18px;">Votre séjour à <strong>'+propName+'</strong> est confirmé.</p>'+backBtn);
+    return;
+  }
+  if(r.status==='en attente'){
+    box('<div style="font-size:44px;margin-bottom:12px;">⏳</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">En attente de l\'accord de l\'hôte</h2><p style="color:var(--gray-500);margin-bottom:18px;">Le paiement sera possible dès que l\'hôte aura accepté votre demande. Vous recevrez un e-mail.</p>'+backBtn);
+    return;
+  }
+  if(r.status!=='acceptée' || !timeLeftLabel(r.payment_deadline)){
+    const why = r.status==='refusée' ? "L'hôte a refusé cette demande."
+      : r.status==='annulée' ? 'Cette demande a été annulée.'
+      : "Le délai de 24h pour payer est dépassé : la demande a été annulée et les dates libérées.";
+    box('<div style="font-size:44px;margin-bottom:12px;">⌛</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Paiement impossible</h2><p style="color:var(--gray-500);margin-bottom:18px;">'+why+'</p>'+backBtn);
+    return;
+  }
+
+  const nights = r.nights || Math.max(1,Math.round((new Date(r.check_out)-new Date(r.check_in))/86400000));
+  const photo = ann?.photos && ann.photos[0];
+  container.innerHTML = `
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('reservations')">Mes réservations</span><span class="bc-sep">›</span><span>Paiement</span></div>
+  <div style="max-width:1000px;margin:0 auto;padding:24px 20px 60px;">
+    <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">💳 Finalisez votre réservation</h1>
+    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">L'hôte a accepté votre demande. Payez maintenant pour confirmer votre séjour.</p>
+
+    <div style="background:#e8f4ff;border:1.5px solid #0071c2;border-radius:var(--r-lg);padding:14px 18px;margin-bottom:22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:26px;">⏳</span>
+      <div style="flex:1;min-width:200px;font-size:14px;color:var(--gray-800);">Temps restant pour payer : <strong id="rp-countdown" style="color:#0071c2;font-size:16px;">${timeLeftLabel(r.payment_deadline)}</strong><br><span style="font-size:12.5px;color:var(--gray-500);">Échéance le ${fmtDateTimeFR(r.payment_deadline)}. Passé ce délai, la demande est annulée et les dates libérées.</span></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:${window.innerWidth<=768?'1fr':'1fr 340px'};gap:24px;align-items:start;">
+      <div>
+        <div style="background:#fff8e0;border:1.5px dashed #e6a800;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:13px;color:#7a5600;">🧪 <strong>Mode test</strong> — le paiement en ligne n'est pas encore branché : aucun montant ne sera débité. Cliquer sur « Payer » confirme simplement la réservation.</div>
+
+        <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;margin-bottom:14px;">Moyen de paiement</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
+            <div style="border:2px solid var(--blue);background:rgba(0,53,128,.05);border-radius:var(--r-md);padding:14px;text-align:center;"><div style="font-size:26px;">💳</div><div style="font-size:13px;font-weight:700;color:var(--blue);margin-top:4px;">Carte bancaire</div></div>
+            <div style="border:2px solid var(--gray-200);border-radius:var(--r-md);padding:14px;text-align:center;opacity:.45;cursor:not-allowed;"><div style="font-size:26px;">📱</div><div style="font-size:13px;font-weight:700;color:var(--gray-500);margin-top:4px;">D17 / Flouci</div><div style="font-size:10px;color:var(--gray-400);">Bientôt</div></div>
+            <div style="border:2px solid var(--gray-200);border-radius:var(--r-md);padding:14px;text-align:center;opacity:.45;cursor:not-allowed;"><div style="font-size:26px;">🅿️</div><div style="font-size:13px;font-weight:700;color:var(--gray-500);margin-top:4px;">PayPal</div><div style="font-size:10px;color:var(--gray-400);">Bientôt</div></div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;">
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Numéro de carte</label>
+            <div style="position:relative;">
+              <input type="text" id="rp-card" placeholder="1234  5678  9012  3456" maxlength="22" oninput="formatCardNumber(this)" style="width:100%;padding:11px 44px 11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:16px;letter-spacing:2px;font-family:monospace;">
+              <span id="card-brand-icon" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:22px;">💳</span>
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Nom sur la carte</label>
+            <input type="text" id="rp-name" placeholder="JEAN DUPONT" oninput="this.value=this.value.toUpperCase()" style="width:100%;padding:11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Expiration</label>
+              <input type="text" id="rp-exp" placeholder="MM / AA" maxlength="7" oninput="formatExpiry(this)" style="width:100%;padding:11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-family:monospace;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">CVV</label>
+              <input type="password" id="rp-cvv" placeholder="•••" maxlength="4" style="width:100%;padding:11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-family:monospace;">
+            </div>
+          </div>
+          <button id="rp-pay-btn" onclick="submitReservationPayment('${r.id}')" style="width:100%;background:var(--blue);color:#fff;padding:14px;border-radius:var(--r-md);font-size:17px;font-weight:800;border:none;cursor:pointer;">🔒 Payer ${r.total}€ et confirmer</button>
+          <div style="font-size:12px;color:var(--gray-500);text-align:center;margin-top:10px;">En payant, vous confirmez votre réservation auprès de l'hôte.</div>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;position:sticky;top:76px;">
+        <div style="height:140px;background:${photo?`url('${photo}') center/cover no-repeat`:'linear-gradient(135deg,#e8f4ff,#b3d4f0)'};display:flex;align-items:center;justify-content:center;font-size:56px;">${photo?'':(ann?.emoji||'🏠')}</div>
+        <div style="padding:18px;">
+          <div style="font-size:16px;font-weight:800;margin-bottom:2px;">${propName}</div>
+          <div style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">📍 ${ann?.city||'—'}, ${ann?.country||'—'}</div>
+          <div class="sum-row"><span>Arrivée</span><span>${fmtDMY(r.check_in)}</span></div>
+          <div class="sum-row"><span>Départ</span><span>${fmtDMY(r.check_out)}</span></div>
+          <div class="sum-row"><span>Durée</span><span>${nights} nuit${nights>1?'s':''}</span></div>
+          <div class="sum-row"><span>Voyageurs</span><span>${r.guests_count||1}</span></div>
+          <div class="sum-row"><span>Référence</span><span><code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.reference||'—'}</code></span></div>
+          <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span style="color:var(--blue);">${r.total}€</span></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  _resaPayTimer = setInterval(()=>{
+    const el = document.getElementById('rp-countdown');
+    if(!el){ clearInterval(_resaPayTimer); _resaPayTimer=null; return; }
+    const left = timeLeftLabel(r.payment_deadline);
+    if(!left){ clearInterval(_resaPayTimer); _resaPayTimer=null; navigate('reservation-payment'); return; }
+    el.textContent = left;
+  }, 30000);
+}
+
+async function submitReservationPayment(resaId){
+  const card = (document.getElementById('rp-card')?.value||'').replace(/\s/g,'');
+  const name = (document.getElementById('rp-name')?.value||'').trim();
+  const exp  = document.getElementById('rp-exp')?.value||'';
+  const cvv  = document.getElementById('rp-cvv')?.value||'';
+  if(card.length<16){ showToast('⚠️ Numéro de carte invalide','var(--red)'); return; }
+  if(!name){ showToast('⚠️ Nom sur la carte requis','var(--red)'); return; }
+  if(exp.length<7){ showToast("⚠️ Date d'expiration invalide",'var(--red)'); return; }
+  if(cvv.length<3){ showToast('⚠️ CVV invalide','var(--red)'); return; }
+
+  const btn = document.getElementById('rp-pay-btn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-sm" style="border-top-color:#fff;"></span> Paiement en cours…'; }
+
+  let res;
+  try{ res = await callReservationFlow({ action:'confirm_payment', reservation_id: resaId, method:'card' }, true); }
+  catch(e){ res = { ok:false, body:{ error: e.message } }; }
+
+  if(!res.ok){
+    const code = res.body?.error || '';
+    const msg = code==='expired' ? '⌛ Le délai de 24h est dépassé : la réservation a été annulée.'
+      : code==='not_acceptée' ? "Cette réservation n'est plus en attente de paiement."
+      : "Le paiement n'a pas pu être enregistré. Réessayez dans un instant.";
+    showToast(msg,'var(--red)');
+    if(btn){ btn.disabled=false; btn.innerHTML='🔒 Payer et confirmer'; }
+    if(code==='expired' || code==='not_acceptée') navigate('reservation-payment');
+    return;
+  }
+
+  if(_resaPayTimer){ clearInterval(_resaPayTimer); _resaPayTimer=null; }
+  window.scrollTo(0,0);
+  const app = document.getElementById('app');
+  const wrap = app && app.children[1];
+  const target = wrap || app;
+  if(target) target.innerHTML = `<div class="confirm-wrap">
+    <div class="confirm-card">
+      <div class="confirm-hdr" style="background:var(--green);">
+        <div class="confirm-icon">🎉</div>
+        <h2>Réservation confirmée !</h2>
+        <p>Votre paiement a bien été enregistré</p>
+      </div>
+      <div class="confirm-body">
+        <p style="font-size:15px;color:var(--gray-700);margin-bottom:18px;line-height:1.7;">Merci ! Votre séjour est confirmé. Un e-mail de confirmation vous a été envoyé, et l'hôte a été prévenu.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button onclick="navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">📅 Mes réservations</button>
+          <button onclick="navigate('home')" style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;">🏠 Accueil</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  showToast('🎉 Réservation confirmée !','var(--green)');
+}
+
 function buildSuccess(){
   const b=appState.confirmedBooking;
   const d=document.createElement('div');
@@ -3706,11 +3952,11 @@ function buildSuccess(){
         <p>Votre demande est en attente de validation par l'hôte</p>
       </div>
       <div class="confirm-body">
-        <p style="font-size:15px;color:var(--gray-700);margin-bottom:18px;line-height:1.7;">Bonjour <strong>${b.name}</strong>, votre demande de réservation pour <strong>${b.hotel.name}</strong> a bien été transmise à l'hôte. Vous recevrez un e-mail à <strong>${b.email}</strong> dès qu'il aura pris sa décision, généralement sous 24h.</p>
+        <p style="font-size:15px;color:var(--gray-700);margin-bottom:18px;line-height:1.7;">Bonjour <strong>${b.name}</strong>, votre demande de réservation pour <strong>${b.hotel.name}</strong> a bien été transmise à l'hôte. S'il accepte, vous recevrez un e-mail à <strong>${b.email}</strong> avec un lien de paiement : vous aurez alors <strong>24h pour payer en ligne</strong> et confirmer votre séjour.</p>
         <div class="sum-box">
           <div style="font-weight:800;font-size:15px;margin-bottom:10px;">📋 Récapitulatif de votre demande</div>
           <div class="sum-row"><span>Référence</span><span><code style="background:var(--gray-100);padding:2px 8px;border-radius:4px;">${b.ref}</code></span></div>
-          <div class="sum-row"><span>Statut</span><span style="font-weight:700;color:#e6a800;">⏳ En attente de validation</span></div>
+          <div class="sum-row"><span>Statut</span><span style="font-weight:700;color:#e6a800;">⏳ En attente de l'accord de l'hôte</span></div>
           <hr style="border:none;border-top:1px solid var(--gray-200);margin:8px 0;">
           <div class="sum-row"><span>Hébergement</span><span>${b.hotel.name}</span></div>
           <div class="sum-row"><span>Arrivée</span><span>${b.checkIn||'—'}</span></div>
@@ -4495,6 +4741,7 @@ async function loadReservations(container){
 
   // Bascule automatiquement les réservations passées en "terminée" avant de les afficher
   try{ await _sb.rpc('fn_auto_complete_reservations'); }catch(e){ console.warn('fn_auto_complete_reservations:', e.message); }
+  await runReservationExpiry();
 
   const { data, error } = await _sb.from('reservations')
     .select('*')
@@ -4532,6 +4779,7 @@ async function loadReservations(container){
       rooms: r.rooms||1, nights: r.nights||1,
       total: r.total||0, status: r.status||'confirmée',
       createdAt: r.created_at,
+      paymentDeadline: r.payment_deadline||null,
       _propName: ann.name || (h?h.name:'Hébergement'),
       _propCity: ann.city || (h?h.city:'—'),
       _propCountry: ann.country || (h?h.country:'—'),
@@ -4574,11 +4822,12 @@ function buildReservations(){
   const typeTab = appState.resaTypeTab||'logements';
   if(typeTab==='excursions') return buildExcursionReservations();
 
-  const tabs=['toutes','confirmée','en attente','terminée','refusée','annulée'];
+  const tabs=['toutes','en attente','acceptée','confirmée','terminée','refusée','annulée','expirée'];
   const filt=appState.resaFilter||'toutes';
   const list=appState.reservations.filter(r=>filt==='toutes'||r.status===filt);
-  const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000'};
-  const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0'};
+  const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000',acceptée:'#0071c2',expirée:'#6c757d'};
+  const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0',acceptée:'#e8f4ff',expirée:'#f1f3f5'};
+  const toPay = appState.reservations.filter(r=>r.status==='acceptée' && timeLeftLabel(r.paymentDeadline));
 
   const d=document.createElement('div');
   d.innerHTML=`
@@ -4612,9 +4861,15 @@ function buildReservations(){
       </div>`).join('')}
     </div>
 
+    ${toPay.length?`<div style="background:#e8f4ff;border:1.5px solid #0071c2;border-radius:var(--r-lg);padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:24px;">💳</span>
+      <div style="flex:1;min-width:200px;font-size:14px;color:var(--gray-800);"><strong>${toPay.length} demande${toPay.length>1?'s':''} acceptée${toPay.length>1?'s':''} par l'hôte</strong> — finalisez le paiement avant l'échéance, sinon la réservation sera annulée automatiquement.</div>
+      <button onclick="appState.resaFilter='acceptée';navigate('reservations')" style="background:#0071c2;color:#fff;padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir</button>
+    </div>`:''}
+
     <!-- Tabs -->
     <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);padding-bottom:0;">
-      ${tabs.map(t=>`<button onclick="appState.resaFilter='${t}';navigate('reservations')" style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filt===t?'2px solid var(--blue)':'2px solid transparent'};color:${filt===t?'var(--blue)':'var(--gray-500)'};margin-bottom:-2px;text-transform:capitalize;">${t==='toutes'?'Toutes':t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}
+      ${tabs.map(t=>`<button onclick="appState.resaFilter='${t}';navigate('reservations')" style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filt===t?'2px solid var(--blue)':'2px solid transparent'};color:${filt===t?'var(--blue)':'var(--gray-500)'};margin-bottom:-2px;">${t==='toutes'?'Toutes':(t==='acceptée'?'À payer':t.charAt(0).toUpperCase()+t.slice(1))} (${t==='toutes'?appState.reservations.length:appState.reservations.filter(r=>r.status===t).length})</button>`).join('')}
     </div>
 
     <!-- List -->
@@ -4636,7 +4891,7 @@ function buildReservations(){
             <div style="flex:1;min-width:200px;">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
                 <span style="font-size:17px;font-weight:700;color:var(--blue-l);${r.hotelId?'cursor:pointer;':''}" ${r.hotelId?`onclick="navigate('detail',{selectedHotelId:${r.hotelId}})"`:''}>${h.name}</span>
-                <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[r.status]};color:${statusColor[r.status]};">${r.status.toUpperCase()}</span>
+                <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[r.status]};color:${statusColor[r.status]};">${(RESA_STATUS_LABEL[r.status]||r.status).toUpperCase()}</span>
               </div>
               <div style="font-size:13px;color:var(--gray-500);margin-bottom:10px;">📍 ${h.city}, ${h.country}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
@@ -4654,6 +4909,10 @@ function buildReservations(){
                 ${isMultiRoomType(h)?`<span>🛏️ ${r.rooms} chambre${r.rooms>1?'s':''}</span>`:''}
                 <span>🔖 Réf: <code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.id}</code></span>
               </div>
+              ${r.status==='acceptée'?(timeLeftLabel(r.paymentDeadline)
+                ?`<div style="margin-top:8px;font-size:12.5px;color:#0071c2;font-weight:700;">✅ Acceptée par l'hôte — payez avant le ${fmtDateTimeFR(r.paymentDeadline)} (il reste ${timeLeftLabel(r.paymentDeadline)})</div>`
+                :`<div style="margin-top:8px;font-size:12px;color:var(--red);font-weight:600;">⌛ Délai de paiement dépassé — la réservation va être annulée</div>`):''}
+              ${r.status==='expirée'?`<div style="margin-top:8px;font-size:12px;color:var(--gray-500);">Le paiement n'a pas été effectué dans les 24h — la réservation a été annulée.</div>`:''}
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:120px;">
               <div style="text-align:right;">
@@ -4668,6 +4927,12 @@ function buildReservations(){
                 ${r.status==='terminée'&&r.annonceId?`
                   <button onclick="openReviewModal('${r.annonceId}')" style="background:${appState._myReviewsByAnnonce?.[r.annonceId]?'#fff8e0':'var(--gray-100)'};color:${appState._myReviewsByAnnonce?.[r.annonceId]?'#a07000':'var(--gray-700)'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid ${appState._myReviewsByAnnonce?.[r.annonceId]?'#f0d080':'var(--gray-300)'};cursor:pointer;">${appState._myReviewsByAnnonce?.[r.annonceId]?'✏️ Modifier mon avis':'⭐ Laisser un avis'}</button>
                   ${r.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Réserver à nouveau</button>`:''}
+                `:''}
+                ${r.status==='acceptée'&&timeLeftLabel(r.paymentDeadline)?`
+                  <button onclick="navigate('reservation-payment',{selectedResaId:'${r._dbId}'})" style="background:#0071c2;color:#fff;padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:800;border:none;cursor:pointer;">💳 Finaliser le paiement</button>
+                `:''}
+                ${r.status==='en attente'||r.status==='acceptée'?`
+                  <button onclick="cancelReservation('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler la demande</button>
                 `:''}
                 ${r.status==='annulée'?`
                   <span style="font-size:12px;color:var(--gray-400);">Annulée</span>
@@ -5573,8 +5838,8 @@ async function loadAnnonceDetail(container){
           </tr></thead>
           <tbody>
             ${realReservations.map(r=>{
-              const sColor={confirmée:'var(--green)','en attente':'#a07000',terminée:'var(--gray-600)',annulée:'var(--red)'};
-              const sBg={confirmée:'#e8f9f0','en attente':'#fff8e0',terminée:'#f1f3f5',annulée:'#fff0f0'};
+              const sColor={confirmée:'var(--green)','en attente':'#a07000',acceptée:'#0071c2',terminée:'var(--gray-600)',annulée:'var(--red)',refusée:'var(--red)',expirée:'var(--gray-600)'};
+              const sBg={confirmée:'#e8f9f0','en attente':'#fff8e0',acceptée:'#e8f4ff',terminée:'#f1f3f5',annulée:'#fff0f0',refusée:'#fff0f0',expirée:'#f1f3f5'};
               return `<tr style="border-bottom:1px solid var(--gray-100);">
                 <td style="padding:10px 14px;font-weight:600;">${r.guestName}</td>
                 <td style="padding:10px 14px;color:var(--gray-600);">${r.checkIn?fmtDMY(r.checkIn):'—'}</td>
@@ -8733,10 +8998,11 @@ async function loadBookingRequests(container){
   if(!auth.currentUser){navigate('home');return;}
   const uid = auth.currentUser.id;
   const filter = appState.bookingRequestsFilter||'all';
-  const statusMap = {pending:'en attente', accepted:'confirmée', declined:'refusée', completed:'terminée', cancelled:'annulée'};
+  const statusMap = {pending:'en attente', awaiting:'acceptée', accepted:'confirmée', declined:'refusée', completed:'terminée', cancelled:'annulée', expired:'expirée'};
 
   // Bascule automatiquement les réservations passées en "terminée" avant de les afficher
   try{ await _sb.rpc('fn_auto_complete_reservations'); }catch(e){ console.warn('fn_auto_complete_reservations:', e.message); }
+  await runReservationExpiry();
 
   // 1. Mes propres annonces (pour restreindre aux demandes reçues sur MES biens)
   const { data: myAnns, error: annErr } = await _sb.from('annonces').select('id,name,emoji').eq('user_id', uid);
@@ -8772,7 +9038,9 @@ async function loadBookingRequests(container){
       checkIn: r.check_in, checkOut: r.check_out,
       guestsCount: r.guests_count || 1,
       total: r.total||0, message: r.notes||'',
-      status: r.status // 'en attente' | 'confirmée' | 'refusée'
+      status: r.status, // 'en attente' | 'acceptée' | 'confirmée' | 'refusée' | 'expirée' …
+      paymentDeadline: r.payment_deadline||null,
+      refusedReason: r.expired_reason||null
     };
   });
 
@@ -8790,10 +9058,17 @@ async function loadBookingRequests(container){
   // depuis le bouton "📨 Réservations" d'une annonce, sinon toutes.
   const scoped = annonceFilterId ? all.filter(r=>r.annonceId===annonceFilterId) : all;
   const pendingCount = scoped.filter(r=>r.status==='en attente').length;
+  // Les demandes en attente ne bloquent pas les dates : plusieurs voyageurs
+  // peuvent demander la même période, l'hôte choisit. Une fois une demande
+  // acceptée (paiement en cours) ou confirmée, les autres demandes qui
+  // chevauchent ces dates ne peuvent plus être acceptées.
+  const blocking = all.filter(r=>r.status==='confirmée' || (r.status==='acceptée' && timeLeftLabel(r.paymentDeadline)));
+  const conflictOf = req => req.status!=='en attente' ? null
+    : blocking.find(o=>o.id!==req.id && o.annonceId===req.annonceId && o.checkIn<req.checkOut && o.checkOut>req.checkIn) || null;
 
-  const statusColor={'en attente':'#e6a800',confirmée:'var(--green)',refusée:'var(--red)',terminée:'#6c757d',annulée:'#cc0000'};
-  const statusBg={'en attente':'#fff8e0',confirmée:'#e8f9f0',refusée:'#fff0f0',terminée:'#f1f3f5',annulée:'#fff0f0'};
-  const statusLabel={'en attente':'En attente',confirmée:'Acceptée',refusée:'Refusée',terminée:'Terminée',annulée:'Annulée'};
+  const statusColor={'en attente':'#e6a800',acceptée:'#0071c2',confirmée:'var(--green)',refusée:'var(--red)',terminée:'#6c757d',annulée:'#cc0000',expirée:'#6c757d'};
+  const statusBg={'en attente':'#fff8e0',acceptée:'#e8f4ff',confirmée:'#e8f9f0',refusée:'#fff0f0',terminée:'#f1f3f5',annulée:'#fff0f0',expirée:'#f1f3f5'};
+  const statusLabel={'en attente':'En attente',acceptée:'Attente paiement',confirmée:'Confirmée',refusée:'Refusée',terminée:'Terminée',annulée:'Annulée',expirée:'Expirée'};
 
   container.innerHTML=`
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Demandes de réservation</span></div>
@@ -8808,7 +9083,7 @@ async function loadBookingRequests(container){
 
     <!-- Tabs -->
     <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);">
-      ${[['all','Toutes'],['pending','En attente'],['accepted','Acceptées'],['completed','Terminées'],['declined','Refusées'],['cancelled','Annulées']].map(([v,l])=>{
+      ${[['all','Toutes'],['pending','En attente'],['awaiting','Attente paiement'],['accepted','Confirmées'],['completed','Terminées'],['declined','Refusées'],['cancelled','Annulées'],['expired','Expirées']].map(([v,l])=>{
         const n = v==='all' ? scoped.length : scoped.filter(r=>r.status===statusMap[v]).length;
         return `<button onclick="appState.bookingRequestsFilter='${v}';navigate('booking-requests')"
           style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filter===v?'2px solid var(--blue)':'2px solid transparent'};color:${filter===v?'var(--blue)':'var(--gray-500)'};margin-bottom:-2px;">${l} (${n})</button>`;}).join('')}
@@ -8843,10 +9118,14 @@ async function loadBookingRequests(container){
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Voyageurs</div><div style="font-size:13px;font-weight:600;">👥 ${req.guestsCount}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
               </div>
+              ${conflictOf(req)?`<div style="font-size:12.5px;color:var(--red);font-weight:700;margin-bottom:8px;">⚠️ Ces dates chevauchent la demande de ${conflictOf(req).guestName} (${conflictOf(req).status==='confirmée'?'confirmée':'acceptée, paiement en cours'}). Vous ne pouvez pas accepter celle-ci${conflictOf(req).status==='acceptée'?" tant que l'autre n'a pas expiré":''}.</div>`:''}
+              ${req.status==='acceptée'?`<div style="font-size:12.5px;color:#0071c2;font-weight:700;margin-bottom:8px;">💳 Vous avez accepté — le voyageur a jusqu'au ${fmtDateTimeFR(req.paymentDeadline)} pour payer. Les dates restent bloquées jusque-là.</div>`:''}
+              ${req.status==='refusée'&&req.refusedReason==='dates_taken'?`<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:8px;">Refusée automatiquement : ces dates ont été réservées par un autre voyageur.</div>`:''}
+              ${req.status==='expirée'?`<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:8px;">Expirée : le voyageur n'a pas payé sous 24h. Les dates ont été libérées.</div>`:''}
               ${req.message?`<div style="background:#f9f9ff;border-left:3px solid var(--blue-l);padding:10px 14px;border-radius:0 var(--r-md) var(--r-md) 0;font-size:13px;color:var(--gray-700);font-style:italic;line-height:1.6;">"${req.message}"</div>`:''}
             </div>
             ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
-              <button onclick="decideBookingRequest('${req.id}','confirmée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;transition:opacity .2s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">✅ Accepter</button>
+              <button onclick="decideBookingRequest('${req.id}','acceptée')" ${conflictOf(req)?'disabled':''} style="background:${conflictOf(req)?'var(--gray-300)':'var(--green)'};color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:${conflictOf(req)?'not-allowed':'pointer'};">✅ Accepter</button>
               <button onclick="decideBookingRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
               <button onclick="openConversationWithGuest('${req.annonceId}','${req.guestId}')" style="background:#fff;color:var(--blue-l);padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--blue-l);cursor:pointer;">💬 Contacter</button>
             </div>`:''}
@@ -9327,8 +9606,9 @@ async function saveExcursionEdit(){
 }
 
 function decideBookingRequest(reqId, decision){
-  const label = decision==='confirmée' ? 'accepter' : 'refuser';
-  const reason = prompt('Message optionnel pour le client (laissez vide pour le message standard) :', '');
+  const reason = prompt(decision==='acceptée'
+    ? "Vous acceptez cette demande. Le voyageur recevra un e-mail et aura 24h pour payer en ligne.\n\nMessage optionnel pour le voyageur (laissez vide pour le message standard) :"
+    : 'Message optionnel pour le voyageur (laissez vide pour le message standard) :', '');
   if(reason === null) return; // l'hôte a annulé la boîte de dialogue, aucune action
   handleBookingRequest(reqId, decision, reason.trim());
 }
@@ -9336,41 +9616,54 @@ function decideBookingRequest(reqId, decision){
 async function handleBookingRequest(reqId, decision, hostMessage){
   const { data: resa, error: fetchErr } = await _sb.from('reservations').select('*').eq('id', reqId).maybeSingle();
   if(fetchErr || !resa){ showToast('Demande introuvable','var(--red)'); return; }
+  if(resa.status !== 'en attente'){ showToast("Cette demande n'est plus en attente.",'var(--red)'); navigate('booking-requests'); return; }
 
+  // Acceptation : la base pose elle-même accepted_at et payment_deadline
+  // (+24h) via le trigger fn_reservation_flow_guard.
   const { error } = await _sb.from('reservations').update({status: decision}).eq('id', reqId);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-
-  showToast(decision==='confirmée' ? '✅ Demande acceptée ! Réservation confirmée.' : 'Demande refusée.', decision==='confirmée'?'var(--green)':'var(--gray-700)');
-
-  // Email de décision au client
-  try{
-    const [{data: guestProf}, {data: ann}] = await Promise.all([
-      _sb.from('profiles').select('email,first_name,last_name').eq('id', resa.guest_id).maybeSingle(),
-      _sb.from('annonces').select('name').eq('id', resa.logement_id).maybeSingle()
-    ]);
-    if(guestProf?.email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify({
-          type: 'decision',
-          decision: decision==='confirmée' ? 'accepted' : 'declined',
-          recipient_email: guestProf.email,
-          guest_name: guestProf.first_name || 'Voyageur',
-          property_name: ann?.name || 'Hébergement',
-          check_in: resa.check_in, check_out: resa.check_out,
-          guests_count: resa.guests_count, total: resa.total,
-          host_message: hostMessage || ''
-        })
-      });
-    }
-  } catch(efErr){
-    console.error('notify-booking decision error:', efErr.message);
+  if(error){
+    const msg = (error.code==='23P01' || /exclu|overlap/i.test(error.message||'')) ? "Ces dates sont déjà acceptées ou confirmées pour une autre demande."
+      : /CHECKIN_PASSED/.test(error.message||'') ? "La date d'arrivée est déjà passée : impossible d'accepter cette demande."
+      : /NOT_HOST/.test(error.message||'') ? "Vous n'êtes pas l'hôte de ce logement."
+      : 'Erreur : '+error.message;
+    showToast(msg,'var(--red)');
+    navigate('booking-requests');
+    return;
   }
 
+  if(decision==='acceptée'){
+    showToast('✅ Demande acceptée — le voyageur a 24h pour payer.','var(--green)');
+    try{
+      const r = await callReservationFlow({ action:'notify', type:'accepted', reservation_id: reqId, host_message: hostMessage||'' });
+      if(!r.ok) console.error('reservation-flow notify accepted:', r.status, r.body);
+    } catch(efErr){ console.error('reservation-flow notify error:', efErr.message); }
+  } else {
+    showToast('Demande refusée.','var(--gray-700)');
+    // Email de refus au client (template existant de notify-booking)
+    try{
+      const [{data: guestProf}, {data: ann}] = await Promise.all([
+        _sb.from('profiles').select('email,first_name,last_name').eq('id', resa.guest_id).maybeSingle(),
+        _sb.from('annonces').select('name').eq('id', resa.logement_id).maybeSingle()
+      ]);
+      if(guestProf?.email){
+        await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+SB_ANON_KEY },
+          body: JSON.stringify({
+            type: 'decision', decision: 'declined',
+            recipient_email: guestProf.email,
+            guest_name: guestProf.first_name || 'Voyageur',
+            property_name: ann?.name || 'Hébergement',
+            check_in: resa.check_in, check_out: resa.check_out,
+            guests_count: resa.guests_count, total: resa.total,
+            host_message: hostMessage || ''
+          })
+        });
+      }
+    } catch(efErr){ console.error('notify-booking decision error:', efErr.message); }
+  }
+
+  refreshPendingBookingBadge();
   navigate('booking-requests');
 }
 
@@ -12198,7 +12491,20 @@ _sb.auth.onAuthStateChange((event, session) => {
 const RESTORABLE_PAGES = new Set(['home','results','detail','excursions','excursion-detail',
   'mesannonces','reservations','favoris','messages','profil','booking-requests',
   'excursion-requests','manage-excursions','annonce-edit-owner','excursion-edit',
-  'about','cgu','privacy','admin']);
+  'about','cgu','privacy','admin','reservation-payment']);
+
+// Lien de paiement envoyé par e-mail après l'accord de l'hôte :
+// https://mytunigo.com/?pay=<id de la réservation>
+try{
+  const _payParam = new URLSearchParams(window.location.search).get('pay');
+  if(_payParam){
+    appState.selectedResaId = _payParam;
+    history.replaceState(
+      { page:'reservation-payment', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
+      '', window.location.pathname+'#reservation-payment'
+    );
+  }
+}catch(e){}
 
 let _restoredPage = null;
 try{
