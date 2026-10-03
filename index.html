@@ -2481,8 +2481,14 @@ async function loadResultsAvailability(){
     .lt('check_in', co)
     .gt('check_out', ci);
   if(error){ console.warn('loadResultsAvailability:', error.message); return; }
+  const unavailable = new Set((data||[]).map(r=>r.logement_id));
+  // Annonces dont l'hôte a bloqué au moins une nuit de la période recherchée
+  const { data: blocked, error: blockedErr } = await _sb.from('blocked_dates')
+    .select('annonce_id').gte('date', ci).lt('date', co);
+  if(blockedErr) console.warn('loadResultsAvailability blocked_dates:', blockedErr.message);
+  (blocked||[]).forEach(r=>unavailable.add(r.annonce_id));
   _resultsAvailKey = key;
-  appState._resultsUnavailableAnnonceIds = new Set((data||[]).map(r=>r.logement_id));
+  appState._resultsUnavailableAnnonceIds = unavailable;
   appState.resultsPage = 1;
   refreshResults();
 }
@@ -3653,7 +3659,21 @@ async function checkAnnonceDatesAvailable(annonceId, checkIn, checkOut){
     // mais on log pour investiguer si ça se reproduit.
     return true;
   }
-  return !(data && data.length > 0);
+  if(data && data.length > 0) return false;
+  // Dates bloquées par l'hôte dans son calendrier (nuit du check-in incluse,
+  // jour du check-out exclu, comme pour les réservations).
+  const { data: blocked, error: blockedErr } = await _sb.from('blocked_dates')
+    .select('date').eq('annonce_id', annonceId).gte('date', checkIn).lt('date', checkOut).limit(1);
+  if(blockedErr){ console.error('checkAnnonceDatesAvailable blocked_dates:', blockedErr.message); return true; }
+  return !(blocked && blocked.length > 0);
+}
+
+// Dates bloquées par l'hôte pour une annonce (table blocked_dates).
+async function loadBlockedDatesForAnnonce(annonceId){
+  if(!annonceId) return [];
+  const { data, error } = await _sb.from('blocked_dates').select('date').eq('annonce_id', annonceId);
+  if(error){ console.error('loadBlockedDatesForAnnonce error:', error.message); return []; }
+  return (data||[]).map(r=>r.date);
 }
 
 function handleConfirmChoice(hId, total){
@@ -10467,7 +10487,9 @@ async function initBlockedDatesPicker(hId){
   const miniCal = document.getElementById('bk-mini-cal');
   if(!h || !miniCal) return;
 
-  const localBlocked = getBlockedDatesForHotel(hId);
+  // Vraies dates bloquées par l'hôte (base) pour une annonce publiée ;
+  // données de démonstration uniquement pour les hébergements fictifs.
+  const localBlocked = h.annonceId ? await loadBlockedDatesForAnnonce(h.annonceId) : getBlockedDatesForHotel(hId);
   const reserved = h.annonceId ? await loadReservedDatesForAnnonce(h.annonceId) : [];
   const unavailable = new Set([...localBlocked, ...reserved]);
   appState._bkUnavailable = unavailable;
