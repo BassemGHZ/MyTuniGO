@@ -2487,6 +2487,22 @@ async function loadResultsAvailability(){
   refreshResults();
 }
 
+/* Tarifs par date (table date_discounts) : depuis la simplification du
+   calendrier, l'hôte saisit directement un PRIX PAR NUIT pour une période
+   (colonne price_override). Les anciennes lignes, saisies en pourcentage
+   (discount_percent : >0 réduction, <0 majoration), restent prises en
+   compte. Le prix fixe l'emporte toujours quand il existe. */
+function datePriceNight(base, pct, override){
+  if(override!=null && !isNaN(override)) return Math.round(override);
+  return pct ? Math.round(base*(1-pct/100)) : base;
+}
+// Pourcentage équivalent d'une ligne tarifaire (pour les badges PROMO /
+// haute saison) : calculé depuis le prix fixe et le prix de base actuel.
+function datePriceRowPct(row, base){
+  if(row.price_override!=null && base>0) return Math.round((1-row.price_override/base)*100);
+  return row.discount_percent||0;
+}
+
 let _resultsDatePromosLoaded = false;
 async function loadResultsDatePromos(){
   if(_resultsDatePromosLoaded) return;
@@ -2496,26 +2512,33 @@ async function loadResultsDatePromos(){
   // initial barré + nouveau prix) sur les cartes de la liste de recherche,
   // au lieu de se contenter d'une étiquette "Promo sur certaines dates" sans
   // montant.
-  const { data, error } = await _sb.from('date_discounts').select('annonce_id,date,discount_percent').gte('date', today);
+  const { data, error } = await _sb.from('date_discounts').select('annonce_id,date,discount_percent,price_override').gte('date', today);
   if(error){ console.warn('loadResultsDatePromos:', error.message); return; }
   _resultsDatePromosLoaded = true;
   // Toute annonce ayant une ligne date_discounts (réduction OU majoration) —
   // sert au calcul du prix exact (computeResultsNightlyTotal), qui doit
   // tenir compte des deux cas.
   appState._resultsDatePromoAnnonceIds = new Set((data||[]).map(r=>r.annonce_id));
-  const map = {}, bestPct = {}, discountAnnonceIds = new Set();
+  const map = {}, priceMap = {}, bestPct = {}, discountAnnonceIds = new Set();
   (data||[]).forEach(r=>{
     if(!map[r.annonce_id]) map[r.annonce_id] = {};
-    map[r.annonce_id][r.date] = r.discount_percent;
+    const base = (hotels.find(x=>x.annonceId===r.annonce_id)||{}).price||0;
+    const pct = datePriceRowPct(r, base);
+    map[r.annonce_id][r.date] = pct;
+    if(r.price_override!=null){
+      if(!priceMap[r.annonce_id]) priceMap[r.annonce_id] = {};
+      priceMap[r.annonce_id][r.date] = Number(r.price_override);
+    }
     // Le badge/étiquette "🏷️ PROMO" ne doit apparaître que s'il existe une
-    // vraie réduction (discount_percent > 0) — une majoration (< 0) ne doit
-    // jamais être présentée comme une promotion.
-    if(r.discount_percent > 0){
-      bestPct[r.annonce_id] = Math.max(bestPct[r.annonce_id]||0, r.discount_percent);
+    // vraie réduction (prix plus bas que le prix de base) — une majoration
+    // ne doit jamais être présentée comme une promotion.
+    if(pct > 0){
+      bestPct[r.annonce_id] = Math.max(bestPct[r.annonce_id]||0, pct);
       discountAnnonceIds.add(r.annonce_id);
     }
   });
   appState._resultsDatePromoMap = map;
+  appState._resultsDatePriceMap = priceMap;
   appState._resultsDatePromoBestPct = bestPct;
   appState._resultsDiscountAnnonceIds = discountAnnonceIds;
   if(appState.page==='results') refreshResults();
@@ -2530,15 +2553,16 @@ async function loadResultsDatePromos(){
 function computeResultsNightlyTotal(h, checkIn, checkOut){
   if(!h || !checkIn || !checkOut) return 0;
   const promos = (h.annonceId && appState._resultsDatePromoMap && appState._resultsDatePromoMap[h.annonceId]) || {};
+  const prices = (h.annonceId && appState._resultsDatePriceMap && appState._resultsDatePriceMap[h.annonceId]) || {};
   let total = 0;
   let d = new Date(checkIn);
   const end = new Date(checkOut);
   while(d < end){
     const ds = localISODate(d);
     const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
-    // pct>0 = réduction, pct<0 = majoration (haute saison) : dans les deux cas
-    // la formule s'applique normalement, seul pct===0 laisse le prix de base.
-    total += pct ? Math.round(h.price*(1-pct/100)) : h.price;
+    // Prix fixe saisi par l'hôte pour cette date en priorité, sinon pourcentage
+    // (pct>0 réduction, pct<0 majoration), sinon prix de base.
+    total += datePriceNight(h.price, pct, prices[ds]);
     d.setDate(d.getDate()+1);
   }
   return total;
@@ -2628,15 +2652,16 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms){
   rooms = rooms||1;
   if(!h || !checkIn || !checkOut) return 0;
   const promos = appState._bkDatePromos || {};
+  const prices = appState._bkDatePrices || {};
   let total = 0;
   let d = new Date(checkIn);
   const end = new Date(checkOut);
   while(d < end){
     const ds = localISODate(d);
     const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
-    // pct>0 = réduction, pct<0 = majoration (haute saison) : la formule
-    // s'applique dans les deux cas, seul pct===0 laisse le prix de base.
-    const nightPrice = pct ? Math.round(h.price*(1-pct/100)) : h.price;
+    // Prix fixe saisi par l'hôte pour cette date en priorité, sinon
+    // pourcentage (pct>0 réduction, pct<0 majoration), sinon prix de base.
+    const nightPrice = datePriceNight(h.price, pct, prices[ds]);
     total += nightPrice;
     d.setDate(d.getDate()+1);
   }
@@ -9668,11 +9693,11 @@ async function handleBookingRequest(reqId, decision, hostMessage){
 ══════════════════════════════════════════════════════════════════ */
 let _hostCalReservedSet = new Set();
 let _hostCalAnnonceId = null;
-let _hostCalPromoMap = {}; // date -> discount_percent (positif = réduction, négatif = majoration)
+let _hostCalPromoMap = {}; // date -> % équivalent (positif = prix plus bas, négatif = prix plus haut)
+let _hostCalPriceMap = {}; // date -> prix par nuit fixé par l'hôte (price_override)
 let _hostCalStayMap = {}; // date -> {min_nights, max_nights} — règle de séjour imposée sur cette date précise
 let _calMode = 'block'; // 'block' | 'promo' | 'stay'
 let _calPromoSelection = new Set();
-let _calPromoDirection = 'reduction'; // 'reduction' (prix plus bas) | 'increase' (prix plus haut, ex: haute saison)
 let _pendingPromoChanges = []; // changements de promo par date depuis le dernier "Enregistrer"
 let _calStaySelection = new Set();
 let _calStayRangeStart = null;
@@ -9698,14 +9723,14 @@ function buildHostCalendar(){
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('mesannonces')">Mes annonces</span><span class="bc-sep">›</span><span>Calendrier</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">📅 Calendrier de disponibilité</h1>
-    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':_calMode==='promo'?'Sélectionnez une ou plusieurs dates, puis appliquez une réduction ou une majoration précise (ex: tarif de haute saison).':"Sélectionnez une période pour y imposer une durée de séjour différente (ex: 3 nuits minimum pendant les fêtes). En dehors de cette période, la durée min/max définie à la création de l'annonce continue de s'appliquer."}</p>
+    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':_calMode==='promo'?'Sélectionnez une ou plusieurs dates, puis indiquez directement le prix par nuit (plus bas pour une promo, plus haut pour la haute saison).':"Sélectionnez une période pour y imposer une durée de séjour différente (ex: 3 nuits minimum pendant les fêtes). En dehors de cette période, la durée min/max définie à la création de l'annonce continue de s'appliquer."}</p>
 
     <!-- Sélecteur de mode : segmented control (pastille active sur fond neutre) -->
     <div style="display:inline-flex;gap:4px;padding:4px;background:var(--gray-100);border-radius:999px;margin-bottom:22px;flex-wrap:wrap;">
       <button onclick="setCalMode('block')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='block'?'#fff':'transparent'};color:${_calMode==='block'?'var(--blue)':'var(--gray-500)'};box-shadow:${_calMode==='block'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
         <span style="font-size:16px;">🔒</span> Bloquer / débloquer
       </button>
-      <button onclick="setCalMode('promo')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='promo'?'#fff':'transparent'};color:${_calMode==='promo'?(_calPromoDirection==='increase'?'#7c3aed':'#ea580c'):'var(--gray-500)'};box-shadow:${_calMode==='promo'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
+      <button onclick="setCalMode('promo')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='promo'?'#fff':'transparent'};color:${_calMode==='promo'?'#ea580c':'var(--gray-500)'};box-shadow:${_calMode==='promo'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
         <span style="font-size:16px;">🏷️</span> Gestion des tarifs
       </button>
       <button onclick="setCalMode('stay')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='stay'?'#fff':'transparent'};color:${_calMode==='stay'?'#0d9488':'var(--gray-500)'};box-shadow:${_calMode==='stay'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
@@ -9716,31 +9741,25 @@ function buildHostCalendar(){
     ${_calMode==='promo' ? `
     <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:38px;height:38px;border-radius:50%;background:${_calPromoDirection==='increase'?'#7c3aed':'#ea580c'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;transition:background .15s;">${_calPromoDirection==='increase'?'📈':'🏷️'}</div>
+        <div style="width:38px;height:38px;border-radius:50%;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏷️</div>
         <div style="flex:1;min-width:160px;">
           <div id="promo-selection-bar" style="font-size:14px;font-weight:800;color:var(--gray-800);">${_calPromoSelection.size>0 ? _calPromoSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée'}</div>
           <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez une date de <strong>début</strong>, puis une date de <strong>fin</strong> pour toute la période (ou une seule date pour la cibler).</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px;">
-        <div style="display:inline-flex;gap:3px;padding:3px;background:#fff;border:1px solid var(--gray-300);border-radius:999px;">
-          <button onclick="setPromoDirection('reduction')" style="padding:7px 14px;border-radius:999px;font-size:12px;font-weight:700;border:none;cursor:pointer;transition:background .15s,color .15s;background:${_calPromoDirection==='increase'?'transparent':'#ea580c'};color:${_calPromoDirection==='increase'?'var(--gray-500)':'#fff'};">🔻 Réduction</button>
-          <button onclick="setPromoDirection('increase')" style="padding:7px 14px;border-radius:999px;font-size:12px;font-weight:700;border:none;cursor:pointer;transition:background .15s,color .15s;background:${_calPromoDirection==='increase'?'#7c3aed':'transparent'};color:${_calPromoDirection==='increase'?'#fff':'var(--gray-500)'};">🔺 Majoration</button>
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px dashed #f0c080;">
+        <div>
+          <label for="promo-date-price" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-600);display:block;margin-bottom:5px;">Prix par nuit pour ces dates</label>
+          <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--gray-300);border-radius:var(--r-md);padding:6px 10px 6px 12px;">
+            <input type="number" id="promo-date-price" min="1" step="1" value="${annonce?.price_night||''}" oninput="updatePromoPriceHint()" style="width:80px;border:none;outline:none;font-size:17px;font-weight:800;text-align:right;color:var(--gray-900);">
+            <span style="font-size:15px;font-weight:700;color:var(--gray-500);">€</span>
+          </div>
         </div>
-        <span style="font-size:12px;color:var(--gray-500);">${_calPromoDirection==='increase'?"Ex : +25% pour les fêtes de fin d'année":"Ex : -20% en basse saison"}</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px dashed #f0c080;">
-        <label for="promo-date-pct" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-600);">${_calPromoDirection==='increase'?'Majoration':'Réduction'}</label>
-        <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--gray-300);border-radius:var(--r-md);padding:6px 6px 6px 12px;">
-          <input type="number" id="promo-date-pct" min="0" max="${_calPromoDirection==='increase'?300:90}" value="${_calPromoDirection==='increase'?20:30}" style="width:48px;border:none;outline:none;font-size:15px;font-weight:800;text-align:center;color:var(--gray-900);">
-          <span style="font-size:14px;font-weight:700;color:var(--gray-500);padding-right:4px;">%</span>
-        </div>
-        <button id="promo-apply-btn" onclick="applyDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:${_calPromoDirection==='increase'?'#7c3aed':'#ea580c'};color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:${_calPromoSelection.size===0?'not-allowed':'pointer'};opacity:${_calPromoSelection.size===0?'.5':'1'};">✓ Appliquer</button>
+        <button id="promo-apply-btn" onclick="applyDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:#ea580c;color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:${_calPromoSelection.size===0?'not-allowed':'pointer'};opacity:${_calPromoSelection.size===0?'.5':'1'};">✓ Appliquer ce prix</button>
+        <button id="promo-reset-btn" onclick="resetDatePromo()" ${_calPromoSelection.size===0?'disabled':''} style="background:#fff;color:var(--gray-700);padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:${_calPromoSelection.size===0?'not-allowed':'pointer'};opacity:${_calPromoSelection.size===0?'.5':'1'};">↺ Remettre le prix de base</button>
         <button id="promo-cancel-btn" onclick="cancelPromoSelection()" style="background:#fff;color:var(--gray-600);padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:${_calPromoSelection.size===0?'not-allowed':'pointer'};opacity:${_calPromoSelection.size===0?'.5':'1'};">✕ Annuler la sélection</button>
       </div>
-    </div>
-    <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);display:flex;align-items:center;gap:8px;">
-      <span style="font-size:15px;flex-shrink:0;">💡</span><span>Entrez <strong>0%</strong> puis « Appliquer » sur des dates déjà ajustées pour retirer leur réduction ou majoration.</span>
+      <div id="promo-price-hint" style="font-size:12.5px;font-weight:700;margin-top:10px;color:var(--gray-500);">Votre prix de base : ${annonce?.price_night||'—'} € / nuit</div>
     </div>
     ` : ''}
 
@@ -9809,8 +9828,8 @@ function buildHostCalendar(){
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;"></div>Disponible (clic pour bloquer)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--red);"></div>Réservé (non modifiable)</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--gray-400);"></div>Bloqué par vous (clic pour débloquer)</div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#ea580c;"></div>Réduction active</div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#7c3aed;"></div>Majoration active</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#ea580c;"></div>Prix réduit</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#7c3aed;"></div>Prix augmenté</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#0d9488;"></div>Durée de séjour imposée</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#fff;border:2px solid var(--blue);"></div>Aujourd'hui</div>
         </div>
@@ -9851,11 +9870,16 @@ function buildHostCalendar(){
       _pendingPromoChanges = [];
       _hostCalReservedSet = _annIdNow ? new Set(await loadReservedDatesForAnnonce(_annIdNow)) : new Set();
       _hostCalPromoMap = {};
+      _hostCalPriceMap = {};
       _hostCalStayMap = {};
       _pendingStayChanges = [];
       if(_annIdNow){
-        const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', _annIdNow);
-        (promoRows||[]).forEach(r=>{ _hostCalPromoMap[r.date] = r.discount_percent; });
+        const _baseNow = (appState.myAnnonces.find(x=>x.id===_annIdNow)||{}).price_night||0;
+        const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent,price_override').eq('annonce_id', _annIdNow);
+        (promoRows||[]).forEach(r=>{
+          _hostCalPromoMap[r.date] = datePriceRowPct(r, _baseNow);
+          if(r.price_override!=null) _hostCalPriceMap[r.date] = Number(r.price_override);
+        });
         const { data: stayRows } = await _sb.from('date_stay_rules').select('date,min_nights,max_nights').eq('annonce_id', _annIdNow);
         (stayRows||[]).forEach(r=>{ _hostCalStayMap[r.date] = {min:r.min_nights, max:r.max_nights}; });
         // Dates bloquées par l'hôte : chargées depuis la base (table
@@ -9921,10 +9945,11 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     if(isReserved) cell.classList.add('cal-reserved');
     cell.dataset.date = dateStr;
 
-    if(promoPct){
+    if(promoPct || _hostCalPriceMap[dateStr]!=null){
+      const _base = (appState.myAnnonces.find(x=>x.id===_hostCalAnnonceId)||{}).price_night||0;
       const pctEl = document.createElement('div');
-      pctEl.style.cssText = 'font-size:9px;color:#fff;font-weight:800;margin-top:1px;';
-      pctEl.textContent = (promoPct>0?'-':'+')+Math.abs(promoPct)+'%';
+      pctEl.style.cssText = 'font-size:10px;color:#fff;font-weight:800;margin-top:1px;';
+      pctEl.textContent = datePriceNight(_base, promoPct, _hostCalPriceMap[dateStr])+'€';
       cell.appendChild(pctEl);
     } else if(stayRule){
       const stayEl = document.createElement('div');
@@ -10025,6 +10050,12 @@ function refreshHostCalendarLight(){
     applyBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
     applyBtn.style.cursor = _calPromoSelection.size===0 ? 'not-allowed' : 'pointer';
   }
+  const resetBtn = document.getElementById('promo-reset-btn');
+  if(resetBtn){
+    resetBtn.disabled = _calPromoSelection.size===0;
+    resetBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
+    resetBtn.style.cursor = _calPromoSelection.size===0 ? 'not-allowed' : 'pointer';
+  }
   const cancelBtn = document.getElementById('promo-cancel-btn');
   if(cancelBtn){
     cancelBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
@@ -10054,13 +10085,6 @@ function setCalMode(mode){
   render();
 }
 
-// Bascule Réduction ↔ Majoration dans le panneau "Tarifs par date". On
-// garde la sélection de dates en cours (contrairement à setCalMode) : on
-// change juste la direction de l'ajustement qu'on va appliquer sur ces dates.
-function setPromoDirection(dir){
-  _calPromoDirection = dir;
-  render();
-}
 
 let _calPromoRangeStart = null;
 
@@ -10100,41 +10124,63 @@ function cancelPromoSelection(){
   refreshHostCalendarLight();
 }
 
+function _hostCalBasePrice(){
+  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id);
+  return Number((appState.myAnnonces.find(x=>x.id===annId)||{}).price_night)||0;
+}
+
+// Indication sous le champ prix : écart avec le prix de base, en direct.
+function updatePromoPriceHint(){
+  const el = document.getElementById('promo-price-hint');
+  if(!el) return;
+  const base = _hostCalBasePrice();
+  const price = parseFloat(document.getElementById('promo-date-price')?.value);
+  if(!price || price<=0 || !base){ el.style.color='var(--gray-500)'; el.textContent='Votre prix de base : '+(base||'—')+' € / nuit'; return; }
+  const diff = Math.round((price/base-1)*100);
+  if(diff<0){ el.style.color='#ea580c'; el.textContent='📉 '+diff+' % par rapport à votre prix de base ('+base+' €) — affiché comme promotion aux voyageurs'; }
+  else if(diff>0){ el.style.color='#7c3aed'; el.textContent='📈 +'+diff+' % par rapport à votre prix de base ('+base+' €) — tarif haute saison'; }
+  else { el.style.color='var(--gray-500)'; el.textContent='= votre prix de base ('+base+' €) : appliquer revient à retirer le prix spécial'; }
+}
+
 async function applyDatePromo(){
   if(_calPromoSelection.size===0){ showToast('Sélectionnez au moins une date','var(--red)'); return; }
-  // "raw" = la valeur positive tapée par l'hôte ; le signe réel envoyé en base
-  // dépend du mode choisi (Réduction/Majoration) via le sélecteur au-dessus.
-  const raw = parseInt(document.getElementById('promo-date-pct')?.value||0);
-  const isIncrease = _calPromoDirection==='increase';
+  const price = Math.round(parseFloat(document.getElementById('promo-date-price')?.value));
+  if(!price || price<1){ showToast('⚠️ Indiquez un prix par nuit valide','var(--red)'); return; }
+  const base = _hostCalBasePrice();
+  if(price===base){ return resetDatePromo(); }
   const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id);
   if(!annId){ showToast('Aucune annonce sélectionnée','var(--red)'); return; }
   const dates = [..._calPromoSelection];
 
-  let action = '', pct = 0;
-  if(raw<=0){
-    const { error } = await _sb.from('date_discounts').delete().eq('annonce_id', annId).in('date', dates);
-    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-    dates.forEach(d=>delete _hostCalPromoMap[d]);
-    showToast('Ajustement retiré sur '+dates.length+' date'+(dates.length>1?'s':''),'var(--gray-700)');
-    action = 'removed';
-  } else {
-    const maxVal = isIncrease ? 300 : 90;
-    if(raw>maxVal){ showToast((isIncrease?'Majoration':'Réduction')+' maximum : '+maxVal+'%','var(--red)'); return; }
-    // Convention de signe dans date_discounts.discount_percent : positif =
-    // réduction (comme avant), négatif = majoration (nouveau).
-    pct = isIncrease ? -raw : raw;
-    const rows = dates.map(d=>({ annonce_id: annId, date: d, discount_percent: pct }));
-    const { error } = await _sb.from('date_discounts').upsert(rows, { onConflict: 'annonce_id,date' });
-    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-    dates.forEach(d=>_hostCalPromoMap[d]=pct);
-    if(isIncrease) showToast('📈 Majoration +'+raw+'% appliquée sur '+dates.length+' date'+(dates.length>1?'s':''),'#7c3aed');
-    else showToast('🏷️ Réduction -'+raw+'% appliquée sur '+dates.length+' date'+(dates.length>1?'s':''),'#ea580c');
-    action = 'applied';
-  }
+  // Le prix fixe est la référence (price_override). On enregistre aussi le
+  // pourcentage équivalent dans discount_percent, borné, pour rester
+  // compatible avec ce qui lit encore cette colonne (alertes prix, e-mails).
+  const pct = base ? Math.max(-300, Math.min(90, Math.round((1-price/base)*100))) : 0;
+  const rows = dates.map(d=>({ annonce_id: annId, date: d, price_override: price, discount_percent: pct }));
+  const { error } = await _sb.from('date_discounts').upsert(rows, { onConflict: 'annonce_id,date' });
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  dates.forEach(d=>{ _hostCalPriceMap[d]=price; _hostCalPromoMap[d]=base?Math.round((1-price/base)*100):pct; });
+  showToast((price<base?'🏷️':'📈')+' '+price+' € / nuit appliqué sur '+dates.length+' date'+(dates.length>1?'s':''), price<base?'#ea580c':'#7c3aed');
 
   // On accumule le changement — l'email récapitulatif ne part qu'au clic sur "Enregistrer"
-  _pendingPromoChanges.push({ dates: dates.sort(), discount_percent: pct, action });
+  _pendingPromoChanges.push({ dates: dates.sort(), price, base_price: base, discount_percent: pct, action:'applied' });
 
+  _calPromoSelection = new Set();
+  _calPromoRangeStart = null;
+  refreshHostCalendarLight();
+}
+
+// Retire le prix spécial des dates sélectionnées : retour au prix de base.
+async function resetDatePromo(){
+  if(_calPromoSelection.size===0){ showToast('Sélectionnez au moins une date','var(--red)'); return; }
+  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id);
+  if(!annId){ showToast('Aucune annonce sélectionnée','var(--red)'); return; }
+  const dates = [..._calPromoSelection];
+  const { error } = await _sb.from('date_discounts').delete().eq('annonce_id', annId).in('date', dates);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  dates.forEach(d=>{ delete _hostCalPromoMap[d]; delete _hostCalPriceMap[d]; });
+  showToast('↺ Prix de base rétabli sur '+dates.length+' date'+(dates.length>1?'s':''),'var(--gray-700)');
+  _pendingPromoChanges.push({ dates: dates.sort(), price: null, base_price: _hostCalBasePrice(), discount_percent: 0, action:'removed' });
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
   refreshHostCalendarLight();
@@ -10444,6 +10490,7 @@ async function initBlockedDatesPicker(hId){
   // période est déjà entièrement passée restait affichée indéfiniment
   // (le bandeau montrait une plage de dates expirée).
   appState._bkDatePromos = {};
+  appState._bkDatePrices = {};
   // Règles de séjour (min/max nuits) imposées par l'hôte sur des dates
   // précises depuis #host-calendar — en dehors de ces dates, c'est la
   // durée min/max par défaut de l'annonce (h.minNights/h.maxNights) qui
@@ -10451,8 +10498,11 @@ async function initBlockedDatesPicker(hId){
   appState._bkDateStayRules = {};
   if(h.annonceId){
     const todayStrPromo = localISODate(new Date());
-    const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
-    (promoRows||[]).forEach(r=>{ appState._bkDatePromos[r.date] = r.discount_percent; });
+    const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent,price_override').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
+    (promoRows||[]).forEach(r=>{
+      appState._bkDatePromos[r.date] = datePriceRowPct(r, h.price);
+      if(r.price_override!=null) appState._bkDatePrices[r.date] = Number(r.price_override);
+    });
     const { data: stayRows } = await _sb.from('date_stay_rules').select('date,min_nights,max_nights').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
     (stayRows||[]).forEach(r=>{ appState._bkDateStayRules[r.date] = {min:r.min_nights, max:r.max_nights}; });
   }
@@ -10568,7 +10618,9 @@ function renderBookingMonth(year, month, unavailable, today, basePricePerNight){
     // Prix réel du jour (prix de base +/- la promo/majoration spécifique à
     // cette date), affiché directement au lieu du pourcentage — plus simple
     // à lire pour l'hôte et le voyageur.
-    const dayPrice = promoPct>0 ? Math.round(basePricePerNight*(1-promoPct/100))
+    const fixedPrice = (appState._bkDatePrices||{})[ds];
+    const dayPrice = fixedPrice!=null ? Math.round(fixedPrice)
+      : promoPct>0 ? Math.round(basePricePerNight*(1-promoPct/100))
       : promoPct<0 ? Math.round(basePricePerNight*(1+Math.abs(promoPct)/100))
       : basePricePerNight;
     html += '<div '+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
