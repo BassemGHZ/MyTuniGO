@@ -5285,6 +5285,10 @@ function mapAnnonceRow(a, resaStats, viewStats, avisStats){
     bathrooms: a.bathrooms || 1,
     capacity: a.capacity || 2,
     price_night: a.price_night || 0,
+    min_stay: a.min_stay || 1,
+    max_stay: a.max_stay || 30,
+    checkin: a.checkin || '15:00',
+    checkout: a.checkout || '11:00',
     status: a.status || 'en attente',
     hasPendingChanges: !!a.pending_changes,
     photos: a.photos || [],
@@ -9848,8 +9852,13 @@ function buildHostCalendar(){
       </div>
     </div>
     ` : ''}
-    <div style="display:grid;grid-template-columns:1fr 300px;gap:24px;align-items:start;">
+    <div>
       <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f0fdfa;border:1px solid #99e6db;border-radius:var(--r-md);padding:10px 14px;margin-bottom:18px;font-size:13px;color:var(--gray-700);">
+          <span style="font-size:16px;">🌙</span>
+          <span><strong>Règles de séjour :</strong> ${annonce?.min_stay||1} nuit${(annonce?.min_stay||1)>1?'s':''} minimum · ${annonce?.max_stay||30} nuits maximum · Arrivée à partir de ${annonce?.checkin||'15:00'} · Départ avant ${annonce?.checkout||'11:00'}</span>
+          <span style="color:var(--gray-500);font-size:12px;">Modifiables dans « Modifier l'annonce ». Pour une période précise : onglet <strong style="color:#0d9488;">🌙 Durée de séjour</strong>.</span>
+        </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
           <button onclick="navCalendar(-1)" style="width:36px;height:36px;border-radius:50%;border:1.5px solid var(--gray-300);background:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">‹</button>
           <div class="cal-month-label" style="font-size:17px;font-weight:700;text-transform:capitalize;">${monthName}</div>
@@ -9869,24 +9878,12 @@ function buildHostCalendar(){
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#fff;border:2px solid var(--blue);"></div>Aujourd'hui</div>
         </div>
       </div>
-      <div>
-        <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:16px;">
-          <div style="font-size:15px;font-weight:700;margin-bottom:14px;">⚙️ Règles de séjour par défaut</div>
-          <div style="margin-bottom:12px;">
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée minimum (nuits) <span style="color:var(--gray-400);font-weight:600;text-transform:none;">🔒 verrouillé</span></label>
-            <div style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--r-md);font-size:15px;background:var(--gray-50);color:var(--gray-600);box-sizing:border-box;">${annonce?.min_stay||1}</div>
-          </div>
-          <div style="margin-bottom:12px;">
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée maximum (nuits) <span style="color:var(--gray-400);font-weight:600;text-transform:none;">🔒 verrouillé</span></label>
-            <div style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:var(--r-md);font-size:15px;background:var(--gray-50);color:var(--gray-600);box-sizing:border-box;">${annonce?.max_stay||30}</div>
-          </div>
-          <div style="font-size:12px;color:var(--gray-500);line-height:1.5;">Ces valeurs par défaut viennent de la Politique & règles de séjour modifiable dans « Modifier l'annonce ». Pour imposer une durée différente sur une période précise (ex : vacances), utilisez l'onglet <strong style="color:#0d9488;">🌙 Durée de séjour</strong> ci-dessus.</div>
-        </div>
-        <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px;align-items:start;">
+        <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;">
           <div style="font-size:15px;font-weight:700;margin-bottom:10px;">📊 Ce mois</div>
           <div id="cal-stats"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;justify-content:center;padding:10px 12px;background:#e8f9f0;border:1px solid #a0e8c8;border-radius:var(--r-md);font-size:13px;font-weight:600;color:#0a6640;">✅ Vos modifications sont enregistrées automatiquement</div>
+        <div style="display:flex;align-items:center;gap:8px;justify-content:center;padding:14px 12px;background:#e8f9f0;border:1px solid #a0e8c8;border-radius:var(--r-lg);font-size:13px;font-weight:600;color:#0a6640;">✅ Vos modifications sont enregistrées automatiquement</div>
       </div>
     </div>
   </div>`;
@@ -9897,8 +9894,12 @@ function buildHostCalendar(){
   // On ne passe par l'async que la toute première fois pour une annonce donnée.
   const _annIdNow = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || null;
   if(_annIdNow === _hostCalAnnonceId){
-    renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
-    updateCalStats(cal, daysInMonth, year, month);
+    // Données déjà en cache : on dessine dès que la page est insérée dans le
+    // DOM (sinon #cal-grid n'existe pas encore et la grille reste vide).
+    setTimeout(()=>{
+      renderCalGrid(year, month, cal, today, firstDay, daysInMonth);
+      updateCalStats(cal, daysInMonth, year, month);
+    }, 0);
   } else {
     (async ()=>{
       _hostCalAnnonceId = _annIdNow;
@@ -9966,7 +9967,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     else { bg='#e8f9f0'; color='var(--gray-900)'; border='1px solid #6bcf9e'; }
 
     cell.style.cssText =
-      'text-align:center;padding:10px 4px;border-radius:6px;font-size:13px;font-weight:'+(isToday?'800':'400')+
+      'text-align:center;padding:14px 4px;border-radius:8px;font-size:14px;font-weight:'+(isToday?'800':'400')+
       ';transition:background .15s,transform .1s;'+
       'background:'+bg+';color:'+color+';'+
       'border:'+(isToday?'2px solid var(--blue)':border)+';'+
