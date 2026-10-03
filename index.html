@@ -3915,6 +3915,10 @@ async function submitReservationPayment(resaId){
       </div>
       <div class="confirm-body">
         <p style="font-size:15px;color:var(--gray-700);margin-bottom:18px;line-height:1.7;">Merci ! Votre séjour est confirmé. Un e-mail de confirmation vous a été envoyé, et l'hôte a été prévenu.</p>
+        <div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:var(--r-md);padding:14px 16px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+          <span style="font-size:22px;line-height:1;">📬</span>
+          <div style="font-size:13.5px;color:#5c4400;line-height:1.6;">Vous ne trouvez pas l'e-mail de confirmation ? Vérifiez vos dossiers <strong>Spam / Courrier indésirable</strong> et Promotions, et ajoutez <strong>noreply@mytunigo.com</strong> à vos contacts.</div>
+        </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">📅 Mes réservations</button>
           <button onclick="navigate('home')" style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;">🏠 Accueil</button>
@@ -3947,6 +3951,14 @@ function buildSuccess(){
           <div class="sum-row"><span>Départ</span><span>${b.checkOut||'—'}</span></div>
           ${b.paymentMethod?`<div class="sum-row"><span>💳 Paiement prévu</span><span>${b.paymentMethod}</span></div>`:''}
           <div class="sum-row" style="font-weight:800;font-size:15px;border-top:1px solid var(--gray-300);margin-top:8px;padding-top:8px;"><span>Total estimé</span><span style="color:var(--blue)">${b.total}€</span></div>
+        </div>
+        <div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:var(--r-md);padding:14px 16px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+          <span style="font-size:22px;line-height:1;">📬</span>
+          <div style="font-size:13.5px;color:#5c4400;line-height:1.6;">
+            <strong>Surveillez votre boîte e-mail (${b.email})</strong><br>
+            Un e-mail de confirmation de votre demande vient de vous être envoyé. Vous en recevrez un autre dès que l'hôte aura répondu : <strong>s'il accepte, il contiendra votre lien de paiement, valable 24h</strong>.<br>
+            <strong>Vous ne le voyez pas ?</strong> Pensez à vérifier vos dossiers <strong>Spam / Courrier indésirable</strong> et Promotions, puis marquez l'e-mail comme « Pas un spam » et ajoutez <strong>noreply@mytunigo.com</strong> à vos contacts pour ne manquer aucun message.
+          </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="appState.confirmedBooking=null;navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">📅 Mes réservations</button>
