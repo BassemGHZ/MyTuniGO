@@ -9721,7 +9721,7 @@ function buildHostCalendar(){
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('mesannonces')">Mes annonces</span><span class="bc-sep">›</span><span>Calendrier</span></div>
   <div style="max-width:900px;margin:0 auto;padding:28px 20px 60px;">
     <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">📅 Calendrier de disponibilité</h1>
-    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Cliquez sur une date pour la bloquer ou la débloquer.':_calMode==='promo'?'Sélectionnez une ou plusieurs dates, puis indiquez directement le prix par nuit (plus bas pour une promo, plus haut pour la haute saison).':"Sélectionnez une période pour y imposer une durée de séjour différente (ex: 3 nuits minimum pendant les fêtes). En dehors de cette période, la durée min/max définie à la création de l'annonce continue de s'appliquer."}</p>
+    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Sélectionnez une ou plusieurs dates, puis bloquez-les (indisponibles à la réservation) ou débloquez-les.':_calMode==='promo'?'Sélectionnez une ou plusieurs dates, puis indiquez directement le prix par nuit (plus bas pour une promo, plus haut pour la haute saison).':"Sélectionnez une période pour y imposer une durée de séjour différente (ex: 3 nuits minimum pendant les fêtes). En dehors de cette période, la durée min/max définie à la création de l'annonce continue de s'appliquer."}</p>
 
     <!-- Sélecteur de mode : segmented control (pastille active sur fond neutre) -->
     <div style="display:inline-flex;gap:4px;padding:4px;background:var(--gray-100);border-radius:999px;margin-bottom:22px;flex-wrap:wrap;">
@@ -9735,6 +9735,23 @@ function buildHostCalendar(){
         <span style="font-size:16px;">🌙</span> Durée de séjour
       </button>
     </div>
+
+    ${_calMode==='block' ? `
+    <div style="background:#f1f5fb;border:1.5px solid #c9d6ea;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🔒</div>
+        <div style="flex:1;min-width:160px;">
+          <div id="block-selection-bar" style="font-size:14px;font-weight:800;color:var(--gray-800);">${_calBlockSelection.size>0 ? _calBlockSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée'}</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez une date de <strong>début</strong>, puis une date de <strong>fin</strong> pour toute la période (ou une seule date pour la cibler).</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px dashed #c9d6ea;">
+        <button id="block-apply-btn" onclick="applyBlockSelection(true)" ${_calBlockSelection.size===0?'disabled':''} style="background:var(--gray-700);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:${_calBlockSelection.size===0?'not-allowed':'pointer'};opacity:${_calBlockSelection.size===0?'.5':'1'};">🔒 Bloquer ces dates</button>
+        <button id="block-unblock-btn" onclick="applyBlockSelection(false)" ${_calBlockSelection.size===0?'disabled':''} style="background:#fff;color:var(--green);padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1.5px solid #6bcf9e;cursor:${_calBlockSelection.size===0?'not-allowed':'pointer'};opacity:${_calBlockSelection.size===0?'.5':'1'};">🔓 Débloquer ces dates</button>
+        <button id="block-cancel-btn" onclick="cancelBlockSelection()" style="background:#fff;color:var(--gray-600);padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:${_calBlockSelection.size===0?'not-allowed':'pointer'};opacity:${_calBlockSelection.size===0?'.5':'1'};">✕ Annuler la sélection</button>
+      </div>
+    </div>
+    ` : ''}
 
     ${_calMode==='promo' ? `
     <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
@@ -9823,9 +9840,9 @@ function buildHostCalendar(){
         </div>
         <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;"></div>
         <div style="display:flex;gap:16px;margin-top:18px;flex-wrap:wrap;">
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;"></div>Disponible (clic pour bloquer)</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#e8f9f0;border:1px solid #6bcf9e;"></div>Disponible</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--red);"></div>Réservé (non modifiable)</div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--gray-400);"></div>Bloqué par vous (clic pour débloquer)</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:var(--gray-400);"></div>Bloqué par vous</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#ea580c;"></div>Prix réduit</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#7c3aed;"></div>Prix augmenté</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#0d9488;"></div>Durée de séjour imposée</div>
@@ -9915,7 +9932,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     const price     = cal.priceOverrides[dateStr];
     const promoPct  = _hostCalPromoMap[dateStr];
     const stayRule  = _hostCalStayMap[dateStr];
-    const isSelected = (_calMode==='promo' && _calPromoSelection.has(dateStr)) || (_calMode==='stay' && _calStaySelection.has(dateStr));
+    const isSelected = (_calMode==='promo' && _calPromoSelection.has(dateStr)) || (_calMode==='stay' && _calStaySelection.has(dateStr)) || (_calMode==='block' && _calBlockSelection.has(dateStr));
     const clickable = !isPast && !isReserved && (_calMode==='block' || !isBlocked);
 
     const cell = document.createElement('div');
@@ -9963,18 +9980,8 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
       cell.addEventListener('click', function(){
         if(_calMode==='promo') togglePromoSelection(this.dataset.date);
         else if(_calMode==='stay') toggleStaySelection(this.dataset.date);
-        else toggleBlockDay(this.dataset.date);
+        else toggleBlockSelection(this.dataset.date);
       });
-      if(_calMode==='block'){
-        cell.addEventListener('mouseenter', function(){
-          if(!this.classList.contains('cal-blocked'))
-            this.style.background='#c8f0d8';
-        });
-        cell.addEventListener('mouseleave', function(){
-          if(!this.classList.contains('cal-blocked'))
-            this.style.background = promoPct>0 ? '#ea580c' : (promoPct<0 ? '#7c3aed' : '#e8f9f0');
-        });
-      }
     } else if(isReserved){
       cell.title = 'Date réservée — non modifiable';
     } else if(isBlocked && _calMode==='promo'){
@@ -10046,6 +10053,15 @@ function refreshHostCalendarLight(){
     applyBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
     applyBtn.style.cursor = _calPromoSelection.size===0 ? 'not-allowed' : 'pointer';
   }
+  const blockBar = document.getElementById('block-selection-bar');
+  if(blockBar) blockBar.textContent = _calBlockSelection.size>0 ? _calBlockSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée';
+  ['block-apply-btn','block-unblock-btn','block-cancel-btn'].forEach(id=>{
+    const b = document.getElementById(id);
+    if(!b) return;
+    if(id!=='block-cancel-btn') b.disabled = _calBlockSelection.size===0;
+    b.style.opacity = _calBlockSelection.size===0 ? '.5' : '1';
+    b.style.cursor = _calBlockSelection.size===0 ? 'not-allowed' : 'pointer';
+  });
   const resetBtn = document.getElementById('promo-reset-btn');
   if(resetBtn){
     resetBtn.disabled = _calPromoSelection.size===0;
@@ -10074,6 +10090,8 @@ function refreshHostCalendarLight(){
 
 function setCalMode(mode){
   _calMode = mode;
+  _calBlockSelection = new Set();
+  _calBlockRangeStart = null;
   _calPromoSelection = new Set();
   _calPromoRangeStart = null;
   _calStaySelection = new Set();
@@ -10083,6 +10101,8 @@ function setCalMode(mode){
 
 
 let _calPromoRangeStart = null;
+let _calBlockSelection = new Set();
+let _calBlockRangeStart = null;
 
 function togglePromoSelection(dateStr){
   if(!_calPromoRangeStart){
@@ -10253,62 +10273,72 @@ async function applyDateStayRule(){
   refreshHostCalendarLight();
 }
 
-// Bloquer/débloquer une date écrit désormais réellement en base (table
-// blocked_dates) — avant, le changement ne vivait qu'en mémoire côté
-// client (calendarData) et disparaissait dès qu'on rechargeait la page.
-// L'affichage est mis à jour tout de suite (optimiste) puis confirmé/annulé
-// selon le résultat de l'écriture Supabase.
-async function toggleBlockDay(dateStr){
+// Mode "Bloquer / débloquer" : même expérience que les autres onglets.
+// On sélectionne une période (clic début → clic fin, ou re-clic = date
+// unique), puis "Bloquer ces dates" ou "Débloquer ces dates". L'écriture en
+// base (table blocked_dates) se fait en une seule requête pour toute la
+// sélection. Les dates déjà réservées ne peuvent jamais être sélectionnées.
+function toggleBlockSelection(dateStr){
   if(_hostCalReservedSet.has(dateStr)){
     showToast('⛔ Cette date est déjà réservée — impossible de la modifier.','var(--red)');
     return;
   }
-  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id) || 'ANN-K7L8M9N0';
-  const cal = getCalForAnnonce(annId);
-  const wasBlocked = cal.blocked.includes(dateStr);
-  const nowBlocked = !wasBlocked;
-
-  function paintCell(blocked){
-    const cell = document.querySelector('[data-date="'+dateStr+'"]');
-    if(!cell) return;
-    cell.style.background = blocked ? 'var(--gray-400)' : '#e8f9f0';
-    cell.style.color = blocked ? '#fff' : 'var(--gray-900)';
-    cell.style.border = blocked ? '1px solid var(--gray-400)' : '1px solid #6bcf9e';
-    if(blocked){ cell.classList.add('cal-blocked'); }
-    else { cell.classList.remove('cal-blocked'); }
-  }
-  function refreshStats(){
-    const daysInMonth = new Date(appState.calendarView.year, appState.calendarView.month, 0).getDate();
-    updateCalStats(cal, daysInMonth, appState.calendarView.year, appState.calendarView.month);
-  }
-
-  // 1) Mise à jour optimiste de l'affichage
-  if(wasBlocked) cal.blocked = cal.blocked.filter(d=>d!==dateStr);
-  else cal.blocked.push(dateStr);
-  paintCell(nowBlocked);
-  refreshStats();
-
-  // 2) Écriture réelle en base
-  let error;
-  if(nowBlocked){
-    ({ error } = await _sb.from('blocked_dates')
-      .upsert({ annonce_id: annId, date: dateStr, host_id: auth.currentUser?.id }, { onConflict: 'annonce_id,date' }));
+  if(!_calBlockRangeStart){
+    _calBlockRangeStart = dateStr;
+    _calBlockSelection = new Set([dateStr]);
   } else {
-    ({ error } = await _sb.from('blocked_dates').delete().eq('annonce_id', annId).eq('date', dateStr));
+    const start = _calBlockRangeStart;
+    if(dateStr !== start){
+      const from = start < dateStr ? start : dateStr;
+      const to   = start < dateStr ? dateStr : start;
+      const today = localISODate(new Date());
+      const sel = new Set();
+      let d = new Date(from);
+      const end = new Date(to);
+      while(d <= end){
+        const ds = localISODate(d);
+        if(ds >= today && !_hostCalReservedSet.has(ds)) sel.add(ds);
+        d.setDate(d.getDate()+1);
+      }
+      _calBlockSelection = sel;
+    }
+    _calBlockRangeStart = null;
   }
+  refreshHostCalendarLight();
+}
 
-  if(error){
-    // Échec en base : on annule le changement affiché pour ne pas laisser
-    // croire que le blocage a été enregistré alors qu'il ne l'a pas été.
-    if(nowBlocked) cal.blocked = cal.blocked.filter(d=>d!==dateStr);
-    else cal.blocked.push(dateStr);
-    paintCell(wasBlocked);
-    refreshStats();
-    showToast('Erreur : '+error.message,'var(--red)');
-    return;
+function cancelBlockSelection(){
+  _calBlockSelection = new Set();
+  _calBlockRangeStart = null;
+  refreshHostCalendarLight();
+}
+
+async function applyBlockSelection(block){
+  if(_calBlockSelection.size===0){ showToast('Sélectionnez au moins une date','var(--red)'); return; }
+  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id);
+  if(!annId){ showToast('Aucune annonce sélectionnée','var(--red)'); return; }
+  const cal = getCalForAnnonce(annId);
+  const dates = [..._calBlockSelection].sort();
+
+  let error;
+  if(block){
+    const rows = dates.map(d=>({ annonce_id: annId, date: d, host_id: auth.currentUser?.id }));
+    ({ error } = await _sb.from('blocked_dates').upsert(rows, { onConflict: 'annonce_id,date' }));
+  } else {
+    ({ error } = await _sb.from('blocked_dates').delete().eq('annonce_id', annId).in('date', dates));
   }
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
-  showToast(nowBlocked ? '🔒 Bloqué' : '📅 Disponible', nowBlocked ? 'var(--gray-700)' : 'var(--green)');
+  if(block){
+    dates.forEach(d=>{ if(!cal.blocked.includes(d)) cal.blocked.push(d); });
+    showToast('🔒 '+dates.length+' date'+(dates.length>1?'s':'')+' bloquée'+(dates.length>1?'s':''),'var(--gray-700)');
+  } else {
+    cal.blocked = cal.blocked.filter(d=>!dates.includes(d));
+    showToast('🔓 '+dates.length+' date'+(dates.length>1?'s':'')+' débloquée'+(dates.length>1?'s':''),'var(--green)');
+  }
+  _calBlockSelection = new Set();
+  _calBlockRangeStart = null;
+  refreshHostCalendarLight();
 }
 
 /* ── Add host info to hotel detail ── */
