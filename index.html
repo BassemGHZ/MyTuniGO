@@ -9747,6 +9747,30 @@ function buildHostCalendar(){
     <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">📅 Calendrier de disponibilité</h1>
     <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">${_calMode==='block'?'Sélectionnez une ou plusieurs dates, puis bloquez-les (indisponibles à la réservation) ou débloquez-les.':_calMode==='promo'?'Sélectionnez une ou plusieurs dates, puis indiquez directement le prix par nuit (plus bas pour une promo, plus haut pour la haute saison).':"Sélectionnez une période pour y imposer une durée de séjour différente (ex: 3 nuits minimum pendant les fêtes). En dehors de cette période, la durée min/max définie à la création de l'annonce continue de s'appliquer."}</p>
 
+    ${annonce ? `
+    <!-- Fiche du bien concerné -->
+    <div style="background:linear-gradient(135deg,var(--blue) 0%,var(--blue-l) 100%);border-radius:var(--r-lg);padding:18px 22px;margin-bottom:24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+      <div style="font-size:48px;flex-shrink:0;">${annonce.emoji}</div>
+      <div style="flex:1;min-width:160px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
+          <span style="font-size:17px;font-weight:800;color:#fff;">${annonce.name}</span>
+          <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[annonce.status]||'#f1f3f5'};color:${statusColor[annonce.status]||'#666'};">${(annonce.status||'').toUpperCase()}</span>
+        </div>
+        <div style="font-size:13px;color:rgba(255,255,255,.85);margin-bottom:4px;">📍 ${annonce.address||''} — ${annonce.city}, ${annonce.country}</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:rgba(255,255,255,.75);">
+          <span>${annonce.typeLabel} ${'★'.repeat(annonce.stars||0)}</span>
+          <span>💶 ${annonce.price_night}€/nuit</span>
+          <span>🛏️ ${annonce.rooms} chambre${(annonce.rooms||1)>1?'s':''}</span>
+          <span>👥 ${annonce.capacity} pers. max</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${annonce.id}'})" style="background:rgba(255,255,255,.2);color:#fff;padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,.3);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.2)'">📊 Stats</button>
+        <button onclick="navigate('mesannonces')" style="background:rgba(255,255,255,.2);color:#fff;padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,.3);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.2)'">← Mes annonces</button>
+      </div>
+    </div>
+    ` : ''}
+
     <!-- Sélecteur de mode : segmented control (pastille active sur fond neutre) -->
     <div style="display:inline-flex;gap:4px;padding:4px;background:var(--gray-100);border-radius:999px;margin-bottom:22px;flex-wrap:wrap;">
       <button onclick="setCalMode('block')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='block'?'#fff':'transparent'};color:${_calMode==='block'?'var(--blue)':'var(--gray-500)'};box-shadow:${_calMode==='block'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
@@ -9761,7 +9785,7 @@ function buildHostCalendar(){
     </div>
 
     ${_calMode==='block' ? `
-    <div style="background:#f1f5fb;border:1.5px solid #c9d6ea;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
+    <div style="background:#f1f5fb;border:1.5px solid #c9d6ea;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="width:38px;height:38px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🔒</div>
         <div style="flex:1;min-width:160px;">
@@ -9778,7 +9802,7 @@ function buildHostCalendar(){
     ` : ''}
 
     ${_calMode==='promo' ? `
-    <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
+    <div style="background:#fff8f0;border:1.5px solid #f0c080;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="width:38px;height:38px;border-radius:50%;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏷️</div>
         <div style="flex:1;min-width:160px;">
@@ -9803,7 +9827,7 @@ function buildHostCalendar(){
     ` : ''}
 
     ${_calMode==='stay' ? `
-    <div style="background:#f0fdfa;border:1.5px solid #99e6db;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:16px;">
+    <div style="background:#f0fdfa;border:1.5px solid #99e6db;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="width:38px;height:38px;border-radius:50%;background:#0d9488;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🌙</div>
         <div style="flex:1;min-width:160px;">
@@ -9829,29 +9853,6 @@ function buildHostCalendar(){
     </div>
     ` : ''}
 
-    ${annonce ? `
-    <!-- Fiche du bien concerné -->
-    <div style="background:linear-gradient(135deg,var(--blue) 0%,var(--blue-l) 100%);border-radius:var(--r-lg);padding:18px 22px;margin-bottom:24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
-      <div style="font-size:48px;flex-shrink:0;">${annonce.emoji}</div>
-      <div style="flex:1;min-width:160px;">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
-          <span style="font-size:17px;font-weight:800;color:#fff;">${annonce.name}</span>
-          <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[annonce.status]||'#f1f3f5'};color:${statusColor[annonce.status]||'#666'};">${(annonce.status||'').toUpperCase()}</span>
-        </div>
-        <div style="font-size:13px;color:rgba(255,255,255,.85);margin-bottom:4px;">📍 ${annonce.address||''} — ${annonce.city}, ${annonce.country}</div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:rgba(255,255,255,.75);">
-          <span>${annonce.typeLabel} ${'★'.repeat(annonce.stars||0)}</span>
-          <span>💶 ${annonce.price_night}€/nuit</span>
-          <span>🛏️ ${annonce.rooms} chambre${(annonce.rooms||1)>1?'s':''}</span>
-          <span>👥 ${annonce.capacity} pers. max</span>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-shrink:0;">
-        <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${annonce.id}'})" style="background:rgba(255,255,255,.2);color:#fff;padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,.3);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.2)'">📊 Stats</button>
-        <button onclick="navigate('mesannonces')" style="background:rgba(255,255,255,.2);color:#fff;padding:8px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,.3);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.2)'">← Mes annonces</button>
-      </div>
-    </div>
-    ` : ''}
     <div>
       <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f0fdfa;border:1px solid #99e6db;border-radius:var(--r-md);padding:10px 14px;margin-bottom:18px;font-size:13px;color:var(--gray-700);">
