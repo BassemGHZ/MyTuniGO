@@ -8775,7 +8775,6 @@ async function loadBookingRequests(container){
     };
   });
 
-  const pendingCount = all.filter(r=>r.status==='en attente').length;
   // Filtre optionnel par annonce, utilisé quand on arrive ici depuis le bouton
   // "📨 Réservations" d'une annonce précise dans "Mes annonces" — permet à
   // l'hôte d'accéder directement aux réservations d'un bien donné, sans avoir
@@ -8785,6 +8784,11 @@ async function loadBookingRequests(container){
   const list = all
     .filter(r=>filter==='all' || r.status===statusMap[filter])
     .filter(r=>!annonceFilterId || r.annonceId===annonceFilterId);
+  // Les compteurs (titre + onglets) portent sur le même périmètre que la
+  // liste affichée : uniquement l'annonce sélectionnée quand on arrive
+  // depuis le bouton "📨 Réservations" d'une annonce, sinon toutes.
+  const scoped = annonceFilterId ? all.filter(r=>r.annonceId===annonceFilterId) : all;
+  const pendingCount = scoped.filter(r=>r.status==='en attente').length;
 
   const statusColor={'en attente':'#e6a800',confirmée:'var(--green)',refusée:'var(--red)',terminée:'#6c757d',annulée:'#cc0000'};
   const statusBg={'en attente':'#fff8e0',confirmée:'#e8f9f0',refusée:'#fff0f0',terminée:'#f1f3f5',annulée:'#fff0f0'};
@@ -8796,16 +8800,17 @@ async function loadBookingRequests(container){
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:28px;">
       <div>
         <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📨 ${annonceFilterId ? 'Réservations — '+annonceFilterName : 'Demandes de réservation'}</h1>
-        <p style="font-size:15px;color:var(--gray-500);">${all.length} demande${all.length>1?'s':''}${pendingCount>0?' · <strong style="color:#e6a800">'+pendingCount+' en attente</strong>':''}</p>
+        <p style="font-size:15px;color:var(--gray-500);">${scoped.length} demande${scoped.length>1?'s':''}${pendingCount>0?' · <strong style="color:#e6a800">'+pendingCount+' en attente</strong>':''}</p>
       </div>
       ${annonceFilterId ? `<button onclick="appState.bookingRequestsAnnonceId=null;navigate('booking-requests')" style="background:var(--gray-50);color:var(--gray-700);padding:9px 16px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1.5px solid var(--gray-200);cursor:pointer;">Voir toutes mes annonces</button>` : ''}
     </div>
 
     <!-- Tabs -->
     <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);">
-      ${[['all','Toutes'],['pending','En attente'],['accepted','Acceptées'],['completed','Terminées'],['declined','Refusées'],['cancelled','Annulées']].map(([v,l])=>`
-        <button onclick="appState.bookingRequestsFilter='${v}';navigate('booking-requests')"
-          style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filter===v?'2px solid var(--blue)':'2px solid transparent'};color:${filter===v?'var(--blue)':'var(--gray-500)'};margin-bottom:-2px;">${l}</button>`).join('')}
+      ${[['all','Toutes'],['pending','En attente'],['accepted','Acceptées'],['completed','Terminées'],['declined','Refusées'],['cancelled','Annulées']].map(([v,l])=>{
+        const n = v==='all' ? scoped.length : scoped.filter(r=>r.status===statusMap[v]).length;
+        return `<button onclick="appState.bookingRequestsFilter='${v}';navigate('booking-requests')"
+          style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filter===v?'2px solid var(--blue)':'2px solid transparent'};color:${filter===v?'var(--blue)':'var(--gray-500)'};margin-bottom:-2px;">${l} (${n})</button>`;}).join('')}
     </div>
 
     <!-- List -->
