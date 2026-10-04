@@ -3620,6 +3620,70 @@ async function callReservationFlow(payload, withUserToken){
   return { ok: res.ok, status: res.status, body };
 }
 
+// ── Formulaire « Contacter le support » ──
+// Envoyé via l'Edge Function reservation-flow (action 'support') : aucun
+// logiciel de messagerie n'est ouvert chez l'utilisateur. Le support reçoit
+// le message sur contact@mytunigo.com et peut répondre directement.
+function openSupportForm(prefRef){
+  closeSupportForm();
+  const resas = (appState.reservations||[]).slice().sort(compareByArrival);
+  const ov = document.createElement('div');
+  ov.id = 'support-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.onclick = e => { if(e.target===ov) closeSupportForm(); };
+  ov.innerHTML = `
+  <div style="background:#fff;border-radius:var(--r-lg);width:100%;max-width:520px;max-height:90vh;overflow:auto;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.25);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div style="font-size:18px;font-weight:800;">💬 Contacter le support</div>
+      <button onclick="closeSupportForm()" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--gray-500);">×</button>
+    </div>
+    <div style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">Nous vous répondrons par e-mail à <strong>${(auth.currentUser&&auth.currentUser.email)||'votre adresse'}</strong>.</div>
+    ${resas.length?`
+    <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Réservation concernée (facultatif)</label>
+    <select id="support-ref" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:14px;background:#fff;">
+      <option value="">— Aucune en particulier —</option>
+      ${resas.map(r=>`<option value="${r.id}" ${prefRef===r.id?'selected':''}>${r.id} · ${r._propName||'Hébergement'} · ${r.checkIn?new Date(r.checkIn+'T00:00:00').toLocaleDateString('fr-FR'):''}</option>`).join('')}
+    </select>`:''}
+    <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Sujet</label>
+    <input id="support-subject" maxlength="120" placeholder="Ex : question sur mon paiement" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:14px;">
+    <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Votre message</label>
+    <textarea id="support-message" rows="6" maxlength="3000" placeholder="Décrivez votre demande…" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+    <div id="support-error" style="display:none;color:var(--red);font-size:13px;margin-top:8px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+      <button onclick="closeSupportForm()" style="background:#fff;color:var(--gray-600);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid var(--gray-300);cursor:pointer;">Annuler</button>
+      <button id="support-send" onclick="submitSupportForm()" style="background:var(--blue);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">📨 Envoyer</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  setTimeout(()=>{ const t=document.getElementById('support-message'); if(t) t.focus(); },0);
+}
+function closeSupportForm(){ const o=document.getElementById('support-overlay'); if(o) o.remove(); }
+async function submitSupportForm(){
+  const msg = (document.getElementById('support-message')?.value||'').trim();
+  const subject = (document.getElementById('support-subject')?.value||'').trim();
+  const reference = document.getElementById('support-ref')?.value||'';
+  const err = document.getElementById('support-error');
+  const btn = document.getElementById('support-send');
+  const showErr = t => { if(err){ err.textContent=t; err.style.display='block'; } };
+  if(msg.length<10){ showErr('Votre message doit contenir au moins 10 caractères.'); return; }
+  if(btn){ btn.disabled=true; btn.textContent='Envoi…'; }
+  try{
+    const r = await callReservationFlow({ action:'support', message:msg, subject, reference }, true);
+    if(!r.ok){
+      console.error('support', r.status, r.body);
+      showErr(r.status===401 ? 'Votre session a expiré, reconnectez-vous puis réessayez.' : "L'envoi a échoué. Réessayez dans un instant ou écrivez à contact@mytunigo.com.");
+      if(btn){ btn.disabled=false; btn.textContent='📨 Envoyer'; }
+      return;
+    }
+    closeSupportForm();
+    showToast('✅ Message envoyé — vous recevrez une confirmation par e-mail (pensez à vérifier vos spams).');
+  }catch(e){
+    console.error(e);
+    showErr("L'envoi a échoué. Vérifiez votre connexion et réessayez.");
+    if(btn){ btn.disabled=false; btn.textContent='📨 Envoyer'; }
+  }
+}
+
 // Expire les demandes acceptées dont le délai de paiement de 24h est
 // dépassé, et libère leurs dates. Tourne aussi côté serveur
 // toutes les 10 min (pg_cron) ; ici, c'est un filet de sécurité appelé avant
@@ -4998,9 +5062,9 @@ function buildReservations(){
     ${list.length>0?`<div style="margin-top:24px;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:18px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
         <div style="font-size:14px;font-weight:700;margin-bottom:3px;">Besoin d'aide avec une réservation ?</div>
-        <div style="font-size:13px;color:var(--gray-500);">Notre équipe support est disponible 24h/24.</div>
+        <div style="font-size:13px;color:var(--gray-500);">Écrivez-nous, nous vous répondons par e-mail.</div>
       </div>
-      <a href="mailto:contact@mytunigo.com?subject=${encodeURIComponent('Aide réservation — '+(((auth.currentUser&&auth.currentUser.email)||'')))}" style="display:inline-block;background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;text-decoration:none;">💬 Contacter le support</a>
+      <button onclick="openSupportForm()" style="background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">💬 Contacter le support</button>
     </div>`:''}
   </div>`;
   return d;
