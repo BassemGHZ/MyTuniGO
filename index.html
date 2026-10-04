@@ -632,7 +632,12 @@ function compareGuestReservations(a,b){
   const pa = a.status==='acceptée' && a.paymentDeadline && new Date(a.paymentDeadline) > now;
   const pb = b.status==='acceptée' && b.paymentDeadline && new Date(b.paymentDeadline) > now;
   if(pa!==pb) return pa ? -1 : 1;
-  if(pa && pb) return new Date(a.paymentDeadline) - new Date(b.paymentDeadline);
+  if(pa && pb){
+    // Délais différents (à la minute près) : le plus urgent d'abord ;
+    // sinon (acceptées en même temps) : la date d'arrivée la plus proche.
+    const da = Math.floor(new Date(a.paymentDeadline)/60000), db = Math.floor(new Date(b.paymentDeadline)/60000);
+    if(da!==db) return da - db;
+  }
   return compareByArrival(a,b);
 }
 function localISODate(d){
