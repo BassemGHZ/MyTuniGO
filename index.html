@@ -1245,7 +1245,7 @@ function buildHeader(){
       <button class="nav-btn ${appState.page==='excursions'||appState.page==='excursion-detail'||appState.page==='excursion-form'?'active':''}" onclick="navigate('excursions')">✈️ Excursions</button>
       <button class="nav-btn ${appState.page==='mesannonces'?'active':''}" onclick="checkAuthAndGo('mesannonces')">🏘️ Mes annonces</button>
       <button class="nav-btn" onclick="checkAuthAndGo('annonce')">📋 Déposer une annonce</button>
-      <button class="nav-btn ${appState.page==='reservations'?'active':''}" onclick="checkAuthAndGo('reservations')">📅 Mes réservations</button>
+      <button class="nav-btn ${appState.page==='reservations'?'active':''}" onclick="checkAuthAndGo('reservations')">🧳 Mes voyages</button>
     </nav>
     <div class="header-right" id="header-auth"></div>
   </div>`;
@@ -1303,7 +1303,7 @@ function toggleDropdown(){
 
     <div class="ud-item" onclick="navigate('home');closeDropdown()">🔍 Explorer les logements</div>
     <div class="ud-item" onclick="navigate('excursions');closeDropdown()">✈️ Explorer les excursions</div>
-    <div class="ud-item" onclick="navigate('reservations');closeDropdown()">📅 Mes réservations</div>
+    <div class="ud-item" onclick="navigate('reservations');closeDropdown()">🧳 Mes voyages</div>
     <div class="ud-item" onclick="navigate('favoris');closeDropdown()">❤️ Mes favoris</div>
     <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages${(appState._unreadMsgCount||0)>0?' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:middle;"></span>':''}</div>
     <div style="padding:4px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);border-top:1px solid var(--gray-100);margin-top:4px;padding-top:10px;">Espace hôte</div>
@@ -1350,7 +1350,7 @@ function openMobileDrawer(){
   // Voyageur items
   const items = [
     {icon:'🔍', label:'Explorer les logements', page:'results'},
-    {icon:'📅', label:'Mes réservations',        page:'reservations'},
+    {icon:'🧳', label:'Mes voyages',        page:'reservations'},
     {icon:'❤️', label:'Mes favoris',             page:'favoris'},
     {icon:'💬', label:'Messages',                page:'messages'},
     {icon:'📨', label:'Gérer les réservations',    page:'booking-requests'},
@@ -3906,12 +3906,12 @@ async function loadReservationPayment(container){
   await runReservationExpiry(true);
   const { data: r, error } = await _sb.from('reservations').select('*').eq('id', id).maybeSingle();
   if(error || !r || r.guest_id !== auth.currentUser.id){
-    box('<div style="font-size:44px;margin-bottom:12px;">🔍</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Réservation introuvable</h2><p style="color:var(--gray-500);margin-bottom:18px;">Ce lien ne correspond à aucune réservation de votre compte.</p><button onclick="navigate(\'reservations\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">📅 Mes réservations</button>');
+    box('<div style="font-size:44px;margin-bottom:12px;">🔍</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Réservation introuvable</h2><p style="color:var(--gray-500);margin-bottom:18px;">Ce lien ne correspond à aucune réservation de votre compte.</p><button onclick="navigate(\'reservations\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">🧳 Mes voyages</button>');
     return;
   }
   const { data: ann } = await _sb.from('annonces').select('name,city,country,emoji,photos').eq('id', r.logement_id).maybeSingle();
   const propName = ann?.name || 'Hébergement';
-  const backBtn = '<button onclick="navigate(\'reservations\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">📅 Mes réservations</button>';
+  const backBtn = '<button onclick="navigate(\'reservations\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">🧳 Mes voyages</button>';
 
   if(r.status==='confirmée' || r.status==='terminée'){
     box('<div style="font-size:44px;margin-bottom:12px;">✅</div><h2 style="font-size:20px;font-weight:800;color:var(--green);margin-bottom:8px;">Réservation déjà confirmée</h2><p style="color:var(--gray-500);margin-bottom:18px;">Votre séjour à <strong>'+propName+'</strong> est confirmé.</p>'+backBtn);
@@ -3932,7 +3932,7 @@ async function loadReservationPayment(container){
   const nights = r.nights || Math.max(1,Math.round((new Date(r.check_out)-new Date(r.check_in))/86400000));
   const photo = ann?.photos && ann.photos[0];
   container.innerHTML = `
-  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('reservations')">Mes réservations</span><span class="bc-sep">›</span><span>Paiement</span></div>
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="navigate('reservations')">Mes voyages</span><span class="bc-sep">›</span><span>Paiement</span></div>
   <div style="max-width:1000px;margin:0 auto;padding:24px 20px 60px;">
     <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">💳 Finalisez votre réservation</h1>
     <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">L'hôte a accepté votre demande. Payez maintenant pour confirmer votre séjour.</p>
@@ -4054,7 +4054,7 @@ async function submitReservationPayment(resaId){
           <div style="font-size:13.5px;color:#5c4400;line-height:1.6;">Vous ne trouvez pas l'e-mail de confirmation ? Vérifiez vos dossiers <strong>Spam / Courrier indésirable</strong> et Promotions, et ajoutez <strong>noreply@mytunigo.com</strong> à vos contacts.</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button onclick="navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">📅 Mes réservations</button>
+          <button onclick="navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">🧳 Mes voyages</button>
           <button onclick="navigate('home')" style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;">🏠 Accueil</button>
         </div>
       </div>
@@ -4095,7 +4095,7 @@ function buildSuccess(){
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button onclick="appState.confirmedBooking=null;navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">📅 Mes réservations</button>
+          <button onclick="appState.confirmedBooking=null;navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">🧳 Mes voyages</button>
           <button onclick="appState.confirmedBooking=null;navigate('home')" style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;">🏠 Accueil</button>
         </div>
       </div>
@@ -4962,12 +4962,12 @@ function buildReservations(){
 
   const d=document.createElement('div');
   d.innerHTML=`
-  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Mes réservations</span></div>
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Mes voyages</span></div>
   <div style="max-width:1000px;margin:0 auto;padding:28px 20px 60px;">
 
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:20px;">
       <div>
-        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📅 Mes réservations</h1>
+        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">🧳 Mes voyages</h1>
         <p style="font-size:15px;color:var(--gray-500);">${appState.reservations.length} réservation${appState.reservations.length>1?'s':''} au total</p>
       </div>
       <button onclick="navigate('home')" style="background:var(--blue);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle réservation</button>
@@ -5145,12 +5145,12 @@ function buildExcursionReservations(){
 
   const d=document.createElement('div');
   d.innerHTML=`
-  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Mes réservations</span></div>
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Mes voyages</span></div>
   <div style="max-width:1000px;margin:0 auto;padding:28px 20px 60px;">
 
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:20px;">
       <div>
-        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">📅 Mes réservations</h1>
+        <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">🧳 Mes voyages</h1>
         <p style="font-size:15px;color:var(--gray-500);">${(appState.myExcursionBookings||[]).length} réservation${(appState.myExcursionBookings||[]).length>1?'s':''} d'excursion</p>
       </div>
       <button onclick="navigate('excursions')" style="background:var(--blue);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Explorer les excursions</button>
