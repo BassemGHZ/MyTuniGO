@@ -3452,7 +3452,7 @@ function isDateRangeAvailable(hId, checkIn, checkOut){
   return true;
 }
 
-function goConfirm(hId){
+async function goConfirm(hId){
   appState.selectedHotelId=hId;
   appState.checkIn=document.getElementById('bk-ci')?.value||appState.checkIn;
   appState.checkOut=document.getElementById('bk-co')?.value||appState.checkOut;
@@ -3496,6 +3496,16 @@ function goConfirm(hId){
     return;
   }
 
+  // Connexion obligatoire AVANT le formulaire de demande. Les dates choisies
+  // restent en mémoire : après connexion, on arrive directement sur la demande.
+  if(!auth.currentUser || !(await _sb.auth.getSession()).data.session){
+    if(auth.currentUser){ auth.currentUser = null; try{ renderAuthArea(); }catch(e){} }
+    appState._pendingPage = 'confirm';
+    openModal('login');
+    showToast('Connectez-vous pour envoyer votre demande — vos dates sont conservées.','var(--blue)');
+    return;
+  }
+
   navigate('confirm');
 }
 
@@ -3504,6 +3514,13 @@ function buildConfirm(){
   if(appState.confirmedBooking) return buildSuccess();
   const h=hotels.find(x=>x.id===appState.selectedHotelId);
   if(!h){navigate('home');return document.createElement('div');}
+  // Filet de sécurité (page rouverte après déconnexion, retour arrière…) :
+  // pas de formulaire de demande sans être connecté.
+  if(!auth.currentUser){
+    appState._pendingPage = 'confirm';
+    setTimeout(()=>{ navigate('detail',{selectedHotelId:h.id}); openModal('login'); showToast('Connectez-vous pour envoyer votre demande — vos dates sont conservées.','var(--blue)'); },0);
+    return document.createElement('div');
+  }
   const nights=calcNights();
   const nights_calc=calcNights();
   const sub = computeNightlyTotal(h, appState.checkIn, appState.checkOut, appState.rooms||1);
@@ -3627,6 +3644,21 @@ const SB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 // notify-admin : e-mails de modération (dépôt / validation / rejet…).
 // Le site n'envoie que l'action, le type et l'identifiant ; la fonction lit
 // le reste en base et vérifie que l'appelant est propriétaire ou admin.
+// Vérifie la VRAIE session Supabase (et pas seulement auth.currentUser, qui
+// peut rester en mémoire après expiration ou déconnexion dans un autre onglet).
+// Si elle a disparu : remet l'interface en mode déconnecté et ouvre la connexion.
+async function ensureLiveSession(msg){
+  try{
+    const { data: { session } } = await _sb.auth.getSession();
+    if(session?.user) return true;
+  }catch(e){}
+  auth.currentUser = null;
+  try{ renderAuthArea(); }catch(e){}
+  openModal('login');
+  showToast(msg || 'Votre session a expiré — reconnectez-vous pour continuer.','var(--blue)');
+  return false;
+}
+
 async function callNotifyAdmin(action, kind, id, extra){
   try{
     const { data: { session } } = await _sb.auth.getSession();
@@ -3808,6 +3840,7 @@ async function payOnSite(hId, total){
   if(!email){showToast('⚠️ Remplissez votre adresse e-mail.','var(--red)');document.getElementById('cf-email')?.focus();return;}
   if(!/\S+@\S+\.\S+/.test(email)){showToast('⚠️ Adresse e-mail invalide.','var(--red)');return;}
   if(!auth.currentUser){openModal('login');showToast('Connectez-vous pour réserver','var(--blue)');return;}
+  if(!(await ensureLiveSession('Votre session a expiré — reconnectez-vous pour envoyer votre demande.'))) return;
 
   const h = hotels.find(x=>x.id===hId);
   if(!h?.annonceId){
@@ -6906,6 +6939,7 @@ async function updateExcSpotsLeft(excId, ds){
 
 async function bookExcursion(excId){
   if(!auth.currentUser){openModal('login');showToast('Connectez-vous pour réserver','var(--blue)');return;}
+  if(!(await ensureLiveSession('Votre session a expiré — reconnectez-vous pour réserver.'))) return;
 
   // Get date — mandatory from calendar selection
   const date = appState.excBookingDate || (document.getElementById('exc-date') && document.getElementById('exc-date').value) || '';
