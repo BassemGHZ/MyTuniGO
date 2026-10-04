@@ -3659,6 +3659,20 @@ async function ensureLiveSession(msg){
   return false;
 }
 
+// notify-excursion-booking : e-mails des réservations d'excursions.
+// Le site n'envoie que le type et l'identifiant de la réservation.
+async function callNotifyExcursion(type, bookingId, extra){
+  try{
+    const { data: { session } } = await _sb.auth.getSession();
+    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(session?.access_token||SB_ANON_KEY) },
+      body: JSON.stringify({ type, booking_id: bookingId, ...(extra||{}) })
+    });
+    if(!res.ok) console.error('notify-excursion-booking', type, res.status, await res.text());
+  }catch(e){ console.error('notify-excursion-booking', type, e.message); }
+}
+
 async function callNotifyAdmin(action, kind, id, extra){
   try{
     const { data: { session } } = await _sb.auth.getSession();
@@ -5237,35 +5251,8 @@ async function cancelExcursionBooking(dbId){
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
   showToast('Réservation annulée','var(--red)');
 
-  try{
-    const [{data: exc}, {data: guestProf}] = await Promise.all([
-      _sb.from('excursions').select('title,contact_email').eq('id', bk.excursion_id).maybeSingle(),
-      _sb.from('profiles').select('email,first_name').eq('id', bk.guest_id).maybeSingle()
-    ]);
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-    };
-    const basePayload = {
-      guest_name: guestProf?.first_name || 'Un voyageur',
-      excursion_title: exc?.title || 'excursion',
-      date: bk.date, participants: bk.participants, total: bk.total, reference: bk.reference
-    };
-    if(exc?.contact_email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
-        method: 'POST', headers,
-        body: JSON.stringify({...basePayload, type: 'cancelled_by_guest', recipient_email: exc.contact_email})
-      });
-    }
-    if(guestProf?.email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
-        method: 'POST', headers,
-        body: JSON.stringify({...basePayload, type: 'cancelled_confirmation', recipient_email: guestProf.email})
-      });
-    }
-  } catch(efErr){
-    console.error('notify-excursion-booking cancellation error:', efErr.message);
-  }
+  // E-mails prestataire + voyageur (destinataires et contenu lus en base)
+  await callNotifyExcursion('cancelled', dbId);
 
   navigate('reservations');
 }
@@ -8469,7 +8456,7 @@ async function finalizeBooking(pb,method){
 
 async function finalizeRealExcursionBooking(pb, ref, methodLabel){
   const status = pb.instantBookExc ? 'confirmée' : 'en attente';
-  const { error } = await _sb.from('excursion_bookings').insert([{
+  const { data: insertedBk, error } = await _sb.from('excursion_bookings').insert([{
     excursion_id: pb.excursionRealId,
     guest_id: auth.currentUser.id,
     date: pb.date,
@@ -8479,7 +8466,7 @@ async function finalizeRealExcursionBooking(pb, ref, methodLabel){
     status,
     reference: ref,
     payment_method: methodLabel||'en ligne'
-  }]);
+  }]).select('id').single();
 
   if(error){
     const capacityIssue = /CAPACITY_EXCEEDED/.test(error.message||'');
@@ -8491,33 +8478,8 @@ async function finalizeRealExcursionBooking(pb, ref, methodLabel){
     return;
   }
 
-  // Emails : confirmation/demande au client + alerte au prestataire
-  try{
-    const { data: exc } = await _sb.from('excursions').select('title,contact_email').eq('id', pb.excursionRealId).maybeSingle();
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-    };
-    const basePayload = {
-      excursion_title: exc?.title || pb.title,
-      guest_name: auth.currentUser.firstName || 'Voyageur',
-      date: pb.date, participants: pb.pax, total: pb.total, reference: ref
-    };
-    if(auth.currentUser.email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
-        method:'POST', headers,
-        body: JSON.stringify({...basePayload, type: status==='confirmée' ? 'instant_confirmed' : 'request_received', recipient_email: auth.currentUser.email})
-      });
-    }
-    if(exc?.contact_email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
-        method:'POST', headers,
-        body: JSON.stringify({...basePayload, type:'host_alert', instant: status==='confirmée', recipient_email: exc.contact_email})
-      });
-    }
-  } catch(efErr){
-    console.error('notify-excursion-booking error:', efErr.message);
-  }
+  // E-mails : confirmation/demande au voyageur + alerte au prestataire
+  if(insertedBk?.id) await callNotifyExcursion('created', insertedBk.id);
 
   appState.pendingBooking=null;
   showPaymentSuccess(ref, pb.title, pb.total, methodLabel, status==='en attente');
@@ -9377,32 +9339,8 @@ async function handleExcursionBookingRequest(reqId, decision, hostMessage){
 
   showToast(decision==='confirmée' ? '✅ Demande acceptée ! Réservation confirmée.' : 'Demande refusée.', decision==='confirmée'?'var(--green)':'var(--gray-700)');
 
-  try{
-    const [{data: guestProf}, {data: exc}] = await Promise.all([
-      _sb.from('profiles').select('email,first_name').eq('id', bk.guest_id).maybeSingle(),
-      _sb.from('excursions').select('title').eq('id', bk.excursion_id).maybeSingle()
-    ]);
-    if(guestProf?.email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify({
-          type: 'decision',
-          decision: decision==='confirmée' ? 'accepted' : 'declined',
-          recipient_email: guestProf.email,
-          guest_name: guestProf.first_name || 'Voyageur',
-          excursion_title: exc?.title || 'Excursion',
-          date: bk.date, participants: bk.participants, total: bk.total,
-          reference: bk.reference, host_message: hostMessage || ''
-        })
-      });
-    }
-  } catch(efErr){
-    console.error('notify-excursion-booking decision error:', efErr.message);
-  }
+  // E-mail au voyageur : demande acceptée ou refusée
+  await callNotifyExcursion('decision', reqId, { host_message: hostMessage||'' });
 
   navigate('excursion-requests');
 }
