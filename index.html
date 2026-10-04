@@ -9066,11 +9066,11 @@ async function sendMessage(convId){
   const { data: conv, error: convErr } = await _sb.from('conversations').select('*').eq('id', convId).maybeSingle();
   if(convErr || !conv){ if(btn)btn.disabled=false; return; }
 
-  const { error: insertErr } = await _sb.from('messages').insert([{
+  const { data: insertedMsg, error: insertErr } = await _sb.from('messages').insert([{
     conversation_id: convId,
     sender_id: uid,
     content: text
-  }]);
+  }]).select('id').single();
 
   if(insertErr){
     console.error('sendMessage error:', insertErr.message);
@@ -9079,32 +9079,16 @@ async function sendMessage(convId){
     return;
   }
 
-  // Notifier le destinataire par email via l'Edge Function
+  // Notifier le destinataire par e-mail. La fonction retrouve elle-même le
+  // destinataire, son adresse et le texte à partir de l'identifiant du message.
   try{
-    const otherId = conv.participant_a===uid ? conv.participant_b : conv.participant_a;
-    const [{data: otherProf}, {data: myProf}, {data: ann}] = await Promise.all([
-      _sb.from('profiles').select('email').eq('id', otherId).maybeSingle(),
-      _sb.from('profiles').select('first_name,last_name').eq('id', uid).maybeSingle(),
-      _sb.from('annonces').select('name').eq('id', conv.logement_id).maybeSingle()
-    ]);
-    const senderName = myProf ? (myProf.first_name||'Un utilisateur') : 'Un utilisateur';
-
-    if(otherProf?.email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-message', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify({
-          conversation_id: convId,
-          recipient_email: otherProf.email,
-          sender_name: senderName,
-          property_name: ann?.name || '',
-          message_text: text
-        })
-      });
-    }
+    const { data: { session } } = await _sb.auth.getSession();
+    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+(session?.access_token||SB_ANON_KEY) },
+      body: JSON.stringify({ message_id: insertedMsg.id })
+    });
+    if(!res.ok) console.error('notify-message:', res.status, await res.text());
   } catch(efErr){
     console.error('notify-message Edge Function error:', efErr.message);
   }
