@@ -615,6 +615,15 @@
 // jour suivant). Résultat observé : un calendrier de réservation laissait
 // encore sélectionnable une date pourtant déjà entièrement passée, juste
 // après minuit heure locale (bug signalé sur les réservations d'excursion).
+// Tri des réservations par date d'arrivée : les arrivées à venir d'abord
+// (la plus proche en premier), puis les arrivées passées (la plus récente d'abord).
+function compareByArrival(a,b){
+  const t = localISODate(new Date());
+  const ai = String(a.checkIn||'9999-12-31').slice(0,10), bi = String(b.checkIn||'9999-12-31').slice(0,10);
+  const ap = ai < t, bp = bi < t;
+  if(ap!==bp) return ap ? 1 : -1;
+  return ap ? bi.localeCompare(ai) : ai.localeCompare(bi);
+}
 function localISODate(d){
   d = d || new Date();
   const pad = n => String(n).padStart(2,'0');
@@ -4865,7 +4874,7 @@ function buildReservations(){
 
   const tabs=['toutes','en attente','acceptée','confirmée','terminée','refusée','annulée','expirée'];
   const filt=appState.resaFilter||'toutes';
-  const list=appState.reservations.filter(r=>filt==='toutes'||r.status===filt);
+  const list=appState.reservations.filter(r=>filt==='toutes'||r.status===filt).slice().sort(compareByArrival);
   const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000',acceptée:'#0071c2',expirée:'#6c757d'};
   const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0',acceptée:'#e8f4ff',expirée:'#f1f3f5'};
   const toPay = appState.reservations.filter(r=>r.status==='acceptée' && timeLeftLabel(r.paymentDeadline));
@@ -4990,7 +4999,7 @@ function buildReservations(){
         <div style="font-size:14px;font-weight:700;margin-bottom:3px;">Besoin d'aide avec une réservation ?</div>
         <div style="font-size:13px;color:var(--gray-500);">Notre équipe support est disponible 24h/24.</div>
       </div>
-      <button style="background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">💬 Contacter le support</button>
+      <a href="mailto:contact@mytunigo.com?subject=${encodeURIComponent('Aide réservation — '+(((auth.currentUser&&auth.currentUser.email)||'')))}" style="display:inline-block;background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;text-decoration:none;">💬 Contacter le support</a>
     </div>`:''}
   </div>`;
   return d;
@@ -9100,13 +9109,7 @@ async function loadBookingRequests(container){
     .filter(r=>!annonceFilterId || r.annonceId===annonceFilterId)
     // Tri par date d'arrivée : les arrivées à venir d'abord, la plus proche
     // en premier ; les arrivées déjà passées ensuite (la plus récente d'abord).
-    .sort((a,b)=>{
-      const t = localISODate(new Date());
-      const ai = a.checkIn||'9999-12-31', bi = b.checkIn||'9999-12-31';
-      const ap = ai < t, bp = bi < t;
-      if(ap!==bp) return ap ? 1 : -1;
-      return ap ? bi.localeCompare(ai) : ai.localeCompare(bi);
-    });
+    .sort(compareByArrival);
   // Les compteurs (titre + onglets) portent sur le même périmètre que la
   // liste affichée : uniquement l'annonce sélectionnée quand on arrive
   // depuis le bouton "📨 Réservations" d'une annonce, sinon toutes.
