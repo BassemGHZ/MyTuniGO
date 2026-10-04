@@ -9097,7 +9097,16 @@ async function loadBookingRequests(container){
   const annonceFilterName = annonceFilterId ? (annMap[annonceFilterId]?.name || 'cette annonce') : null;
   const list = all
     .filter(r=>filter==='all' || r.status===statusMap[filter])
-    .filter(r=>!annonceFilterId || r.annonceId===annonceFilterId);
+    .filter(r=>!annonceFilterId || r.annonceId===annonceFilterId)
+    // Tri par date d'arrivée : les arrivées à venir d'abord, la plus proche
+    // en premier ; les arrivées déjà passées ensuite (la plus récente d'abord).
+    .sort((a,b)=>{
+      const t = localISODate(new Date());
+      const ai = a.checkIn||'9999-12-31', bi = b.checkIn||'9999-12-31';
+      const ap = ai < t, bp = bi < t;
+      if(ap!==bp) return ap ? 1 : -1;
+      return ap ? bi.localeCompare(ai) : ai.localeCompare(bi);
+    });
   // Les compteurs (titre + onglets) portent sur le même périmètre que la
   // liste affichée : uniquement l'annonce sélectionnée quand on arrive
   // depuis le bouton "📨 Réservations" d'une annonce, sinon toutes.
