@@ -624,6 +624,17 @@ function compareByArrival(a,b){
   if(ap!==bp) return ap ? 1 : -1;
   return ap ? bi.localeCompare(ai) : ai.localeCompare(bi);
 }
+// Côté voyageur : les réservations « à payer » (délai de 24h encore ouvert)
+// passent avant tout le reste, la plus urgente en premier — c'est la seule
+// action qui a une échéance. Le reste suit le tri par date d'arrivée.
+function compareGuestReservations(a,b){
+  const now = Date.now();
+  const pa = a.status==='acceptée' && a.paymentDeadline && new Date(a.paymentDeadline) > now;
+  const pb = b.status==='acceptée' && b.paymentDeadline && new Date(b.paymentDeadline) > now;
+  if(pa!==pb) return pa ? -1 : 1;
+  if(pa && pb) return new Date(a.paymentDeadline) - new Date(b.paymentDeadline);
+  return compareByArrival(a,b);
+}
 function localISODate(d){
   d = d || new Date();
   const pad = n => String(n).padStart(2,'0');
@@ -4939,7 +4950,7 @@ function buildReservations(){
 
   const tabs=['toutes','en attente','acceptée','confirmée','terminée','refusée','annulée','expirée'];
   const filt=appState.resaFilter||'toutes';
-  const list=appState.reservations.filter(r=>filt==='toutes'||r.status===filt).slice().sort(compareByArrival);
+  const list=appState.reservations.filter(r=>filt==='toutes'||r.status===filt).slice().sort(compareGuestReservations);
   const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000',acceptée:'#0071c2',expirée:'#6c757d'};
   const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0',acceptée:'#e8f4ff',expirée:'#f1f3f5'};
   const toPay = appState.reservations.filter(r=>r.status==='acceptée' && timeLeftLabel(r.paymentDeadline));
@@ -5027,7 +5038,7 @@ function buildReservations(){
               ${r.status==='acceptée'?(timeLeftLabel(r.paymentDeadline)
                 ?`<div style="margin-top:8px;font-size:12.5px;color:#0071c2;font-weight:700;">✅ Acceptée par l'hôte — payez avant le ${fmtDateTimeFR(r.paymentDeadline)} (il reste ${timeLeftLabel(r.paymentDeadline)})</div>`
                 :`<div style="margin-top:8px;font-size:12px;color:var(--red);font-weight:600;">⌛ Délai de paiement dépassé — la réservation va être annulée</div>`):''}
-              ${r.status==='expirée'?`<div style="margin-top:8px;font-size:12px;color:var(--gray-500);">${r.expiredReason==='no_host_reply'?"L'hôte n'a pas répondu avant la date d'arrivée — la demande est close, aucun paiement n'a été effectué.":"Le paiement n'a pas été effectué dans les 24h — la réservation a été annulée."}</div>`:''}
+              ${r.status==='expirée'?`<div style="margin-top:8px;font-size:12px;color:var(--gray-500);">${r.expiredReason==='no_host_reply'?"L'hôte n'a pas répondu avant la date d'arrivée — la demande est close, aucun paiement n'a été effectué.":r.expiredReason==='checkin_passed'?"Le paiement n'a pas été effectué avant la date d'arrivée — la réservation est close, aucun montant n'a été débité.":"Le paiement n'a pas été effectué dans les 24h — la réservation a été annulée."}</div>`:''}
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:120px;">
               <div style="text-align:right;">
@@ -9243,7 +9254,7 @@ async function loadBookingRequests(container){
               ${conflictOf(req)?`<div style="font-size:12.5px;color:var(--red);font-weight:700;margin-bottom:8px;">⚠️ Ces dates chevauchent la demande de ${conflictOf(req).guestName} (${conflictOf(req).status==='confirmée'?'confirmée':'acceptée, paiement en cours'}). Vous ne pouvez pas accepter celle-ci${conflictOf(req).status==='acceptée'?" tant que l'autre n'a pas expiré":''}.</div>`:''}
               ${req.status==='acceptée'?`<div style="font-size:12.5px;color:#0071c2;font-weight:700;margin-bottom:8px;">💳 Vous avez accepté — le voyageur a jusqu'au ${fmtDateTimeFR(req.paymentDeadline)} pour payer. Les dates restent bloquées jusque-là.</div>`:''}
               ${req.status==='refusée'&&req.refusedReason==='dates_taken'?`<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:8px;">Refusée automatiquement : ces dates ont été réservées par un autre voyageur.</div>`:''}
-              ${req.status==='expirée'?`<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:8px;">${req.refusedReason==='no_host_reply'?"Expirée : la date d'arrivée est passée sans réponse de votre part.":"Expirée : le voyageur n'a pas payé sous 24h. Les dates ont été libérées."}</div>`:''}
+              ${req.status==='expirée'?`<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:8px;">${req.refusedReason==='no_host_reply'?"Expirée : la date d'arrivée est passée sans réponse de votre part.":req.refusedReason==='checkin_passed'?"Expirée : le voyageur n'a pas payé avant la date d'arrivée.":"Expirée : le voyageur n'a pas payé sous 24h. Les dates ont été libérées."}</div>`:''}
               ${req.message?`<div style="background:#f9f9ff;border-left:3px solid var(--blue-l);padding:10px 14px;border-radius:0 var(--r-md) var(--r-md) 0;font-size:13px;color:var(--gray-700);font-style:italic;line-height:1.6;">"${req.message}"</div>`:''}
             </div>
             ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
@@ -9745,7 +9756,7 @@ async function handleBookingRequest(reqId, decision, hostMessage){
   const { error } = await _sb.from('reservations').update({status: decision}).eq('id', reqId);
   if(error){
     const msg = (error.code==='23P01' || /exclu|overlap/i.test(error.message||'')) ? "Ces dates sont déjà acceptées ou confirmées pour une autre demande."
-      : /CHECKIN_PASSED/.test(error.message||'') ? "La date d'arrivée est déjà passée : impossible d'accepter cette demande."
+      : /CHECKIN_PASSED/.test(error.message||'') ? "La date d'arrivée est aujourd'hui ou déjà passée : impossible d'accepter cette demande."
       : /NOT_HOST/.test(error.message||'') ? "Vous n'êtes pas l'hôte de ce logement."
       : 'Erreur : '+error.message;
     showToast(msg,'var(--red)');
