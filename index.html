@@ -1673,10 +1673,12 @@ async function handleLogin(){
   }
 
   const meta = data.user?.user_metadata || {};
+
+  const appMeta = data.user?.app_metadata || {};
   const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', data.user.id).maybeSingle();
   auth.currentUser = {
     id: data.user.id,
-    role: meta.role || 'user',
+    role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
     firstName: meta.first_name || email.split('@')[0],
     lastName:  meta.last_name  || '',
     email:     data.user.email,
@@ -3622,6 +3624,21 @@ const SB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 // notify-booking : e-mails de refus et d'annulation. Exige la session de
 // l'utilisateur (hôte pour un refus, voyageur pour une annulation).
+// notify-admin : e-mails de modération (dépôt / validation / rejet…).
+// Le site n'envoie que l'action, le type et l'identifiant ; la fonction lit
+// le reste en base et vérifie que l'appelant est propriétaire ou admin.
+async function callNotifyAdmin(action, kind, id, extra){
+  try{
+    const { data: { session } } = await _sb.auth.getSession();
+    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(session?.access_token||SB_ANON_KEY) },
+      body: JSON.stringify({ action, kind, id, ...(extra||{}) })
+    });
+    if(!res.ok) console.error('notify-admin', action, res.status, await res.text());
+  }catch(e){ console.error('notify-admin', action, e.message); }
+}
+
 async function callNotifyBooking(payload){
   const { data: { session } } = await _sb.auth.getSession();
   const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
@@ -4742,21 +4759,8 @@ async function annPublish(){
     if(error) throw new Error(error.message);
     annData = data;
 
-    // Email admin via Edge Function
-    try {
-      const efRes = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify(payload)
-      });
-      const efResult = await efRes.json();
-      console.log('Edge Function response:', efRes.status, JSON.stringify(efResult));
-    } catch(efErr) {
-      console.error('Edge Function error:', efErr.message);
-    }
+    // E-mails admin (à valider) + accusé de réception à l'hôte
+    if(annData?.id) await callNotifyAdmin('submitted','annonce',annData.id);
 
   } catch(e) {
     if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'annonce';}
@@ -7592,24 +7596,11 @@ async function excFormPublish(){
   };
 
   try {
-    const { error } = await _sb.from('excursions').insert([payload]);
+    const { data: excIns, error } = await _sb.from('excursions').insert([payload]).select('id').single();
     if(error) throw new Error(error.message);
 
-    // Email admin via Edge Function
-    try {
-      const efRes = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-        },
-        body: JSON.stringify({...payload, _type: 'excursion', name: fd.title})
-      });
-      const efResult = await efRes.json();
-      console.log('Edge Function response (excursion):', efRes.status, JSON.stringify(efResult));
-    } catch(efErr) {
-      console.error('Edge Function error:', efErr.message);
-    }
+    // E-mails admin (à valider) + accusé de réception au prestataire
+    if(excIns?.id) await callNotifyAdmin('submitted','excursion',excIns.id);
   } catch(e) {
     if(btn){btn.disabled=false;btn.textContent='✓ Publier l\'excursion';}
     showToast('Erreur lors de la publication : '+e.message,'var(--red)');
@@ -8151,19 +8142,8 @@ async function saveAnnonceEditOwner(){
     if(hIdx>-1) hotels.splice(hIdx,1);
   }
 
-  // Mails hôte (validation en cours) + admin (annonce à valider), même pattern qu'à la création
-  try {
-    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-      },
-      body: JSON.stringify({ ...updates, id: ed.id, edited: true, pendingReview: isLivePublished })
-    });
-  } catch(efErr){
-    console.error('notify-admin (édition annonce) error:', efErr.message);
-  }
+  // Mails hôte (validation en cours) + admin (annonce à valider)
+  await callNotifyAdmin('submitted','annonce',ed.id,{ edited:true });
 
   showToast(isLivePublished
     ? '✅ Modifications enregistrées — en attente de validation. Votre annonce actuelle reste visible en attendant.'
@@ -9696,19 +9676,8 @@ async function saveExcursionEdit(){
   const gIdx = excursions.findIndex(x=>x.excursionId===ed.id);
   if(gIdx>-1) excursions.splice(gIdx,1);
 
-  // Mails prestataire (validation en cours) + admin (excursion à valider), même pattern qu'à la création
-  try {
-    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-      },
-      body: JSON.stringify({ ...updates, id: ed.id, edited: true, isExcursion: true })
-    });
-  } catch(efErr){
-    console.error('notify-admin (édition excursion) error:', efErr.message);
-  }
+  // Mails prestataire (validation en cours) + admin (excursion à valider)
+  await callNotifyAdmin('submitted','excursion',ed.id,{ edited:true });
 
   showToast('✅ Excursion mise à jour — repassée en validation admin','var(--blue)');
   navigate('manage-excursions');
@@ -11178,20 +11147,8 @@ async function validateAnnonce(id, ref, name, email, firstname){
   const { error } = await _sb.from('annonces').update({status:'publiée'}).eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
-  // Email client
-  try {
-    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-      },
-      body: JSON.stringify({
-        _action: 'validation',
-        ref, name, contact_email: email, contact_firstname: firstname
-      })
-    });
-  } catch(e){ console.warn('Email validation non envoyé:', e); }
+  // E-mail à l'hôte : annonce en ligne
+  await callNotifyAdmin('validated','annonce',id);
 
   showToast('✅ Annonce validée et mise en ligne !','var(--green)');
   const card = document.getElementById('ann-card-'+id);
@@ -11205,6 +11162,7 @@ async function rejectAnnonce(id, ref, name, email, firstname){
   const { error } = await _sb.from('annonces').update({status:'rejetée'}).eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
+  await callNotifyAdmin('rejected','annonce',id);
   showToast('Annonce rejetée.','var(--red)');
   buildAdminAnnonces(document.getElementById('admin-content'));
 }
@@ -11219,20 +11177,7 @@ async function applyPendingAnnonceChanges(id){
     .eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
-  try {
-    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-      },
-      body: JSON.stringify({
-        _action: 'pending_changes_applied',
-        ref: a.ref, name: a.pending_changes.name||a.name,
-        contact_email: a.contact_email, contact_firstname: a.contact_firstname
-      })
-    });
-  } catch(e){ console.warn('Email non envoyé:', e); }
+  await callNotifyAdmin('changes_applied','annonce',id);
 
   // Retire l'entrée obsolète de hotels[] pour forcer un rechargement propre avec les nouvelles infos
   const hIdx = hotels.findIndex(x=>x.annonceId===id);
@@ -11250,20 +11195,7 @@ async function rejectPendingAnnonceChanges(id){
   const { error } = await _sb.from('annonces').update({ pending_changes: null }).eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
-  try {
-    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-      },
-      body: JSON.stringify({
-        _action: 'pending_changes_rejected',
-        ref: a.ref, name: a.name,
-        contact_email: a.contact_email, contact_firstname: a.contact_firstname
-      })
-    });
-  } catch(e){ console.warn('Email non envoyé:', e); }
+  await callNotifyAdmin('changes_rejected','annonce',id);
 
   showToast('Modifications rejetées. L\'annonce en ligne reste inchangée.','var(--red)');
   buildAdminAnnonces(document.getElementById('admin-content'));
@@ -11585,19 +11517,7 @@ async function validateExcursion(id, ref, title, email, firstname){
   const { error } = await _sb.from('excursions').update({status:'publiée'}).eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
-  try {
-    await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-admin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-      },
-      body: JSON.stringify({
-        _action: 'validation', _type: 'excursion',
-        ref, name: title, contact_email: email, contact_firstname: firstname
-      })
-    });
-  } catch(e){ console.warn('Email validation non envoyé:', e); }
+  await callNotifyAdmin('validated','excursion',id);
 
   showToast('✅ Excursion validée et mise en ligne !','var(--green)');
   const card = document.getElementById('exc-card-'+id);
@@ -11611,6 +11531,7 @@ async function rejectExcursion(id, ref, title, email, firstname){
   const { error } = await _sb.from('excursions').update({status:'rejetée'}).eq('id', id);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
+  await callNotifyAdmin('rejected','excursion',id);
   showToast('Excursion rejetée.','var(--red)');
   buildAdminExcursions(document.getElementById('admin-content'));
 }
@@ -12643,10 +12564,11 @@ if(_restoredPage && _restoredPage!=='home'){
     _sb.auth.getSession().then(async ({ data: { session } }) => {
       if(session?.user && !auth.currentUser){
         const meta = session.user.user_metadata || {};
+        const appMeta = session.user.app_metadata || {};
         const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', session.user.id).maybeSingle();
         auth.currentUser = {
           id: session.user.id,
-          role: meta.role || 'user',
+          role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
           firstName: meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
           lastName:  meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
           email:     session.user.email,
@@ -12678,10 +12600,11 @@ if(_restoredPage && _restoredPage!=='home'){
 _sb.auth.getSession().then(async ({ data: { session } }) => {
   if(session?.user && !auth.currentUser){
     const meta = session.user.user_metadata || {};
+    const appMeta = session.user.app_metadata || {};
     const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', session.user.id).maybeSingle();
     auth.currentUser = {
       id: session.user.id,
-      role: meta.role || 'user',
+      role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
       firstName: meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
       lastName:  meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
       email:     session.user.email,
