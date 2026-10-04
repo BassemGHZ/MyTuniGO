@@ -3620,6 +3620,20 @@ function selectPayMode(mode){
 const RESA_FLOW_URL = 'https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/reservation-flow';
 const SB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk';
 
+// notify-booking : e-mails de refus et d'annulation. Exige la session de
+// l'utilisateur (hôte pour un refus, voyageur pour une annulation).
+async function callNotifyBooking(payload){
+  const { data: { session } } = await _sb.auth.getSession();
+  const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(session?.access_token||SB_ANON_KEY) },
+    body: JSON.stringify(payload)
+  });
+  let body = {};
+  try{ body = await res.json(); }catch(e){}
+  return { ok: res.ok, status: res.status, body };
+}
+
 async function callReservationFlow(payload, withUserToken){
   let token = SB_ANON_KEY;
   if(withUserToken){
@@ -5096,39 +5110,12 @@ async function cancelReservation(dbId){
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
   showToast('Réservation annulée','var(--red)');
 
-  // Informe l'hôte ET le client par email — les dates se libèrent automatiquement
-  // (la vue de disponibilité et la contrainte anti-chevauchement excluent
-  // déjà le statut "annulée", aucune action supplémentaire n'est nécessaire).
+  // Informe l'hôte ET le voyageur par e-mail — les dates se libèrent
+  // automatiquement (statut 'annulée' exclu des disponibilités). La fonction
+  // lit destinataires et contenu en base : on n'envoie que l'identifiant.
   try{
-    const [{data: ann}, {data: guestProf}] = await Promise.all([
-      _sb.from('annonces').select('name,contact_email').eq('id', resa.logement_id).maybeSingle(),
-      _sb.from('profiles').select('email,first_name,last_name').eq('id', resa.guest_id).maybeSingle()
-    ]);
-    const guestName = guestProf ? (guestProf.first_name||'Un voyageur') : 'Un voyageur';
-    const propertyName = ann?.name || 'votre hébergement';
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
-    };
-    const basePayload = {
-      guest_name: guestName, property_name: propertyName,
-      check_in: resa.check_in, check_out: resa.check_out,
-      guests_count: resa.guests_count, total: resa.total
-    };
-    // 1. Email à l'hôte
-    if(ann?.contact_email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
-        method: 'POST', headers,
-        body: JSON.stringify({...basePayload, type: 'cancelled_by_guest', recipient_email: ann.contact_email})
-      });
-    }
-    // 2. Email de confirmation au client lui-même
-    if(guestProf?.email){
-      await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
-        method: 'POST', headers,
-        body: JSON.stringify({...basePayload, type: 'cancelled_confirmation', recipient_email: guestProf.email})
-      });
-    }
+    const r = await callNotifyBooking({ type:'cancelled', reservation_id: dbId });
+    if(!r.ok) console.error('notify-booking cancelled:', r.status, r.body);
   } catch(efErr){
     console.error('notify-booking cancellation error:', efErr.message);
   }
@@ -9777,27 +9764,10 @@ async function handleBookingRequest(reqId, decision, hostMessage){
     } catch(efErr){ console.error('reservation-flow notify error:', efErr.message); }
   } else {
     showToast('Demande refusée.','var(--gray-700)');
-    // Email de refus au client (template existant de notify-booking)
+    // E-mail de refus au voyageur (destinataire et contenu lus en base)
     try{
-      const [{data: guestProf}, {data: ann}] = await Promise.all([
-        _sb.from('profiles').select('email,first_name,last_name').eq('id', resa.guest_id).maybeSingle(),
-        _sb.from('annonces').select('name').eq('id', resa.logement_id).maybeSingle()
-      ]);
-      if(guestProf?.email){
-        await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-booking', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+SB_ANON_KEY },
-          body: JSON.stringify({
-            type: 'decision', decision: 'declined',
-            recipient_email: guestProf.email,
-            guest_name: guestProf.first_name || 'Voyageur',
-            property_name: ann?.name || 'Hébergement',
-            check_in: resa.check_in, check_out: resa.check_out,
-            guests_count: resa.guests_count, total: resa.total,
-            host_message: hostMessage || ''
-          })
-        });
-      }
+      const r = await callNotifyBooking({ type:'declined', reservation_id: reqId, host_message: hostMessage||'' });
+      if(!r.ok) console.error('notify-booking declined:', r.status, r.body);
     } catch(efErr){ console.error('notify-booking decision error:', efErr.message); }
   }
 
@@ -10490,7 +10460,7 @@ function buildHostCardHTML(hId){
 /* host card injected directly in buildDetail */
 /* Ancien flux "Envoyer une demande à l'hôte" retiré : redondant avec
    "Réserver maintenant", qui crée déjà une réservation en attente de
-   validation hôte (payOnSite()). Voir notify-booking pour les emails. */
+   validation hôte (payOnSite()). Voir reservation-flow pour les e-mails. */
 
 /* ===================== DEALS FILTER ===================== */
 function setDealsFilter(type){
