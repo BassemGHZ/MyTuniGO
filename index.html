@@ -1675,7 +1675,7 @@ async function handleLogin(){
   const meta = data.user?.user_metadata || {};
 
   const appMeta = data.user?.app_metadata || {};
-  const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', data.user.id).maybeSingle();
+  const { data: prof } = await _sb.rpc('get_my_profile').maybeSingle();
   auth.currentUser = {
     id: data.user.id,
     role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
@@ -8846,7 +8846,7 @@ async function loadMessagesList(container){
   const convIds = list.map(c=>c.id);
 
   const [profRes, annRes, excRes, msgRes] = await Promise.all([
-    otherIds.length ? _sb.from('profiles').select('id,first_name,last_name,email').in('id', otherIds) : Promise.resolve({data:[]}),
+    otherIds.length ? _sb.from('profiles').select('id,first_name,last_name').in('id', otherIds) : Promise.resolve({data:[]}),
     logementIds.length ? _sb.from('annonces').select('id,name').in('id', logementIds) : Promise.resolve({data:[]}),
     excursionIds.length ? _sb.from('excursions').select('id,title').in('id', excursionIds) : Promise.resolve({data:[]}),
     _sb.from('messages').select('conversation_id,sender_id,content,created_at').in('conversation_id', convIds).order('created_at',{ascending:false})
@@ -8940,7 +8940,7 @@ async function loadConversation(container){
   const otherId = conv.participant_a===uid ? conv.participant_b : conv.participant_a;
 
   const [{data: otherProf}, {data: ann}, {data: exc}, {data: msgs, error: msgErr}] = await Promise.all([
-    _sb.from('profiles').select('id,first_name,last_name,email').eq('id', otherId).maybeSingle(),
+    _sb.from('profiles').select('id,first_name,last_name').eq('id', otherId).maybeSingle(),
     conv.logement_id ? _sb.from('annonces').select('id,name').eq('id', conv.logement_id).maybeSingle() : Promise.resolve({data:null}),
     conv.excursion_id ? _sb.from('excursions').select('id,title').eq('id', conv.excursion_id).maybeSingle() : Promise.resolve({data:null}),
     _sb.from('messages').select('*').eq('conversation_id', convId).order('created_at', {ascending:true})
@@ -12537,7 +12537,7 @@ if(_restoredPage && _restoredPage!=='home'){
       if(session?.user && !auth.currentUser){
         const meta = session.user.user_metadata || {};
         const appMeta = session.user.app_metadata || {};
-        const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', session.user.id).maybeSingle();
+        const { data: prof } = await _sb.rpc('get_my_profile').maybeSingle();
         auth.currentUser = {
           id: session.user.id,
           role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
@@ -12573,7 +12573,7 @@ _sb.auth.getSession().then(async ({ data: { session } }) => {
   if(session?.user && !auth.currentUser){
     const meta = session.user.user_metadata || {};
     const appMeta = session.user.app_metadata || {};
-    const { data: prof } = await _sb.from('profiles').select('photo,phone,birthdate,country,bio').eq('id', session.user.id).maybeSingle();
+    const { data: prof } = await _sb.rpc('get_my_profile').maybeSingle();
     auth.currentUser = {
       id: session.user.id,
       role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
