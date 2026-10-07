@@ -1773,6 +1773,15 @@ const _sb = window.supabase.createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
 );
 
+// Mot de passe refusé par Supabase Auth (règles de complexité ou mot de passe
+// présent dans des fuites connues) : message en français plutôt qu'en anglais.
+const WEAK_PASSWORD_MSG = "Ce mot de passe n'est pas assez sûr : il est trop simple ou apparaît dans des fuites de données connues. Choisissez-en un autre (au moins 8 caractères, avec lettres et chiffres).";
+function isWeakPasswordError(error){
+  const code = error && (error.code || '');
+  const msg  = ((error && error.message) || '').toLowerCase();
+  return code === 'weak_password' || msg.includes('weak') || msg.includes('pwned') || msg.includes('should contain');
+}
+
 async function handleRegister(){
   const first   = document.getElementById('rf-first')?.value?.trim();
   const last    = document.getElementById('rf-last')?.value?.trim();
@@ -1784,6 +1793,7 @@ async function handleRegister(){
   if(!first||!last||!email||!pw||!confirm){showModalAlert('Remplissez tous les champs.');return;}
   if(!/\S+@\S+\.\S+/.test(email)){showModalAlert('E-mail invalide.');return;}
   if(pw.length<8){showModalAlert('Mot de passe trop court (min. 8 caractères).');return;}
+  if(!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)){showModalAlert('Le mot de passe doit contenir au moins une lettre et un chiffre.');return;}
   if(pw!==confirm){showModalAlert('Les mots de passe ne correspondent pas.');return;}
   if(!terms){showModalAlert("Acceptez les conditions d'utilisation.");return;}
 
@@ -1815,6 +1825,8 @@ async function handleRegister(){
   if(error){
     if(error.message.includes('already registered') || error.message.includes('already been registered')){
       showModalAlert('Un compte existe déjà avec cet e-mail.');
+    } else if(isWeakPasswordError(error)){
+      showModalAlert(WEAK_PASSWORD_MSG);
     } else {
       showModalAlert('Erreur : ' + error.message);
     }
@@ -12974,6 +12986,11 @@ async function submitNewPassword(){
     msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
     return;
   }
+  if(!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)){
+    msgEl.textContent='Le mot de passe doit contenir au moins une lettre et un chiffre.';
+    msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
+    return;
+  }
   if(pw !== confirm){
     msgEl.textContent='Les mots de passe ne correspondent pas.';
     msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
@@ -12985,7 +13002,7 @@ async function submitNewPassword(){
 
   if(error){
     if(btn){btn.disabled=false;btn.textContent='Enregistrer le mot de passe';}
-    msgEl.textContent='Erreur : ' + error.message;
+    msgEl.textContent = isWeakPasswordError(error) ? WEAK_PASSWORD_MSG : 'Erreur : ' + error.message;
     msgEl.style.background='#fff0f0';msgEl.style.color='var(--red)';msgEl.style.display='block';
   } else {
     msgEl.innerHTML='✅ Mot de passe mis à jour ! Vous pouvez vous connecter.';
