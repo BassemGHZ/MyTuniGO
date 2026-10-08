@@ -3729,6 +3729,14 @@ async function callReservationFlow(payload, withUserToken){
 // Envoyé via l'Edge Function reservation-flow (action 'support') : aucun
 // logiciel de messagerie n'est ouvert chez l'utilisateur. Le support reçoit
 // le message sur contact@mytunigo.com et peut répondre directement.
+// Lien « Nous contacter » du pied de page : un utilisateur connecté passe par
+// le formulaire intégré (aucun logiciel de messagerie ouvert) ; un visiteur
+// non connecté garde le lien e-mail, utile s'il ne parvient pas à se connecter.
+function contactSupportFromFooter(){
+  if(auth.currentUser){ openSupportForm(); return false; }
+  return true;
+}
+
 function openSupportForm(prefRef){
   closeSupportForm();
   const resas = (appState.reservations||[]).slice().sort(compareByArrival);
@@ -12452,7 +12460,7 @@ function buildFooter(){
       </div>
       <div class="footer-col">
         <h4>Support</h4>
-        <a href="mailto:contact@mytunigo.com">Nous contacter</a>
+        <a href="mailto:contact@mytunigo.com" onclick="return contactSupportFromFooter()">Nous contacter</a>
         <a onclick="checkAuthAndGo('annonce')">Déposer une annonce</a>
         <a onclick="navigate('about')">À propos</a>
         <a onclick="navigate('fidelite')">Programme fidélité</a>
