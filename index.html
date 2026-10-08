@@ -13018,13 +13018,21 @@ async function submitNewPassword(){
 let _mtAssistantHistory = [];
 let _mtAssistantOpen = false;
 
-// Avatar d'Aliya : illustration originale d'une femme romaine de l'Antiquité
-// (couronne de laurier dorée, chignon, stola blanche et palla pourpre).
-// Compteur porté par la fonction elle-même (déclaration hissée) : utilisable
-// même si le widget est créé avant l'exécution de cette partie du script.
+// Avatar d'Aliya : photo (icons/aliya.webp) recadrée en rond avec un liseré
+// doré. Si l'image ne se charge pas, l'illustration SVG ci-dessous la remplace.
 function aliyaAvatar(size){
-  aliyaAvatar._seq = (aliyaAvatar._seq || 0) + 1;
-  const k = 'al' + aliyaAvatar._seq;
+  return `<img src="icons/aliya.webp" width="${size}" height="${size}" alt="Aliya" draggable="false" `
+    + `onerror="this.outerHTML=aliyaAvatarSvg(${size})" `
+    + `style="display:block;flex-shrink:0;width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;`
+    + `border:${size >= 36 ? 2 : 1.5}px solid #e9b949;box-sizing:border-box;background:#0b4fb0;">`;
+}
+
+// Illustration de secours : femme romaine de l'Antiquité (couronne de laurier
+// dorée, chignon, stola blanche et palla pourpre). Compteur porté par la
+// fonction elle-même pour des identifiants de dégradés uniques.
+function aliyaAvatarSvg(size){
+  aliyaAvatarSvg._seq = (aliyaAvatarSvg._seq || 0) + 1;
+  const k = 'al' + aliyaAvatarSvg._seq;
   const leaf = (x, y, r) => `<ellipse cx="${x}" cy="${y}" rx="5.2" ry="2.3" transform="rotate(${r} ${x} ${y})" fill="url(#${k}gold)" stroke="#b07d1a" stroke-width=".5"/>`;
   return `<svg width="${size}" height="${size}" viewBox="0 0 120 120" role="img" aria-label="Aliya" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0;">
   <defs>
