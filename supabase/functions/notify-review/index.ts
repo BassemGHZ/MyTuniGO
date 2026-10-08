@@ -158,10 +158,13 @@ async function sendRequest(r: any, kind: "request" | "reminder") {
   );
 }
 
+// En cas d'erreur de lecture, on lève une exception plutôt que de supposer
+// « pas d'avis » : mieux vaut ne rien envoyer qu'envoyer à tort.
 // deno-lint-ignore no-explicit-any
 async function hasReview(r: any) {
-  const { count } = await admin.from("avis").select("id", { count: "exact", head: true })
+  const { count, error } = await admin.from("avis").select("id", { count: "exact", head: true })
     .eq("logement_id", r.logement_id).eq("author_id", r.guest_id);
+  if (error) throw new Error(`lecture avis : ${error.message}`);
   return (count ?? 0) > 0;
 }
 
@@ -178,9 +181,10 @@ async function reviewRequests() {
   for (const r of firsts ?? []) {
     if (await hasReview(r)) continue;
     // « Réserve » la réservation avant d'envoyer : un appel concurrent ne la reprendra pas.
-    const { data: claimed } = await admin.from("reservations")
+    const { data: claimed, error: claimErr } = await admin.from("reservations")
       .update({ review_email_sent_at: new Date().toISOString() })
       .eq("id", r.id).is("review_email_sent_at", null).select("id");
+    if (claimErr) throw new Error(`réservation ${r.id} : ${claimErr.message}`);
     if (!claimed?.length) continue;
     if (await sendRequest(r, "request")) sent++;
   }
@@ -194,9 +198,10 @@ async function reviewRequests() {
   if (e2) return json({ error: e2.message }, 500);
   for (const r of seconds ?? []) {
     if (await hasReview(r)) continue;
-    const { data: claimed } = await admin.from("reservations")
+    const { data: claimed, error: claimErr } = await admin.from("reservations")
       .update({ review_reminder_sent_at: new Date().toISOString() })
       .eq("id", r.id).is("review_reminder_sent_at", null).select("id");
+    if (claimErr) throw new Error(`réservation ${r.id} : ${claimErr.message}`);
     if (!claimed?.length) continue;
     if (await sendRequest(r, "reminder")) reminded++;
   }
