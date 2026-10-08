@@ -93,10 +93,12 @@ async function checkAlerts() {
 
   const annIds = [...new Set(alerts.map((a) => a.annonce_id))];
   const userIds = [...new Set(alerts.map((a) => a.user_id))];
-  const [{ data: anns }, { data: profs }] = await Promise.all([
+  const [{ data: anns, error: annErr }, { data: profs, error: profErr }] = await Promise.all([
     admin.from("annonces").select("id,name,price_night,status").in("id", annIds),
     admin.from("profiles").select("id,email,first_name").in("id", userIds),
   ]);
+  // Sans ces données, on n'envoie rien (et on ne touche pas aux prix suivis).
+  if (annErr || profErr) return json({ error: (annErr ?? profErr)!.message }, 500);
   const annMap = Object.fromEntries((anns ?? []).map((a) => [a.id, a]));
   const profMap = Object.fromEntries((profs ?? []).map((p) => [p.id, p]));
 
@@ -108,9 +110,10 @@ async function checkAlerts() {
     if (!(newPrice < oldPrice)) continue;
 
     // « Réserve » l'alerte : seul l'appel qui met à jour le prix suivi envoie l'e-mail.
-    const { data: claimed } = await admin.from("price_alerts")
+    const { data: claimed, error: claimErr } = await admin.from("price_alerts")
       .update({ tracked_price: newPrice })
       .eq("id", al.id).eq("tracked_price", al.tracked_price).select("id");
+    if (claimErr) return json({ error: claimErr.message, sent }, 500);
     if (!claimed?.length) continue;
 
     const prof = profMap[al.user_id];
