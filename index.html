@@ -9367,12 +9367,27 @@ async function loadManageExcursions(container){
   if(error){ if(container){container.innerHTML='<div style="padding:24px;color:red;">Erreur : '+error.message+'</div>';} return; }
 
   appState._manageExcursions = data||[];
+
+  // Nombre de demandes de réservation en attente, par excursion (excursions
+  // avec validation du prestataire uniquement : les autres sont confirmées
+  // automatiquement et n'ont jamais de demande à traiter).
+  appState._manageExcPending = {};
+  const withValidation = (data||[]).filter(e=>!e.instant_book).map(e=>e.id);
+  if(withValidation.length){
+    const { data: pend, error: pendErr } = await _sb.from('excursion_bookings')
+      .select('excursion_id').eq('status','en attente').in('excursion_id', withValidation);
+    if(pendErr){ console.warn('compteur demandes en attente :', pendErr.message); }
+    (pend||[]).forEach(b=>{ appState._manageExcPending[b.excursion_id] = (appState._manageExcPending[b.excursion_id]||0) + 1; });
+  }
+
   const fresh = buildManageExcursions();
   if(container && container.parentNode){ container.replaceWith(fresh); }
 }
 
 function buildManageExcursions(){
   const list = appState._manageExcursions||[];
+  const pendingMap = appState._manageExcPending||{};
+  const totalPending = Object.values(pendingMap).reduce((s,n)=>s+n,0);
   const statusColor={'publiée':'#0d9e6e','en attente':'#e6a800','rejetée':'#cc0000',suspendue:'#6b7280'};
   const statusBg={'publiée':'#e8f9f0','en attente':'#fff8e0','rejetée':'#fff0f0',suspendue:'#f1f3f5'};
 
@@ -9383,7 +9398,7 @@ function buildManageExcursions(){
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:28px;">
       <div>
         <h1 style="font-size:24px;font-weight:800;margin-bottom:4px;">🗂️ Gérer les excursions</h1>
-        <p style="font-size:15px;color:var(--gray-500);">${list.length} excursion${list.length>1?'s':''}</p>
+        <p style="font-size:15px;color:var(--gray-500);">${list.length} excursion${list.length>1?'s':''}${totalPending?` · <span onclick="appState.excRequestsFilter='pending';navigate('excursion-requests')" style="color:#b45309;font-weight:700;cursor:pointer;text-decoration:underline;">${totalPending} demande${totalPending>1?'s':''} en attente de votre réponse</span>`:''}</p>
       </div>
       <button onclick="checkAuthAndGo('excursion-form')" style="background:var(--orange);color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle excursion</button>
     </div>
@@ -9401,10 +9416,16 @@ function buildManageExcursions(){
               <div style="font-size:16px;font-weight:800;color:var(--gray-900);margin-bottom:4px;">${e.title||'(Sans titre)'}</div>
               <div style="font-size:13px;color:var(--gray-500);margin-bottom:8px;">📍 ${e.city||'—'}, ${e.country||'—'} · ${e.price||0}€ / ${e.price_type||'personne'}</div>
               <span style="background:${statusBg[e.status]||'#f1f3f5'};color:${statusColor[e.status]||'#6c757d'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${e.status||'en attente'}</span>
+              <span style="background:#f1f3f5;color:var(--gray-600);font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-left:4px;">${e.instant_book?'⚡ Réservation instantanée':'✋ Avec validation'}</span>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
               <button onclick="loadExcursionEdit(null,'${e.id}')" style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;">✏️ Modifier</button>
-              <button onclick="navigate('excursion-requests')" style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;">📥 Demandes</button>
+              ${(()=>{
+                const n = e.instant_book ? 0 : (pendingMap[e.id]||0);
+                return n
+                  ? `<button onclick="appState.excRequestsFilter='pending';navigate('excursion-requests')" title="${n} demande${n>1?'s':''} en attente de votre réponse" style="background:#fff8e0;color:#b45309;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #e6a800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">📥 Demandes <span style="background:#e6a800;color:#fff;min-width:20px;height:20px;padding:0 6px;border-radius:10px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;">${n}</span></button>`
+                  : `<button onclick="navigate('excursion-requests')" style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;">📥 Demandes</button>`;
+              })()}
             </div>
           </div>
         </div>
