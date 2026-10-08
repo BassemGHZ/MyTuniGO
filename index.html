@@ -134,6 +134,14 @@
   .hero-badge{display:inline-block;background:rgba(254,187,2,.14);border:1px solid rgba(254,187,2,.4);color:var(--yellow);font-size:12px;font-weight:700;padding:6px 14px;border-radius:999px;margin-bottom:20px;letter-spacing:.2px;}
   .hero h1{font-family:var(--serif);color:#fff;font-size:33px;line-height:1.16;font-weight:600;letter-spacing:-.3px;margin-bottom:12px;text-transform:none;}
   .hero p{color:#c7d3e8;font-size:16px;font-weight:400;text-transform:none;letter-spacing:normal;margin-bottom:26px;max-width:560px;}
+  /* Accueil compact (écrans larges) : titre à gauche, accroche à droite,
+     marges réduites pour remonter la barre de recherche. */
+  @media(min-width:769px){
+    .hero{padding:36px 20px 44px;}
+    .hero-head{display:flex;align-items:flex-end;justify-content:space-between;gap:48px;margin-bottom:24px;}
+    .hero-head h1{margin-bottom:0;}
+    .hero-head p{margin:0 0 6px;max-width:470px;}
+  }
   .search-box{background:#fff;border-radius:var(--r-lg);padding:12px;display:flex;gap:8px;align-items:stretch;box-shadow:0 8px 32px rgba(0,0,0,.25);flex-wrap:wrap;border:4px solid var(--yellow);}
   .s-field{display:flex;flex-direction:column;gap:2px;padding:6px 12px;border-radius:var(--r-sm);border:1.5px solid var(--gray-200);flex:1;min-width:140px;transition:border-color .2s;}
   .s-field:hover{border-color:var(--blue-l);}
@@ -2086,9 +2094,13 @@ function buildHome(){
   d.innerHTML=`
   <div class="hero">
     <div class="hero-inner">
-      <div class="hero-badge">Made in Tunisie 🇹🇳</div>
-      <h1>La Tunisie, comme<br>vous ne l'avez jamais vue.</h1>
-      <p>Villas, riads, excursions et expériences authentiques — réservez directement auprès d'hôtes tunisiens, sans intermédiaire.</p>
+      <div class="hero-head">
+        <div class="hero-head-main">
+          <div class="hero-badge">Made in Tunisie 🇹🇳</div>
+          <h1>La Tunisie, comme<br>vous ne l'avez jamais vue.</h1>
+        </div>
+        <p>Villas, riads, excursions et expériences authentiques — réservez directement auprès d'hôtes tunisiens, sans intermédiaire.</p>
+      </div>
       <div class="search-box">
         <div class="s-field" style="flex:2;position:relative;" id="s-dest-field"><label>🔍 Destination</label><input type="text" id="s-dest" autocomplete="off" placeholder="Où allez-vous ?" value="${appState.searchDest}" oninput="updateDestSuggestions(this.value)" onfocus="updateDestSuggestions(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();appState.searchDest=this.value;const dd=document.getElementById('dest-suggest-dropdown');if(dd)dd.style.display='none';doSearch();}"></div>
         <div class="s-field" style="position:relative;flex:1.6;" id="s-dates-field">
