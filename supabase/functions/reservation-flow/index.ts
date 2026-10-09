@@ -6,11 +6,13 @@
 //   { action: "notify", type: "request_created", reservation_id }
 //       -> e-mails : accusé de réception au voyageur + alerte à l'hôte
 //   { action: "notify", type: "accepted", reservation_id, host_message? }
-//       -> e-mail au voyageur : demande acceptée, lien de paiement, 24h
+//       -> e-mail au voyageur : demande acceptée, lien de paiement, 24h,
+//          + excursions publiées à moins de 50 km du logement
 //   { action: "confirm_payment", reservation_id, method }   (JWT du voyageur)
 //       -> vérifie propriétaire + statut 'acceptée' + délai, passe en
 //          'confirmée', refuse les autres demandes en attente sur ces dates,
-//          e-mails au voyageur, à l'hôte et aux voyageurs refusés
+//          e-mails au voyageur (+ excursions à moins de 50 km), à l'hôte
+//          et aux voyageurs refusés
 //   { action: "expire" }
 //       -> 'acceptée' dont le délai de paiement est dépassé -> 'expirée',
 //          e-mails au voyageur et à l'hôte. Idempotent (appelé par pg_cron
@@ -83,7 +85,7 @@ async function sendMail(to: string | null | undefined, subject: string, html: st
   }
 }
 
-function layout(title: string, intro: string, recap: string, cta?: { label: string; url: string }, outro = "") {
+function layout(title: string, intro: string, recap: string, cta?: { label: string; url: string }, outro = "", extra = "") {
   return `<!doctype html><html><body style="margin:0;background:#f3f6fa;font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#212529;">
   <div style="max-width:560px;margin:0 auto;padding:24px 16px;">
     <div style="background:#003580;color:#fff;border-radius:12px 12px 0 0;padding:20px 24px;">
@@ -95,6 +97,7 @@ function layout(title: string, intro: string, recap: string, cta?: { label: stri
       ${recap}
       ${cta ? `<div style="text-align:center;margin:24px 0 8px;"><a href="${cta.url}" style="display:inline-block;background:#0071c2;color:#fff;text-decoration:none;font-weight:800;font-size:16px;padding:13px 28px;border-radius:8px;">${cta.label}</a></div>` : ""}
       ${outro ? `<div style="font-size:13px;color:#6c757d;line-height:1.6;margin-top:16px;">${outro}</div>` : ""}
+      ${extra}
     </div>
     <div style="text-align:center;font-size:12px;color:#adb5bd;margin-top:14px;">MyTunigo — mytunigo.com</div>
   </div></body></html>`;
@@ -113,6 +116,45 @@ function recapBlock(r: any, propName: string) {
       ${row("Référence", esc(r.reference ?? "—"))}
       ${row("Total", `<span style="color:#003580;font-size:16px;">${esc(r.total)}€</span>`)}
     </tbody></table>`;
+}
+
+// Excursions publiées à moins de 50 km du logement (fonction SQL
+// fn_excursions_near_annonce), des mieux notées aux moins bien notées.
+// Bloc facultatif : en cas d'erreur ou s'il n'y en a aucune, rien n'est ajouté.
+const NEAR_MAX_IN_MAIL = 15;
+async function nearbyExcursionsBlock(logementId: string | null | undefined): Promise<string> {
+  if (!logementId) return "";
+  const { data, error } = await admin.rpc("fn_excursions_near_annonce", { p_annonce_id: logementId, p_radius_km: 50 });
+  if (error) { console.error("fn_excursions_near_annonce", error.message); return ""; }
+  // deno-lint-ignore no-explicit-any
+  const rows = (data ?? []) as any[];
+  if (!rows.length) return "";
+  const shown = rows.slice(0, NEAR_MAX_IN_MAIL);
+  const items = shown.map((x) => {
+    const n = Number(x.review_count) || 0;
+    const note = n ? `⭐ ${Number(x.rating).toFixed(1).replace(".", ",")} (${n} avis)` : "Nouveau";
+    const dist = x.distance_km != null ? `${String(x.distance_km).replace(".", ",")} km` : "même région";
+    const img = x.photo && /^https:\/\//.test(String(x.photo))
+      ? `<td style="width:72px;padding:0 12px 0 0;vertical-align:top;"><img src="${esc(x.photo)}" alt="" width="72" height="56" style="display:block;width:72px;height:56px;object-fit:cover;border-radius:6px;"></td>`
+      : "";
+    return `<tr><td style="padding:10px 0;border-top:1px solid #e9ecef;">
+      <table style="width:100%;border-collapse:collapse;"><tr>${img}
+        <td style="vertical-align:top;font-size:14px;line-height:1.5;">
+          <a href="${SITE}/?exc=${encodeURIComponent(String(x.id))}" style="color:#003580;font-weight:700;text-decoration:none;">${esc(x.title)}</a><br>
+          <span style="color:#6c757d;font-size:13px;">📍 ${esc(x.city ?? "")} · ${dist} · ${note}</span>
+        </td>
+        <td style="vertical-align:top;text-align:right;white-space:nowrap;font-size:14px;font-weight:800;">${esc(x.price)}€<br><span style="font-weight:400;color:#6c757d;font-size:12px;">/ ${esc(x.price_type ?? "personne")}</span></td>
+      </tr></table></td></tr>`;
+  }).join("");
+  const more = rows.length > shown.length
+    ? `<div style="font-size:13px;margin-top:8px;"><a href="${SITE}" style="color:#0071c2;">et ${rows.length - shown.length} autre(s) à découvrir sur MyTunigo</a></div>`
+    : "";
+  return `<div style="margin-top:24px;padding-top:18px;border-top:2px solid #FEBB02;">
+    <div style="font-size:16px;font-weight:800;margin-bottom:4px;">🧭 Excursions à moins de 50 km de votre logement</div>
+    <div style="font-size:13px;color:#6c757d;margin-bottom:6px;">Profitez de votre séjour : voici les excursions proches, les mieux notées en premier.</div>
+    <table style="width:100%;border-collapse:collapse;">${items}</table>
+    ${more}
+  </div>`;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -139,7 +181,7 @@ async function notifyAccepted(body: any) {
   if (readErr) return json({ error: readErr.message }, 500);
   if (!r) return json({ error: "not_found" }, 404);
   if (r.status !== "acceptée") return json({ error: "not_acceptée" }, 409);
-  const c = await loadContext(r);
+  const [c, nearby] = await Promise.all([loadContext(r), nearbyExcursionsBlock(r.logement_id)]);
   const hostMsg = (body.host_message ?? "").toString().trim();
   await sendMail(
     c.guestEmail,
@@ -153,6 +195,7 @@ async function notifyAccepted(body: any) {
       recapBlock(r, c.propName),
       { label: "💳 Payer et confirmer", url: `${SITE}/?pay=${r.id}` },
       "Vous devrez être connecté avec le compte utilisé pour la demande.",
+      nearby,
     ),
   );
   return json({ ok: true });
@@ -221,7 +264,7 @@ async function confirmPayment(req: Request, body: any) {
   if (!updated || !updated.length) return json({ error: "expired" }, 409);
   const r = updated[0];
 
-  const c = await loadContext(r);
+  const [c, nearby] = await Promise.all([loadContext(r), nearbyExcursionsBlock(r.logement_id)]);
   await Promise.all([
     sendMail(
       c.guestEmail,
@@ -229,7 +272,8 @@ async function confirmPayment(req: Request, body: any) {
       layout("Votre réservation est confirmée !",
         `Bonjour ${esc(c.guestName)},<br><br>Votre paiement a bien été enregistré. Votre séjour à <strong>${esc(c.propName)}</strong> est confirmé.`,
         recapBlock(r, c.propName),
-        { label: "🧳 Voir mes voyages", url: SITE }),
+        { label: "🧳 Voir mes voyages", url: SITE },
+        "", nearby),
     ),
     sendMail(
       c.hostEmail,

@@ -1161,6 +1161,7 @@ function render() {
     setTimeout(()=>updateExcSpotsLeft(appState.selectedExcursionId, appState.excBookingDate), 160);
   }
   if(pg==='annonce' && appState.annoncePage===1) setTimeout(initAnnMap, 200);
+  if(pg==='excursion-form' && !(appState.excursionFormPage||0)) setTimeout(()=>initExcPosPicker('exc'), 200);
 }
 
 document.addEventListener('click', function(e){
@@ -4163,6 +4164,7 @@ async function submitReservationPayment(resaId){
           <span style="font-size:22px;line-height:1;">📬</span>
           <div style="font-size:13.5px;color:#5c4400;line-height:1.6;">Vous ne trouvez pas l'e-mail de confirmation ? Vérifiez vos dossiers <strong>Spam / Courrier indésirable</strong> et Promotions, et ajoutez <strong>noreply@mytunigo.com</strong> à vos contacts.</div>
         </div>
+        ${nearbyExcursionsBoxHTML('near-exc-paid')}
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">🧳 Mes voyages</button>
           <button onclick="navigate('home')" style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;">🏠 Accueil</button>
@@ -4171,6 +4173,54 @@ async function submitReservationPayment(resaId){
     </div>
   </div>`;
   showToast('🎉 Réservation confirmée !','var(--green)');
+  // Excursions à proximité du logement réservé
+  try{
+    const { data: rr } = await _sb.from('reservations').select('logement_id').eq('id', resaId).maybeSingle();
+    if(rr?.logement_id) loadNearbyExcursions(rr.logement_id, 'near-exc-paid');
+  } catch(e){ /* bloc facultatif */ }
+}
+
+/* ===================== EXCURSIONS À PROXIMITÉ (≤ 50 km du logement) =====================
+   Affichées à la fin d'une demande de réservation et après le paiement.
+   Données : fonction SQL fn_excursions_near_annonce (excursions publiées,
+   triées des mieux notées aux moins bien notées). */
+function _nearEsc(v){ return String(v??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function nearbyExcursionsBoxHTML(id){
+  return `<div id="${id}" class="near-exc-box" style="display:none;margin-bottom:18px;"></div>`;
+}
+
+async function loadNearbyExcursions(annonceId, boxId){
+  const box = document.getElementById(boxId);
+  if(!box || !annonceId || typeof _sb==='undefined') return;
+  let rows = [];
+  try{
+    const { data, error } = await _sb.rpc('fn_excursions_near_annonce', { p_annonce_id: annonceId });
+    if(error) throw error;
+    rows = data || [];
+  } catch(e){ console.warn('excursions à proximité :', e.message||e); return; }
+  if(!rows.length) return;
+  const card = x => {
+    const rating = Number(x.rating)||0, n = Number(x.review_count)||0;
+    const dist = x.distance_km!=null ? `${String(x.distance_km).replace('.',',')} km` : 'Même région';
+    const img = x.photo ? `background:url('${_nearEsc(x.photo)}') center/cover no-repeat` : 'background:linear-gradient(135deg,#1a1a2e,#0f3460)';
+    return `<div onclick="navigate('excursion-detail',{selectedExcursionId:'${_nearEsc(x.id)}'})" style="display:flex;gap:12px;align-items:stretch;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-md);overflow:hidden;cursor:pointer;">
+      <div style="flex:0 0 92px;min-height:84px;${img};display:flex;align-items:center;justify-content:center;font-size:30px;">${x.photo?'':'🧭'}</div>
+      <div style="flex:1;min-width:0;padding:10px 12px 10px 0;">
+        <div style="font-size:14px;font-weight:700;color:var(--gray-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_nearEsc(x.title)}</div>
+        <div style="font-size:12px;color:var(--gray-500);margin:2px 0 6px;">📍 ${_nearEsc(x.city||'')} · <span style="font-weight:700;color:var(--blue);">${dist}</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span style="font-size:12px;color:var(--gray-600);">${n ? `<span style="background:var(--blue);color:#fff;font-weight:800;padding:1px 6px;border-radius:4px 4px 4px 0;">${rating.toFixed(1).replace('.',',')}</span> ${n} avis` : 'Nouveau'}</span>
+          <span style="font-size:14px;font-weight:800;color:var(--gray-900);">${_nearEsc(x.price)}€ <span style="font-size:11px;font-weight:500;color:var(--gray-500);">/ ${_nearEsc(x.price_type||'personne')}</span></span>
+        </div>
+      </div>
+    </div>`;
+  };
+  box.innerHTML = `
+    <div style="font-weight:800;font-size:15px;margin-bottom:4px;">🧭 Excursions à moins de 50 km de votre logement</div>
+    <div style="font-size:13px;color:var(--gray-500);margin-bottom:10px;">${rows.length} excursion${rows.length>1?'s':''} à découvrir pendant votre séjour, les mieux notées en premier.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto;">${rows.map(card).join('')}</div>`;
+  box.style.display = '';
 }
 
 function buildSuccess(){
@@ -4204,6 +4254,7 @@ function buildSuccess(){
             <strong>Vous ne le voyez pas ?</strong> Pensez à vérifier vos dossiers <strong>Spam / Courrier indésirable</strong> et Promotions, puis marquez l'e-mail comme « Pas un spam » et ajoutez <strong>noreply@mytunigo.com</strong> à vos contacts pour ne manquer aucun message.
           </div>
         </div>
+        ${nearbyExcursionsBoxHTML('near-exc-request')}
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="appState.confirmedBooking=null;navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">🧳 Mes voyages</button>
           <button onclick="appState.confirmedBooking=null;navigate('home')" style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;">🏠 Accueil</button>
@@ -4211,6 +4262,7 @@ function buildSuccess(){
       </div>
     </div>
   </div>`;
+  setTimeout(()=>loadNearbyExcursions(b.hotel?.annonceId, 'near-exc-request'), 100);
   return d;
 }
 
@@ -4574,6 +4626,7 @@ function resolveCityName(vals){
 function addrGovPicked(prefix, gov){
   const c = _addrCtx(prefix);
   c.set('governorate', gov); c.set('city',''); c.set('zip','');
+  if(prefix==='exc'){ c.data.lat = null; c.data.lng = null; }
   c.refresh();
 }
 
@@ -7164,6 +7217,7 @@ function excFormStep0(fd){
 
     <div style="margin-bottom:6px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;">Adresse de l'excursion</div>
     ${addressBlockHTML('exc', fd)}
+    ${excPosPickerHTML('exc')}
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Description *</label>
       <textarea id="ef-desc" maxlength="250" placeholder="Décrivez votre excursion : ce que les participants vont vivre, découvrir, ressentir…"
@@ -7433,7 +7487,7 @@ function excFormStep3(fd){
 }
 
 function excSet(key, val){ appState.excursionFormData[key] = val; }
-function excRefresh(){ const el=document.getElementById('exc-form-step'); if(el) el.innerHTML=excFormStep(appState.excursionFormPage||0, appState.excursionFormData); }
+function excRefresh(){ const el=document.getElementById('exc-form-step'); if(el){ el.innerHTML=excFormStep(appState.excursionFormPage||0, appState.excursionFormData); if((appState.excursionFormPage||0)===0) setTimeout(()=>initExcPosPicker('exc'), 50); } }
 function excToggleLang(l){ const arr=appState.excursionFormData.language||[]; if(arr.includes(l)) appState.excursionFormData.language=arr.filter(x=>x!==l); else arr.push(l); excRefresh(); }
 function excToggleInclude(id){ const arr=appState.excursionFormData.includes||[]; if(arr.includes(id)) appState.excursionFormData.includes=arr.filter(x=>x!==id); else arr.push(id); excRefresh(); }
 function excSetHighlight(i,v){ if(!appState.excursionFormData.highlights) appState.excursionFormData.highlights=['','','','']; appState.excursionFormData.highlights[i]=v; }
@@ -7609,6 +7663,7 @@ async function excFormPublish(){
     governorate: fd.governorate||'',
     city: normalizeCityName(resolveCityName(fd))||'',
     zip: fd.zip||'',
+    ...excPosForSave(fd),
     country: fd.country||'Tunisie',
     duration: durationStr,
     price: fd.price||0,
@@ -8109,6 +8164,131 @@ async function geocodeEditAddress(){
     showToast('Erreur réseau — vérifiez votre connexion','var(--red)');
   }
   if(btn){btn.textContent='🔍 Localiser sur la carte';btn.disabled=false;}
+}
+
+// =====================================================================
+// Position GPS des excursions (création 'exc' et modification 'ed').
+// Sert à proposer les excursions à moins de 50 km d'un logement réservé.
+// Sans point placé, on enregistre le centre du gouvernorat (ou de la ville).
+// Mêmes coordonnées que supabase/sql/2026-10-09_excursions_proximite.sql.
+// =====================================================================
+const TUNISIA_GOV_CENTERS = {
+  'Ariana':[36.8625,10.1956], 'Béja':[36.7256,9.1817], 'Ben Arous':[36.7531,10.2189],
+  'Bizerte':[37.2744,9.8739], 'Gabès':[33.8815,10.0982], 'Gafsa':[34.4250,8.7842],
+  'Jendouba':[36.5011,8.7802], 'Kairouan':[35.6781,10.0963], 'Kasserine':[35.1676,8.8365],
+  'Kébili':[33.7044,8.9690], 'Le Kef':[36.1822,8.7148], 'Mahdia':[35.5047,11.0622],
+  'Manouba':[36.8081,10.0972], 'Médenine':[33.3549,10.5055], 'Monastir':[35.7643,10.8113],
+  'Nabeul':[36.4561,10.7376], 'Sfax':[34.7406,10.7603], 'Sidi Bouzid':[35.0382,9.4849],
+  'Siliana':[36.0849,9.3708], 'Sousse':[35.8256,10.6084], 'Tataouine':[32.9297,10.4518],
+  'Tozeur':[33.9197,8.1335], 'Tunis':[36.8065,10.1815], 'Zaghouan':[36.4029,10.1429],
+  // villes
+  'Djerba':[33.8750,10.8575], 'Jerba':[33.8750,10.8575], 'Djerba Houmt Souk':[33.8750,10.8575],
+  'Hammamet':[36.4000,10.6167], 'Tabarka':[36.9544,8.7580], 'Chebba':[35.2372,11.1150]
+};
+function govCenter(name){
+  const n = String(name||'').trim().toLowerCase();
+  if(!n) return null;
+  const k = Object.keys(TUNISIA_GOV_CENTERS).find(x=>x.toLowerCase()===n);
+  return k ? TUNISIA_GOV_CENTERS[k] : null;
+}
+
+const _excPos = { exc:{map:null,marker:null}, ed:{map:null,marker:null} };
+function _excPosData(key){ return key==='ed' ? appState.excEditData : appState.excursionFormData; }
+// Centre de repli : ville d'abord (si connue), puis gouvernorat.
+function _excPosFallback(d){
+  return govCenter(resolveCityName(d||{})) || govCenter(d?.governorate) || govCenter(d?.city) || null;
+}
+
+function excPosPickerHTML(key){
+  const d = _excPosData(key) || {};
+  const has = d.lat!=null && d.lng!=null && !isNaN(parseFloat(d.lat)) && !isNaN(parseFloat(d.lng));
+  return `
+  <div style="margin:4px 0 16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;">📍 Position sur la carte</label>
+      <button type="button" onclick="excPosLocate('${key}')" style="background:var(--blue);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:12px;font-weight:700;border:none;cursor:pointer;">🔍 Localiser l'adresse</button>
+    </div>
+    <div id="exc-pos-map-${key}" style="height:240px;border-radius:var(--r-md);border:1.5px solid var(--gray-300);background:var(--gray-100);"></div>
+    <div id="exc-pos-coords-${key}" style="font-size:12px;margin-top:6px;color:${has?'var(--green)':'var(--gray-600)'};">
+      ${has ? `✅ Coordonnées : ${parseFloat(d.lat).toFixed(5)}, ${parseFloat(d.lng).toFixed(5)}`
+            : "Cliquez sur la carte pour placer le point de départ. Sans point, le centre du gouvernorat sera utilisé."}
+    </div>
+    <div style="font-size:11px;color:var(--gray-500);margin-top:2px;">Cette position permet de proposer votre excursion aux voyageurs qui logent à moins de 50 km.</div>
+  </div>`;
+}
+
+function initExcPosPicker(key){
+  const el = document.getElementById('exc-pos-map-'+key);
+  if(!el || typeof L==='undefined') return;
+  const st = _excPos[key];
+  if(st.map){ try{ st.map.remove(); }catch(e){} st.map=null; st.marker=null; }
+  const d = _excPosData(key) || {};
+  const lat = parseFloat(d.lat), lng = parseFloat(d.lng);
+  const fb = _excPosFallback(d);
+  st.map = L.map(el, {scrollWheelZoom:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains:'abc', maxZoom:19
+  }).addTo(st.map);
+  if(!isNaN(lat) && !isNaN(lng)){ st.map.setView([lat,lng], 13); excPosPlace(key, lat, lng); }
+  else if(fb) st.map.setView(fb, 10);
+  else st.map.setView([34.0, 9.6], 6);
+  st.map.on('click', e => excPosPlace(key, e.latlng.lat, e.latlng.lng));
+}
+
+function excPosPlace(key, lat, lng){
+  const st = _excPos[key];
+  if(!st.map) return;
+  const icon = L.divIcon({
+    html:'<div style="background:#cc0000;border:3px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+    iconSize:[18,18], iconAnchor:[9,9], className:''
+  });
+  if(st.marker) st.map.removeLayer(st.marker);
+  st.marker = L.marker([lat,lng], {icon, draggable:true}).addTo(st.map);
+  st.marker.on('dragend', e => { const p=e.target.getLatLng(); _excPosSet(key, p.lat, p.lng); });
+  _excPosSet(key, lat, lng);
+}
+
+function _excPosSet(key, lat, lng){
+  const d = _excPosData(key);
+  if(d){ d.lat = Math.round(lat*1e6)/1e6; d.lng = Math.round(lng*1e6)/1e6; }
+  const el = document.getElementById('exc-pos-coords-'+key);
+  if(el){ el.textContent = '✅ Coordonnées : '+lat.toFixed(5)+', '+lng.toFixed(5); el.style.color='var(--green)'; }
+}
+
+async function excPosLocate(key){
+  const d = _excPosData(key) || {};
+  const city = resolveCityName(d) || '';
+  const query = [d.address, city, d.zip, d.governorate, 'Tunisie'].filter(x=>x&&String(x).trim()).join(', ');
+  const st = _excPos[key];
+  if(!st.map) initExcPosPicker(key);
+  if(!st.map) return;
+  try {
+    const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&countrycodes=tn&limit=1&q='+encodeURIComponent(query),
+      {headers:{'Accept-Language':'fr'}});
+    const data = await res.json();
+    if(data && data.length){
+      const lat=parseFloat(data[0].lat), lng=parseFloat(data[0].lon);
+      st.map.setView([lat,lng], 14); excPosPlace(key, lat, lng);
+      showToast('📍 Adresse localisée — ajustez le point si besoin','var(--green)');
+      return;
+    }
+  } catch(e){ /* repli ci-dessous */ }
+  const fb = _excPosFallback(d);
+  if(fb){
+    st.map.setView(fb, 11); excPosPlace(key, fb[0], fb[1]);
+    showToast('Adresse introuvable — point placé au centre du gouvernorat, ajustez-le sur la carte','var(--gray-700)');
+  } else {
+    showToast("Adresse introuvable — cliquez sur la carte pour placer le point",'var(--gray-700)');
+  }
+}
+
+// Coordonnées à enregistrer : point placé, sinon centre ville/gouvernorat.
+function excPosForSave(d){
+  const lat = parseFloat(d?.lat), lng = parseFloat(d?.lng);
+  if(!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+  const fb = _excPosFallback(d);
+  return fb ? { lat: fb[0], lng: fb[1] } : { lat: null, lng: null };
 }
 
 async function saveAnnonceEditOwner(){
@@ -9438,6 +9618,7 @@ async function loadExcursionEdit(container, id){
     id: e.id,
     title: e.title||'', category: e.category||'', duration: e.duration||'',
     city: e.city||'', country: e.country||'Tunisie',
+    governorate: e.governorate||'', lat: e.lat ?? null, lng: e.lng ?? null,
     price: e.price||0, priceType: e.price_type||'personne',
     maxParticipants: e.max_participants||10, minAge: e.min_age||0,
     difficulty: e.difficulty||'facile',
@@ -9456,13 +9637,16 @@ async function loadExcursionEdit(container, id){
   if(container){
     const fresh = buildExcursionEditForm();
     if(container.parentNode){ container.replaceWith(fresh); }
+    setTimeout(()=>initExcPosPicker('ed'), 100);
   } else {
     navigate('excursion-edit');
   }
 }
 
 function edSet(key,val){ appState.excEditData[key]=val; }
-function edRefresh(){ const el=document.getElementById('exc-edit-form'); if(el) el.innerHTML=buildExcursionEditFormInner(); }
+// Nouvelle ville : l'ancien point n'est plus valable, la carte se recentre (repli sur le centre).
+function edCityPicked(v){ const d=appState.excEditData; d.city=v; d.lat=null; d.lng=null; edRefresh(); }
+function edRefresh(){ const el=document.getElementById('exc-edit-form'); if(el){ el.innerHTML=buildExcursionEditFormInner(); setTimeout(()=>initExcPosPicker('ed'), 50); } }
 function edToggleLang(l){ const arr=appState.excEditData.language||[]; appState.excEditData.language = arr.includes(l) ? arr.filter(x=>x!==l) : [...arr,l]; edRefresh(); }
 function edToggleInclude(id){ const arr=appState.excEditData.includes||[]; appState.excEditData.includes = arr.includes(id) ? arr.filter(x=>x!==id) : [...arr,id]; edRefresh(); }
 function edSetHighlight(i,v){ if(!appState.excEditData.highlights) appState.excEditData.highlights=['','','','']; appState.excEditData.highlights[i]=v; }
@@ -9517,7 +9701,7 @@ function buildExcursionEditFormInner(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div style="margin-bottom:14px;">
           <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Ville</label>
-          <select onchange="edSet('city', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+          <select onchange="edCityPicked(this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
             <option value="" ${!ed.city?'selected':''} disabled>Sélectionnez une ville</option>
             ${['Ariana','Béja','Ben Arous','Bizerte','Gabès','Gafsa','Jendouba','Kairouan','Kasserine','Kébili','Le Kef','Mahdia','Manouba','Médenine','Monastir','Nabeul','Sfax','Sidi Bouzid','Siliana','Sousse','Tataouine','Tozeur','Tunis','Zaghouan'].map(c=>`<option ${ed.city===c?'selected':''}>${c}</option>`).join('')}
           </select>
@@ -9533,6 +9717,7 @@ function buildExcursionEditFormInner(){
         ${field('Prix (€)','price','number')}
         ${field('Participants max','maxParticipants','number')}
       </div>
+      ${excPosPickerHTML('ed')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div style="margin-bottom:14px;">
           <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Tarif par</label>
@@ -9650,6 +9835,7 @@ async function saveExcursionEdit(){
     title: ed.title, category: ed.category,
     category_label: (EXCURSION_CATS.find(c=>c.id===ed.category)||{}).label || '',
     city: normalizeCityName(ed.city)||'', country: ed.country||'Tunisie',
+    ...excPosForSave(ed),
     duration: ed.duration, price: ed.price||0, base_price: ed.price||0, price_type: ed.priceType||'personne',
     max_participants: ed.maxParticipants||10, min_age: ed.minAge||0, difficulty: ed.difficulty||'facile',
     languages: ed.language||['Français'],
@@ -12527,6 +12713,16 @@ try{
     history.replaceState(
       { page:'reservation-payment', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
       '', window.location.pathname+'#reservation-payment'
+    );
+  }
+  // Lien vers une excursion (e-mails « excursions à proximité ») :
+  // https://mytunigo.com/?exc=<id de l'excursion>
+  const _excParam = new URLSearchParams(window.location.search).get('exc');
+  if(!_payParam && _excParam && /^[0-9a-f-]{36}$/i.test(_excParam)){
+    appState.selectedExcursionId = _excParam;
+    history.replaceState(
+      { page:'excursion-detail', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
+      '', window.location.pathname+'#excursion-detail'
     );
   }
 }catch(e){}
