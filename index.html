@@ -4204,7 +4204,7 @@ async function loadNearbyExcursions(annonceId, boxId){
     const rating = Number(x.rating)||0, n = Number(x.review_count)||0;
     const dist = x.distance_km!=null ? `${String(x.distance_km).replace('.',',')} km` : 'Même région';
     const img = x.photo ? `background:url('${_nearEsc(x.photo)}') center/cover no-repeat` : 'background:linear-gradient(135deg,#1a1a2e,#0f3460)';
-    return `<div onclick="navigate('excursion-detail',{selectedExcursionId:'${_nearEsc(x.id)}'})" style="display:flex;gap:12px;align-items:stretch;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-md);overflow:hidden;cursor:pointer;">
+    return `<div onclick="navigate('excursion-detail',{selectedExcursionId:'${_nearEsc(x.id)}'})" style="flex:0 0 auto;display:flex;gap:12px;align-items:stretch;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-md);overflow:hidden;cursor:pointer;">
       <div style="flex:0 0 92px;min-height:84px;${img};display:flex;align-items:center;justify-content:center;font-size:30px;">${x.photo?'':'🧭'}</div>
       <div style="flex:1;min-width:0;padding:10px 12px 10px 0;">
         <div style="font-size:14px;font-weight:700;color:var(--gray-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_nearEsc(x.title)}</div>
