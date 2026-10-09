@@ -4186,6 +4186,19 @@ async function submitReservationPayment(resaId){
    triées des mieux notées aux moins bien notées). */
 function _nearEsc(v){ return String(v??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+// Les excursions publiées sont chargées en mémoire avec l'identifiant
+// 'REAL-EXC-<uuid>' (loadPublishedExcursions) : on retrouve la bonne fiche.
+function nearbyExcursionPageId(uuid){
+  const pub = excursions.find(x=>x.excursionId===uuid);
+  if(pub) return pub.id;
+  const mine = (appState.myExcursions||[]).find(x=>x.id===uuid || x.excursionId===uuid);
+  return mine ? mine.id : 'REAL-EXC-'+uuid;
+}
+function openNearbyExcursion(uuid){
+  window.scrollTo(0,0);
+  navigate('excursion-detail',{selectedExcursionId: nearbyExcursionPageId(uuid)});
+}
+
 function nearbyExcursionsBoxHTML(id){
   return `<div id="${id}" class="near-exc-box" style="display:none;margin-bottom:18px;"></div>`;
 }
@@ -4204,7 +4217,7 @@ async function loadNearbyExcursions(annonceId, boxId){
     const rating = Number(x.rating)||0, n = Number(x.review_count)||0;
     const dist = x.distance_km!=null ? `${String(x.distance_km).replace('.',',')} km` : 'Même région';
     const img = x.photo ? `background:url('${_nearEsc(x.photo)}') center/cover no-repeat` : 'background:linear-gradient(135deg,#1a1a2e,#0f3460)';
-    return `<div onclick="navigate('excursion-detail',{selectedExcursionId:'${_nearEsc(x.id)}'})" style="flex:0 0 auto;display:flex;gap:12px;align-items:stretch;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-md);overflow:hidden;cursor:pointer;">
+    return `<div onclick="openNearbyExcursion('${_nearEsc(x.id)}')" style="flex:0 0 auto;display:flex;gap:12px;align-items:stretch;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-md);overflow:hidden;cursor:pointer;">
       <div style="flex:0 0 92px;min-height:84px;${img};display:flex;align-items:center;justify-content:center;font-size:30px;">${x.photo?'':'🧭'}</div>
       <div style="flex:1;min-width:0;padding:10px 12px 10px 0;">
         <div style="font-size:14px;font-weight:700;color:var(--gray-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_nearEsc(x.title)}</div>
@@ -12719,7 +12732,7 @@ try{
   // https://mytunigo.com/?exc=<id de l'excursion>
   const _excParam = new URLSearchParams(window.location.search).get('exc');
   if(!_payParam && _excParam && /^[0-9a-f-]{36}$/i.test(_excParam)){
-    appState.selectedExcursionId = _excParam;
+    appState.selectedExcursionId = 'REAL-EXC-'+_excParam;
     history.replaceState(
       { page:'excursion-detail', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
       '', window.location.pathname+'#excursion-detail'
