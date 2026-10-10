@@ -7539,8 +7539,8 @@ function excFormStep1(fd){
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
         <div>
-          <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE DÉBUT</label>
-          <input type="time" value="${fd.meetingTime||''}" oninput="excSet('meetingTime',this.value);excAutoDuration('exc')"
+          <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE DÉBUT <span style="color:var(--red);">*</span></label>
+          <input id="ef-meeting-time" type="time" required value="${fd.meetingTime||''}" oninput="excSet('meetingTime',this.value);excAutoDuration('exc')"
             style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;">
         </div>
         <div>
@@ -7765,6 +7765,12 @@ function excFormValidate(){
     { const de = descLengthError(fd.description); if(de){ showToast(de,'var(--red)'); return false; } }
   }
   if(cur===1){
+    if(!fd.meetingTime){
+      showToast("⚠️ Indiquez l'heure de début de l'excursion",'var(--red)');
+      const t = document.getElementById('ef-meeting-time');
+      if(t){ t.style.borderColor='var(--red)'; t.scrollIntoView({behavior:'smooth', block:'center'}); t.focus(); }
+      return false;
+    }
     const pe = photoRuleError('excursion', (fd.photos||[]).length); if(pe){ showToast(pe,'var(--red)'); return false; }
   }
   if(cur===2){
@@ -7881,6 +7887,13 @@ async function uploadExcursionPhotos(ref, photos){
 async function excFormPublish(){
   if(!excFormValidate()) return;
   const fd = appState.excursionFormData;
+  // Heure de début obligatoire (étape Programme)
+  if(!fd.meetingTime){
+    showToast("⚠️ Indiquez l'heure de début de l'excursion (étape Programme)",'var(--red)');
+    appState.excursionFormPage=1;
+    navigate('excursion-form');
+    return;
+  }
   // Final guard: dates are mandatory
   if(!fd.availability||fd.availability.length===0){
     showToast('⚠️ Vous devez sélectionner au moins une date (étape Tarifs & Dispo)','var(--red)');
@@ -10079,7 +10092,7 @@ function buildExcursionEditFormInner(){
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📍 Point de rendez-vous</div>
       ${field('Adresse / lieu','meetingPoint')}
       <div id="ed-times" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;" oninput="if(event.target.type==='time') excAutoDuration('ed')">
-        ${field('Heure début','meetingTime','time')}
+        ${field('Heure début *','meetingTime','time')}
         ${field('Heure fin','meetingTimeEnd','time')}
         <div style="margin-bottom:14px;">
           <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée</label>
@@ -10152,6 +10165,7 @@ async function saveExcursionEdit(){
   if(!ed || !ed.id) return;
   { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
   if(_charCount(ed.schedule) > 200){ showToast('⚠️ Programme trop long : 200 caractères maximum.','var(--red)'); return; }
+  if(!ed.meetingTime){ showToast("⚠️ Indiquez l'heure de début de l'excursion",'var(--red)'); return; }
   const updates = {
     title: ed.title, category: ed.category,
     category_label: (EXCURSION_CATS.find(c=>c.id===ed.category)||{}).label || '',
