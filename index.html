@@ -809,37 +809,9 @@ function calcCommission(grossTotal){
   return { gross: grossTotal, commission, netToHost, rate: COMMISSION_RATE };
 }
 
-const hotels = [
-  // ── France ────────────────────────────────────────────────────────────────────
-  {id:1,  lat:48.8566, lng:2.3522, minNights:2, name:"Le Grand Palais Hôtel",         city:"Paris",           country:"France",      type:"Hôtel",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:2847, price:189, emoji:"🏛️", features:["Wi-Fi gratuit","Piscine","Spa","Restaurant","Parking"], desc:"Palace haussmannien au cœur de Paris. Restaurant étoilé, spa 800m², vue imprenable sur la Seine.", freeCancellation:true,  payLater:true,  discount:15},
-  {id:2,  lat:43.5298, lng:5.4474, minNights:2, name:"Villa Provençale avec Piscine",  city:"Aix-en-Provence", country:"France",      type:"Maison",       stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:156,  price:175, emoji:"🌿", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa en Provence avec piscine privée, oliviers centenaires et vue sur le Luberon.",              freeCancellation:false, payLater:true,  discount:0},
-  {id:3,  lat:48.8867, lng:2.3431, minNights:3, name:"Chalet Montagne Chamonix",       city:"Chamonix",        country:"France",      type:"Chalet",      stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:203,  price:220, emoji:"⛰️", features:["Wi-Fi gratuit","Parking","Spa"],                        desc:"Chalet chaleureux au pied du Mont-Blanc, sauna privé et vue sur les glaciers.",                   freeCancellation:false, payLater:true,  discount:0},
-  {id:4,  lat:41.3851, lng:2.1734, minNights:1, name:"Studio Cosy Montmartre",         city:"Paris",           country:"France",      type:"Studio",      stars:3, rating:4.0, ratingLabel:"Très bien",    reviews:312,  price:65,  emoji:"🛋️", features:["Wi-Fi gratuit"],                                        desc:"Studio moderne à deux pas du Sacré-Cœur. Idéal pour explorer Montmartre.",                        freeCancellation:true,  payLater:true,  discount:0},
-  {id:5,  lat:43.7102, lng:7.262, minNights:1, name:"Loft Design Lyon Confluence",    city:"Lyon",            country:"France",      type:"Appartement", stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:267,  price:110, emoji:"🏭", features:["Wi-Fi gratuit"],                                        desc:"Loft contemporain à la Confluence. Plafonds 4m et vue sur la Saône.",                             freeCancellation:true,  payLater:true,  discount:5},
-  {id:6,  lat:45.764, lng:4.8357, minNights:1, name:"Cabane Perchée Périgord",        city:"Périgueux",       country:"France",      type:"Insolite",    stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:134,  price:145, emoji:"🌳", features:["Wi-Fi gratuit","Parking"],                              desc:"Cabane à 8m dans les châtaigniers, terrasse suspendue et bain nordique sous les étoiles.",         freeCancellation:false, payLater:true,  discount:0},
-  {id:7,  lat:47.3769, lng:8.5417, minNights:1, name:"Péniche Canal Saint-Martin",     city:"Paris",           country:"France",      type:"Insolite",    stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:234,  price:165, emoji:"⛵", features:["Wi-Fi gratuit"],                                        desc:"Péniche aménagée sur le Canal Saint-Martin. Terrasse sur l'eau et vue sur les écluses.",           freeCancellation:true,  payLater:true,  discount:0},
-
-  // ── Maroc ──────────────────────────────────────────────────────────────────────
-  {id:8,  lat:31.6295, lng:-7.9811, minNights:2, name:"Riad Authentique Marrakech",     city:"Marrakech",       country:"Maroc",       type:"Riad",        stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:612,  price:98,  emoji:"🕌", features:["Wi-Fi gratuit","Piscine","Restaurant"],                 desc:"Riad traditionnel en médina avec patio fleuri, fontaine et terrasse panoramique.",                 freeCancellation:true,  payLater:true,  discount:0},
-  {id:9,  lat:36.85, lng:10.1667, minNights:1, name:"Villa Sunset Palmeraie",         city:"Marrakech",       country:"Maroc",       type:"Maison",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:298,  price:220, emoji:"🌴", features:["Wi-Fi gratuit","Piscine","Parking","Spa"],              desc:"Villa de luxe en palmeraie, piscine chauffée, jardin d'oliviers et hammam privatif.",              freeCancellation:false, payLater:true,  discount:0},
-  {id:10, lat:-4.325, lng:15.3222, minNights:2, name:"Kasbah Vue Atlas",               city:"Ouarzazate",      country:"Maroc",       type:"Hôtel",       stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:176,  price:75,  emoji:"🏜️", features:["Wi-Fi gratuit","Piscine","Restaurant","Parking"],       desc:"Kasbah en pisé avec vue sur l'Atlas. Couchers de soleil spectaculaires.",                          freeCancellation:true,  payLater:true,  discount:10},
-  {id:11, lat:14.6928, lng:-17.4467, minNights:3, name:"Dar Fès Médina",                 city:"Fès",             country:"Maroc",       type:"Riad",        stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:142,  price:88,  emoji:"🎨", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Demeure andalouse du XIVe siècle. Zellige, stuc et bois de cèdre sculpté.",                       freeCancellation:false, payLater:true,  discount:0},
-
-  // ── Tunisie ────────────────────────────────────────────────────────────────────
-  {id:12, lat:36.735, lng:3.0862, minNights:2, name:"Villa Bord de Mer Hammamet",     city:"Hammamet",        country:"Tunisie",     type:"Maison",       stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:334,  price:115, emoji:"🏖️", features:["Wi-Fi gratuit","Piscine","Parking"],                    desc:"Villa accès direct plage, piscine privée et jardin méditerranéen.",                                freeCancellation:true,  payLater:true,  discount:0},
-  {id:13, lat:48.1351, lng:11.582, minNights:1, name:"Hôtel Médina Tunis",             city:"Tunis",           country:"Tunisie",     type:"Hôtel",       stars:3, rating:4.0, ratingLabel:"Très bien",    reviews:267,  price:45,  emoji:"🕍", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Hôtel-boutique dans la médina classée UNESCO. Cuisine tunisienne authentique.",                    freeCancellation:true,  payLater:true,  discount:5},
-
-  // ── Sénégal ────────────────────────────────────────────────────────────────────
-  {id:14, lat:51.5074, lng:-0.1278, minNights:2, name:"Lodge Safari Sine Saloum",       city:"Fatick",          country:"Sénégal",     type:"Lodge",       stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:98,   price:160, emoji:"🐘", features:["Wi-Fi gratuit","Restaurant","Parking"],                 desc:"Lodge écotouristique dans le delta. Pirogues, oiseaux rares et couchers de soleil uniques.",       freeCancellation:false, payLater:true,  discount:0},
-  {id:15, lat:37.9755, lng:23.7348, minNights:1, name:"Appartement Dakar Plateau",      city:"Dakar",           country:"Sénégal",     type:"Appartement", stars:3, rating:4.0, ratingLabel:"Très bien",    reviews:145,  price:50,  emoji:"🌍", features:["Wi-Fi gratuit","Parking"],                              desc:"Appartement climatisé au Plateau. À 10 min de l'île de Gorée.",                                    freeCancellation:true,  payLater:true,  discount:0},
-
-  // ── Europe & International ─────────────────────────────────────────────────────
-  {id:16, lat:35.6762, lng:139.6503, minNights:2, name:"Casa del Sol Barcelona",         city:"Barcelone",       country:"Espagne",     type:"Appartement", stars:4, rating:5.0, ratingLabel:"Exceptionnel", reviews:1847, price:98,  emoji:"🌞", features:["Wi-Fi gratuit"],                                        desc:"Appartement design à 200m du Passeig de Gràcia. Parquet et cuisine moderne.",                     freeCancellation:true,  payLater:true,  discount:0},
-  {id:17, lat:25.2048, lng:55.2708, minNights:3, name:"Santorini Blue Villas",          city:"Santorin",        country:"Grèce",       type:"Maison",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:423,  price:485, emoji:"🫐", features:["Wi-Fi gratuit","Piscine","Spa"],                        desc:"Villas avec piscine privée et vue spectaculaire sur la caldeira. Couchers légendaires.",           freeCancellation:false, payLater:false, discount:0},
-  {id:18, lat:55.7558, lng:37.6173, minNights:1, name:"The London Fox Inn",             city:"Londres",         country:"Royaume-Uni", type:"Hôtel",       stars:4, rating:4.0, ratingLabel:"Très bien",    reviews:1567, price:165, emoji:"🦊", features:["Wi-Fi gratuit","Restaurant"],                           desc:"Boutique hotel branché à Shoreditch. Bar à cocktails et brunch du dimanche.",                     freeCancellation:true,  payLater:false, discount:0},
-  {id:19, lat:40.4168, lng:-3.7038, minNights:1, name:"Tokyo Sky Tower Hotel",          city:"Tokyo",           country:"Japon",       type:"Hôtel",       stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:3201, price:195, emoji:"🗼", features:["Wi-Fi gratuit","Restaurant","Spa"],                     desc:"Hôtel design à Shinjuku, vue panoramique sur Tokyo et onsen traditionnel.",                       freeCancellation:true,  payLater:false, discount:10},
-  {id:20, lat:-1.2921, lng:36.8219, minNights:2, name:"Dubai Marina Suites",            city:"Dubaï",           country:"Émirats",     type:"Appartement", stars:5, rating:5.0, ratingLabel:"Exceptionnel", reviews:987,  price:310, emoji:"🏙️", features:["Wi-Fi gratuit","Piscine","Parking","Spa","Restaurant"], desc:"Suite luxueuse vue sur la marina de Dubaï. Accès plage privée.",                                   freeCancellation:true,  payLater:false, discount:0},
-];
+// Hébergements : uniquement les vraies annonces publiées, ajoutées au chargement
+// par loadPublishedAnnonces() (les données de démonstration ont été retirées).
+const hotels = [];
 
 // Destinations populaires : calculées dynamiquement à partir des vraies
 // annonces publiées — voir getPopularDestinations()
@@ -6564,95 +6536,9 @@ const EXCURSION_INCLUDES = [
   {id:'degust',     icon:'🍷', label:'Dégustation'},
 ];
 
-const excursions = [
-  {id:'EX001', title:'Visite privée du Louvre au lever du soleil', city:'Paris', country:'France',
-   category:'culture', categoryLabel:'Culture & Patrimoine', emoji:'🏛️',
-   duration:'3h', durationMin:180, groupSize:8, minAge:6,
-   price:89, priceType:'personne', rating:4.8, reviews:312,
-   language:['FR','EN'], difficulty:'facile',
-   includes:['guide','billet','photos'],
-   description:'Découvrez le Louvre avant l\'ouverture au public. Votre guide expert vous mènera à travers les salles mythiques sans la foule. Une expérience unique face à la Joconde, la Vénus de Milo et la Victoire de Samothrace.',
-   highlights:['Accès avant ouverture','Groupe max 8 pers.','Guide certifié','Petit-déjeuner croissant'],
-   host:'Sophie Martin', hostAvatar:'SM', hostRating:4.9, hostTrips:245,
-   available:true, freeCancellation:true, instantBook:true, featured:true},
-
-  {id:'EX002', title:'Surf & Yoga — Retraite côtière à Biarritz', city:'Biarritz', country:'France',
-   category:'sport', categoryLabel:'Sport & Aventure', emoji:'🏄',
-   duration:'1 jour', durationMin:480, groupSize:12, minAge:16,
-   price:145, priceType:'personne', rating:4.7, reviews:187,
-   language:['FR','EN','ES'], difficulty:'intermédiaire',
-   includes:['guide','equipement','repas'],
-   description:'Une journée complète entre vagues et sérénité. Session surf le matin avec moniteur certifié, déjeuner healthy face à l\'océan, et cours de yoga au coucher du soleil sur la plage. Idéal débutants.',
-   highlights:['Cours surf 3h','Déjeuner bio inclus','Yoga coucher soleil','Matériel complet fourni'],
-   host:'Carlos Vidal', hostAvatar:'CV', hostRating:4.8, hostTrips:118,
-   available:true, freeCancellation:true, instantBook:false, featured:true},
-
-  {id:'EX003', title:'Marché & Atelier cuisine marocaine à Marrakech', city:'Marrakech', country:'Maroc',
-   category:'gastro', categoryLabel:'Gastronomie', emoji:'🍽️',
-   duration:'4h', durationMin:240, groupSize:6, minAge:8,
-   price:65, priceType:'personne', rating:4.9, reviews:523,
-   language:['FR','AR','EN'], difficulty:'facile',
-   includes:['guide','repas','degust'],
-   description:'Plongée dans les saveurs de la médina. Visite du souk des épices avec un chef local, sélection des ingrédients frais, puis atelier culinaire dans un riad traditionnel. Tagine, couscous et pastilla n\'auront plus de secrets pour vous.',
-   highlights:['Visite souk épices','Cours cuisine dans riad','Déjeuner que vous préparez','Recettes à emporter'],
-   host:'Fatima Benali', hostAvatar:'FB', hostRating:5.0, hostTrips:402,
-   available:true, freeCancellation:false, instantBook:true, featured:true},
-
-  {id:'EX004', title:'Trek volcanique au lever du soleil — Santorin', city:'Santorin', country:'Grèce',
-   category:'nature', categoryLabel:'Nature & Randonnée', emoji:'🌋',
-   duration:'5h', durationMin:300, groupSize:10, minAge:14,
-   price:78, priceType:'personne', rating:4.6, reviews:89,
-   language:['FR','EN','GR'], difficulty:'difficile',
-   includes:['guide','transport','equipement'],
-   description:'Randonnée sur la caldeira volcanique de Santorin au lever du soleil. Départ en bateau à 5h du matin, ascension du volcan Nea Kameni, bains dans les sources chaudes naturelles, retour avec vue panoramique sur Oia.',
-   highlights:['Départ bateau à l\'aube','Ascension volcan actif','Sources chaudes naturelles','Photos Oia spectaculaires'],
-   host:'Nikos Papadopoulos', hostAvatar:'NP', hostRating:4.7, hostTrips:67,
-   available:true, freeCancellation:true, instantBook:false, featured:false},
-
-  {id:'EX005', title:'Cérémonie du thé & Calligraphie — Kyoto', city:'Kyoto', country:'Japon',
-   category:'culture', categoryLabel:'Culture & Patrimoine', emoji:'🍵',
-   duration:'2h30', durationMin:150, groupSize:4, minAge:12,
-   price:120, priceType:'personne', rating:5.0, reviews:156,
-   language:['FR','EN','JP'], difficulty:'facile',
-   includes:['guide','repas','photos'],
-   description:'Initiez-vous aux arts traditionnels japonais dans une maison de thé du XVIIe siècle. Maître de cérémonie du thé en kimono, atelier calligraphie sumi-e, méditation zen dans un jardin karesansui. Une parenthèse de sérénité absolue.',
-   highlights:['Maison de thé historique','Kimono fourni','Atelier calligraphie','Jardin zen privé'],
-   host:'Yuki Tanaka', hostAvatar:'YT', hostRating:5.0, hostTrips:312,
-   available:true, freeCancellation:true, instantBook:true, featured:true},
-
-  {id:'EX006', title:'Safari nocturne — Parc du Niokolo-Koba', city:'Dakar', country:'Sénégal',
-   category:'nature', categoryLabel:'Nature & Randonnée', emoji:'🦁',
-   duration:'2 jours', durationMin:1440, groupSize:8, minAge:10,
-   price:195, priceType:'personne', rating:4.5, reviews:43,
-   language:['FR','EN','WO'], difficulty:'intermédiaire',
-   includes:['guide','transport','repas','assurance'],
-   description:'Partez à la découverte de la faune sauvage sénégalaise dans le plus grand parc national d\'Afrique de l\'Ouest. Nuit sous les étoiles en camp écologique, observations à l\'aube des lions, éléphants et hippopotames.',
-   highlights:['Safari 4x4 jour et nuit','Camp éco sous les étoiles','Guide naturaliste','Observation faune sauvage'],
-   host:'Ibrahima Diallo', hostAvatar:'ID', hostRating:4.6, hostTrips:89,
-   available:true, freeCancellation:true, instantBook:false, featured:false},
-
-  {id:'EX007', title:'Bain flottant & Massage Hammam — Istanbul', city:'Istanbul', country:'Turquie',
-   category:'bienetre', categoryLabel:'Bien-être & Spa', emoji:'💆',
-   duration:'3h', durationMin:180, groupSize:2, minAge:18,
-   price:95, priceType:'personne', rating:4.8, reviews:201,
-   language:['FR','EN','TR'], difficulty:'facile',
-   includes:['equipement','degust'],
-   description:'Rituels de bien-être dans un hammam ottoman du XVIe siècle classé UNESCO. Gommage traditionnel au kese, massage à l\'huile d\'argan, bain flottant dans les bassins historiques, thé ottoman à la sortie.',
-   highlights:['Hammam classé UNESCO','Gommage traditionnel','Massage argan 60min','Thé ottoman offert'],
-   host:'Ayşe Kaya', hostAvatar:'AK', hostRating:4.8, hostTrips:178,
-   available:true, freeCancellation:true, instantBook:true, featured:false},
-
-  {id:'EX008', title:'Soirée flamenco & tapas dans les caves de Grenade', city:'Grenade', country:'Espagne',
-   category:'nightlife', categoryLabel:'Sorties & Soirées', emoji:'💃',
-   duration:'3h30', durationMin:210, groupSize:15, minAge:16,
-   price:72, priceType:'personne', rating:4.7, reviews:378,
-   language:['FR','EN','ES'], difficulty:'facile',
-   includes:['guide','repas','billet'],
-   description:'Vivez le flamenco authentique dans les caves troglodytes gitanes du Sacromonte. Spectacle privé avec danseurs et musiciens professionnels, dégustation de tapas andalouses et vins locaux, visite des caves historiques.',
-   highlights:['Show flamenco privé','Caves troglodytes gitanes','Tapas & vins inclus','Ambiance authentique'],
-   host:'Maria Rodriguez', hostAvatar:'MR', hostRating:4.7, hostTrips:523,
-   available:true, freeCancellation:false, instantBook:true, featured:true},
-];
+// Excursions : uniquement les vraies excursions publiées, ajoutées au chargement
+// par loadPublishedExcursions() (les données de démonstration ont été retirées).
+const excursions = [];
 
 /* ===================== EXCURSIONS CATALOGUE ===================== */
 function buildExcursions(){
