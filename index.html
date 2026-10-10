@@ -994,7 +994,7 @@ let appState = {
   page:'home',
   searchDest:'', searchCheckIn:'', searchCheckOut:'', searchGuests:2,
   selectedHotelId:null,
-  filters:{minPrice:30,maxPrice:2000,minRating:0,types:[],amenities:[],promoOnly:false},filterExpanded:{types:false,amenities:false,ratings:false},
+  filters:{minPrice:30,maxPrice:2000,minRating:0,types:[],amenities:[],promoOnly:false,radiusKm:null},filterExpanded:{types:false,amenities:false,ratings:false},
   sort:'recommended',
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
@@ -2461,59 +2461,182 @@ function getFilteredBase(ignoreCity){
   return list;
 }
 
-// Élargit la recherche à un rayon de 50 km autour de la destination recherchée
-// quand aucun résultat exact n'est trouvé, pour maximiser les chances de proposer
-// un bien dans la zone ou les environs plutôt qu'une page vide.
+// Périmètre de recherche autour de la destination.
+//  - radiusKm = null (par défaut, « auto ») : résultats exacts, complétés par
+//    les biens à moins de 50 km s'il y en a peu (zones peu denses comme Mahdia).
+//  - radiusKm = 0 : uniquement la destination tapée.
+//  - radiusKm > 0 : destination + tous les biens à moins de radiusKm km.
+// Le centre de la destination vient du tableau des gouvernorats/villes connus,
+// sinon de Nominatim (OpenStreetMap). Les distances sont recalculées à chaque
+// affichage, donc les autres filtres (budget, type…) restent appliqués.
+const AUTO_RADIUS_KM = 50;
+const RADIUS_MAX_KM = 100;
+
 async function loadNearbyFallback(query){
-  appState._nearbyFallback = { query, loading:true, results:[] };
+  appState._nearbyFallback = { query, loading:true };
+  const known = (typeof govCenter==='function') ? govCenter(query) : null;
+  if(known){
+    // Centre connu : disponible tout de suite (getFiltered le relit aussitôt).
+    appState._nearbyFallback = { query, loading:false, centerLat:known[0], centerLng:known[1] };
+    return;
+  }
   try{
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(query+', Tunisie')+'&limit=1';
-    const res = await fetch(url, {headers:{'Accept-Language':'fr','User-Agent':'MyTunigo/1.0'}});
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&countrycodes=tn&q='+encodeURIComponent(query+', Tunisie')+'&limit=1';
+    const res = await fetch(url, {headers:{'Accept-Language':'fr'}});
     const data = await res.json();
     if(!data || !data.length){
-      appState._nearbyFallback = { query, loading:false, results:[], notFound:true };
-      refreshResults();
-      return;
+      appState._nearbyFallback = { query, loading:false, notFound:true };
+    } else {
+      appState._nearbyFallback = { query, loading:false, centerLat:parseFloat(data[0].lat), centerLng:parseFloat(data[0].lon) };
     }
-    const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
-    let list = getFilteredBase(true).filter(h=>h.lat!=null && h.lng!=null && !isNaN(h.lat) && !isNaN(h.lng));
-    list = list.map(h=>Object.assign({}, h, { _distanceKm: haversineKm(lat,lng,h.lat,h.lng) }))
-                .filter(h=>h._distanceKm<=50)
-                .sort((a,b)=>a._distanceKm-b._distanceKm);
-    appState._nearbyFallback = { query, loading:false, results:list, centerLat:lat, centerLng:lng };
   } catch(e){
     console.warn('loadNearbyFallback:', e.message);
-    appState._nearbyFallback = { query, loading:false, results:[], error:true };
+    appState._nearbyFallback = { query, loading:false, error:true };
   }
   refreshResults();
 }
 
+// Biens (avec les filtres actifs, hors destination) à moins de km du centre.
+function nearbyWithin(nf, km){
+  if(!nf || nf.centerLat==null || isNaN(nf.centerLat)) return [];
+  return getFilteredBase(true)
+    .filter(h=>h.lat!=null && h.lng!=null && !isNaN(h.lat) && !isNaN(h.lng))
+    .map(h=>Object.assign({}, h, { _distanceKm: haversineKm(nf.centerLat, nf.centerLng, h.lat, h.lng) }))
+    .filter(h=>h._distanceKm<=km)
+    .sort((a,b)=>a._distanceKm-b._distanceKm);
+}
+
+// Rayon effectivement utilisé pour les messages (auto = 50 km).
+function currentRadiusKm(){
+  const r = appState.filters.radiusKm;
+  return r==null ? AUTO_RADIUS_KM : r;
+}
+
 // Nombre de résultats exacts en dessous duquel on complète avec des biens à
-// proximité (rayon 50 km) : couvre à la fois le cas "0 résultat" (repli complet)
-// et le cas "quelques résultats mais zone côtière/peu dense" comme Mahdia.
+// proximité (rayon 50 km) en mode auto : couvre à la fois le cas "0 résultat"
+// (repli complet) et le cas "quelques résultats mais zone côtière/peu dense".
 const NEARBY_SUPPLEMENT_THRESHOLD = 6;
 
 function getFiltered(){
   const exact = getFilteredBase(false);
   if(!appState.searchDest) return exact;
-  if(exact.length >= NEARBY_SUPPLEMENT_THRESHOLD) return exact;
-  const nf = appState._nearbyFallback;
+  const radius = appState.filters.radiusKm;
+  if(radius===0) return exact;
+  if(radius==null && exact.length >= NEARBY_SUPPLEMENT_THRESHOLD) return exact;
+  let nf = appState._nearbyFallback;
+  if(!nf || nf.query!==appState.searchDest){
+    // Recherche du centre de la destination : immédiate pour un gouvernorat
+    // ou une ville connus, sinon asynchrone (Nominatim, redessine ensuite).
+    loadNearbyFallback(appState.searchDest);
+    nf = appState._nearbyFallback;
+  }
   if(nf && nf.query===appState.searchDest){
     if(nf.loading) return exact;
     const exactIds = new Set(exact.map(h=>h.id));
-    const nearby = (nf.results||[]).filter(h=>!exactIds.has(h.id)).map(h=>Object.assign({}, h, {_nearby:true}));
+    const nearby = nearbyWithin(nf, currentRadiusKm()).filter(h=>!exactIds.has(h.id)).map(h=>Object.assign(h, {_nearby:true}));
     const combined = exact.concat(nearby);
-    // Toujours zéro résultat, même dans un rayon de 50 km : plutôt qu'une page
-    // vide, on retombe sur l'ensemble du catalogue Tunisie (bandeau explicite
-    // affiché sur la page résultats).
-    if(combined.length===0){
+    // Mode auto uniquement : toujours zéro résultat, même dans un rayon de
+    // 50 km → plutôt qu'une page vide, tout le catalogue Tunisie (bandeau).
+    // Avec un périmètre choisi par le voyageur, on respecte son choix.
+    if(combined.length===0 && radius==null){
       return getFilteredBase(true).map(h=>Object.assign({}, h, {_allFallback:true}));
     }
     return combined;
   }
-  // Déclenche le chargement du repli 50km (résultat asynchrone, redessine ensuite)
-  loadNearbyFallback(appState.searchDest);
   return exact;
+}
+
+/* --- Filtre « Périmètre de recherche » (curseur, même style que le budget) --- */
+let _radDragging = false;
+function radiusSet(v, skipRefresh){
+  v = Math.max(0, Math.min(RADIUS_MAX_KM, Math.round((+v||0)/5)*5));
+  appState.filters.radiusKm = v;
+  appState.resultsPage = 1;
+  const f = document.getElementById('rad-val');
+  if(f) f.value = v;
+  radiusDrawThumb();
+  if(!skipRefresh) refreshResults();
+}
+function radiusAuto(){
+  appState.filters.radiusKm = null;
+  appState.resultsPage = 1;
+  refreshResults();
+}
+function radiusDrawThumb(){
+  const pct = currentRadiusKm() / RADIUS_MAX_KM * 100;
+  const fill = document.getElementById('rad-fill');
+  const th = document.getElementById('rad-th');
+  if(fill) fill.style.right = (100-pct)+'%';
+  if(th) th.style.left = pct+'%';
+}
+function _radValFromEvent(e){
+  const track = document.getElementById('rad-track');
+  if(!track) return null;
+  const rect = track.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  return Math.round(pct * RADIUS_MAX_KM / 5) * 5;
+}
+function radiusStartDrag(e){
+  e.stopPropagation(); e.preventDefault();
+  _radDragging = true;
+  document.addEventListener('mousemove', radiusDragMove);
+  document.addEventListener('mouseup', radiusDragEnd);
+  document.addEventListener('touchmove', radiusDragMove, {passive:false});
+  document.addEventListener('touchend', radiusDragEnd);
+}
+function radiusDragMove(e){
+  if(!_radDragging) return;
+  e.preventDefault();
+  const v = _radValFromEvent(e);
+  if(v!=null) radiusSet(v, true);
+}
+function radiusDragEnd(){
+  _radDragging = false;
+  document.removeEventListener('mousemove', radiusDragMove);
+  document.removeEventListener('mouseup', radiusDragEnd);
+  document.removeEventListener('touchmove', radiusDragMove);
+  document.removeEventListener('touchend', radiusDragEnd);
+  refreshResults();
+}
+function radiusTrackClick(e){
+  if(e.target.id==='rad-th') return;
+  const v = _radValFromEvent(e);
+  if(v!=null) radiusSet(v);
+}
+
+function radiusFilterHTML(){
+  const hasDest = !!appState.searchDest;
+  const auto = appState.filters.radiusKm==null;
+  const r = currentRadiusKm();
+  return `
+      <div class="f-section" style="${hasDest?'':'opacity:.55;'}">
+        <div class="f-title">📍 PÉRIMÈTRE DE RECHERCHE</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:12px 0 16px;">
+          <div style="flex:1;position:relative;">
+            <input type="number" id="rad-val" min="0" max="${RADIUS_MAX_KM}" step="5" value="${r}" ${hasDest?'':'disabled'}
+              onchange="radiusSet(+this.value)"
+              style="width:100%;padding:8px 30px 8px 8px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:700;text-align:center;">
+            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--gray-400);pointer-events:none;">km</span>
+          </div>
+          ${hasDest && !auto ? `<button onclick="radiusAuto()" title="Revenir au réglage automatique" style="background:none;border:1.5px solid var(--gray-300);border-radius:var(--r-md);padding:8px 10px;font-size:12px;font-weight:700;color:var(--gray-600);cursor:pointer;">Auto</button>` : ''}
+        </div>
+        <div id="rad-track" style="position:relative;height:6px;background:var(--gray-200);border-radius:3px;margin:14px 10px 20px;cursor:${hasDest?'pointer':'not-allowed'};"
+          ${hasDest?`onmousedown="radiusTrackClick(event)" ontouchstart="radiusTrackClick(event)"`:''}>
+          <div id="rad-fill" style="position:absolute;top:0;bottom:0;left:0;background:${auto?'var(--gray-400)':'var(--blue)'};border-radius:3px;right:${100-r/RADIUS_MAX_KM*100}%;"></div>
+          <div id="rad-th" style="position:absolute;top:50%;left:${r/RADIUS_MAX_KM*100}%;width:22px;height:22px;border-radius:50%;background:#fff;border:2.5px solid ${auto?'var(--gray-400)':'var(--blue)'};box-shadow:0 2px 8px rgba(0,0,0,.2);transform:translate(-50%,-50%);cursor:${hasDest?'grab':'not-allowed'};touch-action:none;"
+            ${hasDest?`onmousedown="radiusStartDrag(event)" ontouchstart="radiusStartDrag(event)"`:''}></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-400);">
+          <span>Destination seule</span><span>${RADIUS_MAX_KM} km</span>
+        </div>
+        <div style="font-size:12px;color:var(--gray-500);margin-top:8px;line-height:1.5;">
+          ${!hasDest ? 'Saisissez une destination pour régler le périmètre.'
+            : auto ? `Automatique : biens à moins de ${AUTO_RADIUS_KM} km ajoutés s'il y a peu de résultats. Déplacez le curseur pour choisir.`
+            : r===0 ? `Uniquement « ${appState.searchDest} ».`
+            : `« ${appState.searchDest} » et les biens à moins de ${r} km.`}
+        </div>
+      </div>`;
 }
 
 let _resultsAvailKey = null; // 'checkin|checkout' déjà chargé, pour éviter de refetch inutilement
@@ -2862,7 +2985,9 @@ function buildResults(){
         </div>
       </div>
 
-            <!-- 2. Type -->
+      <!-- 1 bis. Périmètre de recherche -->
+      ${radiusFilterHTML()}
+
       <!-- 2. Type de logement (expandable) -->
       <div class="f-section">
         <div class="f-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleFilter('types')">
@@ -2922,8 +3047,8 @@ function buildResults(){
         if(nearbyCount===0) return '';
         const exactCount = filtered.length - nearbyCount;
         const msg = exactCount>0
-          ? `<strong>${exactCount} bien${exactCount>1?'s':''} correspondant${exactCount>1?'s':''} exactement à "${appState.searchDest}"</strong> — complété par ${nearbyCount} bien${nearbyCount>1?'s':''} 📍 à proximité (rayon 50 km) pour élargir votre choix.`
-          : `<strong>Aucun bien disponible exactement à "${appState.searchDest}"</strong> — voici ${nearbyCount} hébergement${nearbyCount>1?'s':''} 📍 à proximité, dans un rayon de 50 km autour de cette zone.`;
+          ? `<strong>${exactCount} bien${exactCount>1?'s':''} correspondant${exactCount>1?'s':''} exactement à "${appState.searchDest}"</strong> — complété par ${nearbyCount} bien${nearbyCount>1?'s':''} 📍 à proximité (rayon ${currentRadiusKm()} km) pour élargir votre choix.`
+          : `<strong>Aucun bien disponible exactement à "${appState.searchDest}"</strong> — voici ${nearbyCount} hébergement${nearbyCount>1?'s':''} 📍 à proximité, dans un rayon de ${currentRadiusKm()} km autour de cette zone.`;
         return `<div style="background:#fff8e0;border:1.5px solid #ffd699;border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
           <span style="font-size:22px;">📍</span>
           <div style="font-size:14px;color:#4b5563;">${msg}</div>
@@ -2934,7 +3059,7 @@ function buildResults(){
       ` : ''}
       <div class="results-list">
         ${filtered.length===0
-          ?`<div class="no-results"><div style="font-size:52px;margin-bottom:14px;">🔍</div><h3>${(appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && !appState._nearbyFallback.loading) ? 'Aucun résultat même dans un rayon de 50 km' : 'Aucun résultat'}</h3><p>Modifiez vos critères ou explorez d'autres destinations.</p><button onclick="resetFilters()" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Réinitialiser les filtres</button></div>`
+          ?`<div class="no-results"><div style="font-size:52px;margin-bottom:14px;">🔍</div><h3>${(appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && !appState._nearbyFallback.loading && appState.filters.radiusKm!==0) ? `Aucun résultat même dans un rayon de ${currentRadiusKm()} km` : 'Aucun résultat'}</h3><p>Modifiez vos critères ou explorez d'autres destinations.</p><button onclick="resetFilters()" style="margin-top:16px;background:var(--blue-l);color:#fff;padding:10px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Réinitialiser les filtres</button></div>`
           :pageItems.map(h=>resultCardHTML(h)).join('')}
       </div>
       ${filtered.length>0 && totalPages>1 ? `<div class="pagination">
@@ -3121,7 +3246,7 @@ function toggleAmenF(a,c){if(c)appState.filters.amenities.push(a);else appState.
 function updateSort(v){appState.sort=v;appState.resultsPage=1;refreshResults();}
 function resetFilters(){
   appState.resultsPage=1;
-  appState.filters = {minPrice:0, maxPrice:2000, minRating:0, types:[], amenities:[], promoOnly:false};
+  appState.filters = {minPrice:0, maxPrice:2000, minRating:0, types:[], amenities:[], promoOnly:false, radiusKm:null};
   appState.filterExpanded = {types:false, amenities:false, ratings:false};
   // La zone de recherche (destination tapée dans la barre de recherche,
   // appState.searchDest) n'était pas réinitialisée ici : quand une recherche
