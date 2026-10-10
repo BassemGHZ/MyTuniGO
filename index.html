@@ -1157,6 +1157,7 @@ function render() {
     // manuel de date, laissant le prix affiché en tarif unitaire par nuit.
     if(h && (appState.searchCheckIn || appState.checkIn)) setTimeout(updateBk, 160);
   }
+  if(pg==='excursion-detail') setTimeout(loadExcursionReviews, 120);
   if(pg==='excursion-detail' && appState.excBookingDate){
     setTimeout(()=>updateExcSpotsLeft(appState.selectedExcursionId, appState.excBookingDate), 160);
   }
@@ -5308,6 +5309,10 @@ async function loadReservations(container){
       ? await _sb.from('excursions').select('id,title,city,country').in('id', excIds2)
       : { data: [] };
     const excMap2 = Object.fromEntries((excs2||[]).map(e=>[e.id,e]));
+    const { data: myExcReviews } = excIds2.length
+      ? await _sb.from('avis').select('id,excursion_id,rating,comment').eq('author_id', uid).in('excursion_id', excIds2)
+      : { data: [] };
+    appState._myReviewsByExcursion = Object.fromEntries((myExcReviews||[]).map(r=>[r.excursion_id, r]));
     appState.myExcursionBookings = (excBk||[]).map(b=>{
       const ex = excMap2[b.excursion_id] || {};
       return {
@@ -5541,7 +5546,9 @@ function buildExcursionReservations(){
               <div style="text-align:right;">
                 <div style="font-size:20px;font-weight:800;color:var(--gray-900);">${r.total.toLocaleString()}€</div>
               </div>
-              ${(r.status==='confirmée'||r.status==='en attente')?`<button onclick="cancelExcursionBooking('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>`:''}
+              ${excBookingReviewable(r)?(()=>{ const mine = appState._myReviewsByExcursion?.[r.excursionId];
+                return `<button onclick="openReviewModal('${r.excursionId}','excursion')" style="background:${mine?'#fff8e0':'var(--gray-100)'};color:${mine?'#a07000':'var(--gray-700)'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid ${mine?'#f0d080':'var(--gray-300)'};cursor:pointer;margin-top:8px;">${mine?'✏️ Modifier mon avis':'⭐ Laisser un avis'}</button>`; })():''}
+              ${(r.status==='confirmée'||r.status==='en attente') && !excBookingReviewable(r)?`<button onclick="cancelExcursionBooking('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>`:''}
             </div>
           </div>
         </div>
@@ -6883,8 +6890,10 @@ function buildExcursionDetail(){
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <span style="background:#f0f0f0;padding:3px 12px;border-radius:20px;font-size:13px;font-weight:600;">${e.emoji} ${e.categoryLabel}</span>
           <div style="display:flex;align-items:center;gap:6px;">
-            <div style="background:var(--blue);color:#fff;font-weight:800;font-size:13px;padding:3px 8px;border-radius:5px 5px 5px 0;">${e.rating}</div>
-            <span style="font-size:13px;font-weight:600;color:var(--gray-700);">(${e.reviews} avis)</span>
+            ${e.reviews>0
+              ? `<a href="#exc-reviews" onclick="event.preventDefault();document.getElementById('exc-reviews')?.scrollIntoView({behavior:'smooth'})" style="display:flex;align-items:center;gap:6px;text-decoration:none;"><div style="background:var(--blue);color:#fff;font-weight:800;font-size:13px;padding:3px 8px;border-radius:5px 5px 5px 0;">${String(e.rating).replace('.',',')}</div>
+                 <span style="font-size:13px;font-weight:600;color:var(--gray-700);">(${e.reviews} avis)</span></a>`
+              : `<span style="font-size:12px;font-weight:700;color:#0d9e6e;background:#e8f9f0;padding:3px 10px;border-radius:20px;">🆕 Nouveau</span>`}
           </div>
           <span style="font-size:14px;color:var(--blue-l);">📍 ${e.city}, ${e.country}</span>
         </div>
@@ -6988,6 +6997,18 @@ function buildExcursionDetail(){
             </div>
           </div>
         </div>
+
+        <!-- Avis des voyageurs -->
+        <div id="exc-reviews" style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-top:20px;">
+          <div style="font-size:17px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">⭐ Avis des voyageurs
+            ${e.reviews>0?`<span style="background:var(--blue);color:#fff;font-weight:800;font-size:13px;padding:2px 8px;border-radius:5px 5px 5px 0;">${String(e.rating).replace('.',',')}</span><span style="font-size:13px;font-weight:600;color:var(--gray-500);">${e.reviews} avis</span>`:''}
+          </div>
+          <div id="exc-reviews-list" data-exc="${e.excursionId||''}">
+            ${e.reviews>0
+              ? '<div style="text-align:center;padding:16px;color:var(--gray-400);font-size:13px;">⏳ Chargement des avis…</div>'
+              : '<div style="text-align:center;padding:18px;color:var(--gray-500);font-size:14px;">Aucun avis pour le moment. Les participants peuvent noter l\'excursion depuis « Mes voyages » une fois celle-ci terminée.</div>'}
+          </div>
+        </div>
       </div>
 
       <!-- Bloc réservation -->
@@ -6995,7 +7016,7 @@ function buildExcursionDetail(){
         <div style="background:#fff;border:2px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;position:sticky;top:76px;">
           <div style="font-size:26px;font-weight:800;margin-bottom:4px;">${e.price}€ <span style="font-size:14px;font-weight:400;color:var(--gray-500);">/ ${e.priceType}</span></div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
-            ${e.reviews>0?`<div style="background:var(--blue);color:#fff;font-weight:800;font-size:12px;padding:2px 7px;border-radius:4px;">${e.rating}</div><span style="font-size:13px;color:var(--gray-500);">${e.reviews} avis vérifiés</span>`:`<span style="font-size:13px;color:var(--gray-500);">🆕 Nouvelle excursion, aucun avis pour l'instant</span>`}
+            ${e.reviews>0?`<div style="background:var(--blue);color:#fff;font-weight:800;font-size:12px;padding:2px 7px;border-radius:4px;">${String(e.rating).replace('.',',')}</div><span style="font-size:13px;color:var(--gray-500);">${e.reviews} avis vérifiés</span>`:`<span style="font-size:13px;color:var(--gray-500);">🆕 Nouvelle excursion, aucun avis pour l'instant</span>`}
           </div>
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:6px;">📅 Choisissez une date</label>
@@ -7983,10 +8004,47 @@ function buildExcursionFormSuccess(){
 
 /* ===================== PROMO MODAL ===================== */
 /* ===================== AVIS CLIENTS ===================== */
-function openReviewModal(annonceId){
+// Avis affichés sur la fiche d'une excursion (table avis, colonne excursion_id).
+async function loadExcursionReviews(){
+  const box = document.getElementById('exc-reviews-list');
+  const excId = box?.dataset?.exc;
+  if(!box || !excId) return;
+  const { data: rows, error } = await _sb.from('avis')
+    .select('rating,comment,created_at,author_id').eq('excursion_id', excId)
+    .order('created_at', {ascending:false});
+  if(error){ box.innerHTML = '<div style="text-align:center;padding:16px;color:var(--red);font-size:13px;">Erreur de chargement des avis.</div>'; return; }
+  if(!rows || !rows.length) return; // le message « Aucun avis » est déjà affiché
+  const ids = [...new Set(rows.map(r=>r.author_id).filter(Boolean))];
+  const { data: profs } = ids.length ? await _sb.from('profiles').select('id,first_name,country').in('id', ids) : { data: [] };
+  const pm = Object.fromEntries((profs||[]).map(p=>[p.id,p]));
+  const esc = v => String(v??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  box.innerHTML = rows.map(r=>{
+    const p = pm[r.author_id]; const name = p?.first_name || 'Voyageur';
+    return `<div class="rev-item">
+      <div class="rev-head">
+        <div class="rev-av">${esc(name[0]?.toUpperCase()||'?')}</div>
+        <div class="rev-meta"><div class="rev-name">${esc(name)}${p?.country?' — '+esc(p.country):''}</div><div class="rev-date">${fmtDMY(r.created_at)}</div></div>
+        <div class="rev-score">${'★'.repeat(r.rating)}<span style="opacity:.4;">${'☆'.repeat(5-r.rating)}</span></div>
+      </div>
+      ${r.comment?`<div class="rev-text">${esc(r.comment)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// Un avis d'excursion est possible quand la réservation est terminée
+// (ou confirmée et sa date passée) — même règle qu'en base.
+function excBookingReviewable(r){
+  return r.status==='terminée' || (r.status==='confirmée' && r.date && r.date < localISODate(new Date()));
+}
+
+// kind = 'logement' (par défaut) ou 'excursion'
+function openReviewModal(targetId, kind){
   if(!auth.currentUser){openModal('login');return;}
-  const existing = appState._myReviewsByAnnonce?.[annonceId];
-  const ann = hotels.find(h=>h.annonceId===annonceId);
+  const isExc = kind==='excursion';
+  const existing = isExc ? appState._myReviewsByExcursion?.[targetId] : appState._myReviewsByAnnonce?.[targetId];
+  const ann = isExc
+    ? { name: (appState.myExcursionBookings||[]).find(b=>b.excursionId===targetId)?.title || 'Votre excursion' }
+    : hotels.find(h=>h.annonceId===targetId);
 
   const root = document.getElementById('modal-root');
   root.innerHTML = '';
@@ -7999,17 +8057,17 @@ function openReviewModal(annonceId){
       <div class="modal-header" style="background:var(--blue);">
         <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
         <h2>⭐ ${existing?'Modifier votre avis':'Laisser un avis'}</h2>
-        <p>${ann?.name || 'Votre séjour'}</p>
+        <p>${(ann?.name || 'Votre séjour').replace(/</g,'&lt;')}</p>
       </div>
       <div class="modal-body">
         <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:10px;">Votre note</label>
         <div id="review-stars" style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;font-size:36px;"></div>
 
         <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Votre commentaire</label>
-        <textarea id="review-comment" rows="4" placeholder="Racontez votre séjour : l'accueil, le logement, l'emplacement…"
+        <textarea id="review-comment" rows="4" maxlength="1000" placeholder="${isExc?"Racontez votre expérience : le guide, l'organisation, les moments forts…":"Racontez votre séjour : l'accueil, le logement, l'emplacement…"}"
           style="width:100%;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;margin-bottom:18px;">${existing?.comment||''}</textarea>
 
-        <button onclick="saveReview('${annonceId}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Publier mon avis</button>
+        <button onclick="saveReview('${targetId}','${isExc?'excursion':'logement'}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Publier mon avis</button>
       </div>
     </div>`;
   root.appendChild(overlay);
@@ -8026,16 +8084,18 @@ function renderReviewStars(selected){
   ).join('');
 }
 
-async function saveReview(annonceId){
+async function saveReview(targetId, kind){
   if(_reviewRatingValue<1){ showToast('⚠️ Choisissez une note de 1 à 5 étoiles','var(--red)'); return; }
   const comment = document.getElementById('review-comment')?.value?.trim() || '';
+  const isExc = kind==='excursion';
+  const annonceId = isExc ? null : targetId;
 
   const { error } = await _sb.from('avis').upsert([{
     author_id: auth.currentUser.id,
-    logement_id: annonceId,
+    [isExc ? 'excursion_id' : 'logement_id']: targetId,
     rating: _reviewRatingValue,
     comment
-  }], { onConflict: 'author_id,logement_id' });
+  }], { onConflict: isExc ? 'author_id,excursion_id' : 'author_id,logement_id' });
 
   if(error){
     console.error('saveReview error:', error.message);
@@ -8053,7 +8113,7 @@ async function saveReview(annonceId){
     const resp = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-review', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+(session?.access_token||SB_ANON_KEY) },
-      body: JSON.stringify({ type: 'new_review', annonce_id: annonceId })
+      body: JSON.stringify(isExc ? { type: 'new_review', excursion_id: targetId } : { type: 'new_review', annonce_id: annonceId })
     });
     if(!resp.ok) console.error('notify-review HTTP', resp.status, await resp.text());
   } catch(efErr){
@@ -13190,8 +13250,9 @@ async function loadPublishedExcursions(){
         minAge: e.min_age || 0,
         price: e.price || 0,
         priceType: e.price_type || 'personne',
-        rating: 0,
-        reviews: 0,
+        // tenus à jour en base à chaque avis (trigger trg_avis_excursion_rating)
+        rating: e.review_count ? Number(e.rating).toFixed(1) : 0,
+        reviews: e.review_count || 0,
         language: e.languages || ['Français'],
         difficulty: e.difficulty || 'facile',
         includes: e.includes || [],
