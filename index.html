@@ -4453,8 +4453,8 @@ function annStep0(ad){return `<div class="ann-card">
   <div class="ann-sec" style="margin-top:20px;">Informations générales</div>
   <div class="ann-row">
     <div class="a-field" style="flex:2;"><label>Nom de l'hébergement *</label>
-      <input id="af-name" type="text" maxlength="70" placeholder="Ex : Appartement lumineux vue mer à Nice" value="${ad.name}" oninput="annSet('name',this.value)">
-      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(ad.name||'').length}/70</div></div>
+      <input id="af-name" type="text" ${charCounterAttrs('af-name-count',70)} placeholder="Ex : Appartement lumineux vue mer à Nice" value="${ad.name}" oninput="annSet('name',this.value)">
+      ${charCounterHTML('af-name-count', ad.name, 70)}</div>
     <div class="a-field" style="flex:1;"><label>Surface (m²)</label>
       <input type="number" min="10" placeholder="65" value="${ad.size}" oninput="annSet('size',this.value)"></div>
   </div>
@@ -4472,8 +4472,8 @@ function annStep0(ad){return `<div class="ann-card">
     </div>
   </div>` : ''}
   <div class="ann-full a-field"><label>Description *</label>
-    <textarea placeholder="Décrivez votre hébergement : ambiance, points forts, emplacement…" oninput="annSet('desc',this.value)">${ad.desc}</textarea>
-    <div class="hint">Minimum 80 caractères recommandés.</div></div>
+    <textarea id="af-desc" ${charCounterAttrs('af-desc-count',DESC_MAX,DESC_MIN)} placeholder="Décrivez votre hébergement : ambiance, points forts, emplacement…" oninput="annSet('desc',this.value)">${ad.desc}</textarea>
+    ${charCounterHTML('af-desc-count', ad.desc, DESC_MAX, DESC_MIN)}</div>
   <div class="ann-sec" style="margin-top:20px;">Équipements</div>
   <div class="amen-grid-ann">${AMENITIES_ANN.map(a=>`<div class="amen-item-ann ${ad.amenities.includes(a.id)?'sel':''}" onclick="annToggleAmen('${a.id}')">
     <span style="font-size:16px;">${a.icon}</span><span>${a.name}</span>
@@ -4718,6 +4718,47 @@ function annSet(key,val){appState.annonceData[key]=val;}
    Gouvernorat → Ville / localité → Code postal (auto-rempli).
    Utilisé à l'identique dans le formulaire "Hébergement" (préfixe "ann")
    et dans le formulaire "Excursion" (préfixe "exc"). */
+
+/* ===================== COMPTEURS DE CARACTÈRES =====================
+   Règle unique pour toutes les descriptions (logements et excursions, en
+   création comme en modification, côté hôte/prestataire et admin) :
+   50 caractères minimum, 200 maximum. Le compteur se met à jour à chaque
+   frappe (écouteur global ci-dessous), indépendamment du re-rendu des
+   formulaires — auparavant il n'était recalculé qu'au rendu suivant.
+   Le nombre affiché est celui utilisé par la validation (espaces de début
+   et de fin ignorés). */
+const DESC_MIN = 50, DESC_MAX = 200;
+
+function _charCount(v){ return String(v||'').trim().length; }
+function _charCounterState(n, max, min){
+  if(n > max) return { color:'var(--red)', txt:`${n} / ${max} caractères — ${n-max} de trop` };
+  if(min && n < min) return { color: n ? '#e6a800' : 'var(--gray-400)', txt:`${n} / ${max} caractères — encore ${min-n} au minimum` };
+  return { color: min ? 'var(--green)' : 'var(--gray-400)', txt:`${n} / ${max} caractères` };
+}
+// Attributs à poser sur le champ : data-counter (id du compteur), data-max, data-min.
+function charCounterAttrs(counterId, max, min){
+  return `data-counter="${counterId}" data-max="${max}" data-min="${min||0}" maxlength="${max}"`;
+}
+function charCounterHTML(counterId, text, max, min){
+  const st = _charCounterState(_charCount(text), max, min||0);
+  return `<div id="${counterId}" style="font-size:11px;font-weight:600;text-align:right;margin-top:3px;color:${st.color};">${st.txt}</div>`;
+}
+function updateCharCounter(el){
+  const c = el && el.dataset && document.getElementById(el.dataset.counter);
+  if(!c) return;
+  const st = _charCounterState(_charCount(el.value), +el.dataset.max||DESC_MAX, +el.dataset.min||0);
+  c.textContent = st.txt; c.style.color = st.color;
+}
+document.addEventListener('input', e => { if(e.target && e.target.dataset && e.target.dataset.counter) updateCharCounter(e.target); });
+
+// Message d'erreur si la description ne respecte pas 50–200 caractères, sinon null.
+function descLengthError(text){
+  const n = _charCount(text);
+  if(n < DESC_MIN) return `⚠️ Description trop courte : ${n} caractère${n>1?'s':''}, minimum ${DESC_MIN}.`;
+  if(n > DESC_MAX) return `⚠️ Description trop longue : ${n} caractères, maximum ${DESC_MAX}.`;
+  return null;
+}
+
 const TUNISIA_ADDRESS = {
   "Tunis": [{city:"Tunis Centre",zip:"1000"},{city:"Bab El Bhar",zip:"1001"},{city:"Bab Souika",zip:"1006"},{city:"Lafayette",zip:"1002"},{city:"El Omrane",zip:"1005"},{city:"El Menzah",zip:"1004"},{city:"Mutuelleville",zip:"1082"}],
   "Ariana": [{city:"Ariana Ville",zip:"2080"},{city:"El Menzah 5",zip:"2091"},{city:"Ennasr",zip:"2037"},{city:"Raoued",zip:"2056"},{city:"La Soukra",zip:"2036"},{city:"Charguia",zip:"2035"}],
@@ -4922,6 +4963,7 @@ function annValidate(){
   if(cur===0){
     if(!ad.type){showToast('⚠️ Sélectionnez un type de logement.','var(--red)');return false;}
     if(!ad.name.trim()||!ad.desc.trim()){showToast('⚠️ Remplissez le nom et la description.','var(--red)');return false;}
+    { const de = descLengthError(ad.desc); if(de){ showToast(de,'var(--red)'); return false; } }
     if(ad.type==='hotel'&&!(+ad.stars>=1&&+ad.stars<=5)){showToast('⚠️ Sélectionnez la classification (étoiles) de l\'hôtel.','var(--red)');return false;}
   }
   if(cur===1){
@@ -7348,20 +7390,20 @@ function excFormStep0(fd){
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Titre de l'excursion *</label>
-      <input id="ef-title" type="text" maxlength="70" placeholder="Ex : Visite privée de la médina au coucher du soleil" value="${fd.title}"
+      <input id="ef-title" type="text" ${charCounterAttrs('ef-title-count',70)} placeholder="Ex : Visite privée de la médina au coucher du soleil" value="${fd.title}"
         oninput="excSet('title',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.title||'').length}/70</div></div>
+      ${charCounterHTML('ef-title-count', fd.title, 70)}</div>
 
     <div style="margin-bottom:6px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;">Adresse de l'excursion</div>
     ${addressBlockHTML('exc', fd)}
     ${excPosPickerHTML('exc')}
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Description *</label>
-      <textarea id="ef-desc" maxlength="250" placeholder="Décrivez votre excursion : ce que les participants vont vivre, découvrir, ressentir…"
+      <textarea id="ef-desc" ${charCounterAttrs('ef-desc-count',DESC_MAX,DESC_MIN)} placeholder="Décrivez votre excursion : ce que les participants vont vivre, découvrir, ressentir…"
         oninput="excSet('description',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:100px;line-height:1.6;">${fd.description}</textarea>
-      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.description||'').length}/250</div></div>
+      ${charCounterHTML('ef-desc-count', fd.description, DESC_MAX, DESC_MIN)}</div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:14px;margin-bottom:14px;">
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée</label>
@@ -7418,9 +7460,9 @@ function excFormStep1(fd){
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Programme détaillé</label>
-      <textarea maxlength="200" placeholder="Décrivez heure par heure le déroulé de l'excursion…" oninput="excSet('schedule',this.value)"
+      <textarea id="ef-schedule" ${charCounterAttrs('ef-schedule-count',200)} placeholder="Décrivez heure par heure le déroulé de l'excursion…" oninput="excSet('schedule',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:100px;line-height:1.6;">${fd.schedule||''}</textarea>
-      <div style="font-size:11px;color:var(--gray-400);text-align:right;margin-top:3px;">${(fd.schedule||'').length}/200</div></div>
+      ${charCounterHTML('ef-schedule-count', fd.schedule, 200)}</div>
 
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Point de rendez-vous</label>
@@ -7638,7 +7680,7 @@ function excFormValidate(){
     if(!fd.title?.trim()){showToast('⚠️ Ajoutez un titre','var(--red)');return false;}
     if(!fd.address?.trim()||!fd.governorate||!fd.city){showToast('⚠️ Remplissez l\'adresse, le gouvernorat et la ville','var(--red)');return false;}
     if(fd.city==='__OTHER__'&&!(fd.cityCustom||'').trim()){showToast('⚠️ Indiquez le nom de la ville ou localité','var(--red)');return false;}
-    if(!fd.description?.trim()||fd.description.length<50){showToast('⚠️ Description trop courte (min 50 car.)','var(--red)');return false;}
+    { const de = descLengthError(fd.description); if(de){ showToast(de,'var(--red)'); return false; } }
   }
   if(cur===2){
     if(!fd.price||fd.price<1){showToast('⚠️ Indiquez un prix valide','var(--red)');return false;}
@@ -8117,10 +8159,12 @@ function buildAnnonceEditFormOwnerInner(){
       <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label} <span style="color:var(--gray-400);font-weight:600;text-transform:none;">🔒 verrouillé</span></label>
       <div style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:var(--r-md);font-size:14px;background:var(--gray-50);color:var(--gray-600);box-sizing:border-box;">${(value===undefined||value===null||value==='')?'—':value}</div>
     </div>`;
-  const area = (label, key, rows) => `
+  // lim = {max, min} : compteur de caractères en direct (ex. description 50–200)
+  const area = (label, key, rows, lim) => `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label}</label>
-      <textarea rows="${rows||3}" oninput="aeSet('${key}', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${ed[key]||''}</textarea>
+      <textarea rows="${rows||3}" ${lim?charCounterAttrs('aeSet-'+key+'-count', lim.max, lim.min):''} oninput="aeSet('${key}', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${ed[key]||''}</textarea>
+      ${lim?charCounterHTML('aeSet-'+key+'-count', ed[key], lim.max, lim.min):''}
     </div>`;
 
   return `
@@ -8149,7 +8193,7 @@ function buildAnnonceEditFormOwnerInner(){
     <!-- Description -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📖 Description</div>
-      ${area('Description','description',5)}
+      ${area('Description *','description',5,{max:DESC_MAX,min:DESC_MIN})}
       ${area("🔑 Instructions d'accès",'access',3)}
     </div>
 
@@ -8432,6 +8476,7 @@ function excPosForSave(d){
 async function saveAnnonceEditOwner(){
   const ed = appState.annEditData;
   if(!ed || !ed.id) return;
+  { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
 
   // Upload des nouvelles photos ajoutées (les photos existantes sont déjà en ligne)
   let finalPhotos = ed.photos||[];
@@ -9819,10 +9864,12 @@ function buildExcursionEditFormInner(){
       <input type="${type||'text'}" value="${(ed[key]??'').toString().replace(/"/g,'&quot;')}" oninput="edSet('${key}', this.${type==='number'?'valueAsNumber||0':'value'})"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;box-sizing:border-box;">
     </div>`;
-  const area = (label, key, rows) => `
+  // lim = {max, min} : compteur de caractères en direct (ex. description 50–200)
+  const area = (label, key, rows, lim) => `
     <div style="margin-bottom:14px;">
       <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">${label}</label>
-      <textarea rows="${rows||3}" oninput="edSet('${key}', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${ed[key]||''}</textarea>
+      <textarea rows="${rows||3}" ${lim?charCounterAttrs('edSet-'+key+'-count', lim.max, lim.min):''} oninput="edSet('${key}', this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${ed[key]||''}</textarea>
+      ${lim?charCounterHTML('edSet-'+key+'-count', ed[key], lim.max, lim.min):''}
     </div>`;
 
   return `
@@ -9882,7 +9929,7 @@ function buildExcursionEditFormInner(){
     <!-- Description & contenu -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📖 Description & contenu</div>
-      ${area('Description','description',5)}
+      ${area('Description *','description',5,{max:DESC_MAX,min:DESC_MIN})}
       <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:6px;">Points forts (4 max)</label>
       ${(ed.highlights||['','','','']).map((h,i)=>`
         <input type="text" value="${(h||'').replace(/"/g,'&quot;')}" oninput="edSetHighlight(${i}, this.value)" placeholder="Point fort ${i+1}"
@@ -9896,7 +9943,7 @@ function buildExcursionEditFormInner(){
       </div>
       ${area("Non inclus","notIncluded",2)}
       ${area("À apporter","whatToBring",2)}
-      ${area("Déroulé / programme","schedule",3)}
+      ${area("Déroulé / programme","schedule",3,{max:200})}
     </div>
 
     <!-- Rendez-vous -->
@@ -9969,6 +10016,8 @@ function buildExcursionEditFormInner(){
 async function saveExcursionEdit(){
   const ed = appState.excEditData;
   if(!ed || !ed.id) return;
+  { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
+  if(_charCount(ed.schedule) > 200){ showToast('⚠️ Programme trop long : 200 caractères maximum.','var(--red)'); return; }
   const updates = {
     title: ed.title, category: ed.category,
     category_label: (EXCURSION_CATS.find(c=>c.id===ed.category)||{}).label || '',
@@ -11586,7 +11635,8 @@ function renderAdminAnnonceModal(id){
     </div>
     <div style="margin-top:4px;">
       <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Description</label>
-      <textarea id="am-desc" rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
+      <textarea id="am-desc" ${charCounterAttrs('am-desc-count',DESC_MAX,DESC_MIN)} rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
+      ${charCounterHTML('am-desc-count', a.description, DESC_MAX, DESC_MIN)}
     </div>
     <div style="margin-top:12px;">
       <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">🔑 Instructions d'accès</label>
@@ -11700,6 +11750,7 @@ function renderAdminAnnonceModal(id){
 
 async function saveAdminAnnonceEdit(id){
   const val = fid => document.getElementById(fid)?.value;
+  { const de = descLengthError(val('am-desc')); if(de){ showToast(de,'var(--red)'); return; } }
   const updates = {
     name: val('am-name'),
     price_night: parseFloat(val('am-price-night'))||0,
@@ -11906,7 +11957,8 @@ function renderAdminExcursionModal(id){
     </div>
     <div style="margin-top:4px;">
       <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Description</label>
-      <textarea id="ae-desc" rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
+      <textarea id="ae-desc" ${charCounterAttrs('ae-desc-count',DESC_MAX,DESC_MIN)} rows="4" style="width:100%;padding:9px 10px;border:1.5px solid var(--gray-300);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box;">${a.description||''}</textarea>
+      ${charCounterHTML('ae-desc-count', a.description, DESC_MAX, DESC_MIN)}
     </div>
     <div style="margin-top:14px;">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;margin-bottom:6px;">Photos (${(a.photos&&a.photos.length)||0}) <span style="text-transform:none;font-weight:400;color:var(--gray-400);">— lecture seule ici</span></div>
@@ -11992,6 +12044,7 @@ function renderAdminExcursionModal(id){
 
 async function saveAdminExcursionEdit(id){
   const val = fid => document.getElementById(fid)?.value;
+  { const de = descLengthError(val('ae-desc')); if(de){ showToast(de,'var(--red)'); return; } }
   const updates = {
     title: val('ae-title'),
     price: parseFloat(val('ae-price'))||0,
