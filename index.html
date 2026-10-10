@@ -999,7 +999,7 @@ let appState = {
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
   annoncePage:0,
-  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',cityCustom:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
+  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',cityCustom:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
   annoncePublished:false,
   favorites:[],
   reservations:[
@@ -4508,10 +4508,91 @@ function annStep1(ad){
 }
 
 
+/* ===================== PHOTOS : règles, compression, guide =====================
+   Logement : 5 à 20 photos. Excursion : 4 à 10 photos.
+   Les photos sont redimensionnées (1600 px max) et recompressées en JPEG
+   avant l'envoi : 200 à 400 Ko au lieu de plusieurs Mo, pour préserver le
+   stockage Supabase (forfait gratuit) et accélérer l'affichage. */
+const PHOTO_RULES = { annonce:{ min:5, max:20 }, excursion:{ min:4, max:10 } };
+const PHOTO_INPUT_MAX = 15 * 1024 * 1024; // fichier d'origine, avant compression
+const PHOTO_TYPES = ['image/jpeg','image/png','image/webp','image/gif'];
+
+function _readAsDataUrl(blob){
+  return new Promise((ok, ko) => { const r = new FileReader(); r.onload = e => ok(e.target.result); r.onerror = ko; r.readAsDataURL(blob); });
+}
+async function compressPhotoFile(file){
+  const orig = await _readAsDataUrl(file);
+  if(file.type === 'image/gif') return { dataUrl: orig, size: file.size, name: file.name };
+  try{
+    const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = orig; });
+    const MAX = 1600;
+    const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); // PNG transparents → fond blanc
+    ctx.drawImage(img, 0, 0, w, h);
+    const out = c.toDataURL('image/jpeg', 0.82);
+    const outSize = Math.round((out.length - out.indexOf(',') - 1) * 3 / 4);
+    if(outSize >= file.size) return { dataUrl: orig, size: file.size, name: file.name };
+    return { dataUrl: out, size: outSize, name: (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg' };
+  } catch(e){
+    return { dataUrl: orig, size: file.size, name: file.name };
+  }
+}
+// Lit et compresse jusqu'à `room` fichiers ; renvoie les photos prêtes.
+async function readPhotoFiles(files, room){
+  const list = Array.from(files || []);
+  if(room <= 0){ showToast('Nombre maximum de photos atteint', 'var(--red)'); return []; }
+  if(list.length > room) showToast(`Seules ${room} photo${room>1?'s':''} de plus peu${room>1?'vent':'t'} être ajoutée${room>1?'s':''}`, 'var(--gray-700)');
+  const out = [];
+  for(const file of list.slice(0, room)){
+    if(!PHOTO_TYPES.includes(file.type)){ showToast('⚠️ Format non supporté : '+file.name, 'var(--red)'); continue; }
+    if(file.size > PHOTO_INPUT_MAX){ showToast('⚠️ Fichier trop lourd : '+file.name+' (max 15 Mo)', 'var(--red)'); continue; }
+    const p = await compressPhotoFile(file);
+    out.push({ id: Date.now() + Math.random(), name: p.name, dataUrl: p.dataUrl, size: p.size });
+  }
+  return out;
+}
+function photoCountHTML(kind, n){
+  const r = PHOTO_RULES[kind];
+  const ok = n >= r.min;
+  return `<span style="font-size:13px;font-weight:600;color:${ok?'var(--green)':'#b45309'};">${n} / ${r.max} photos${ok ? ' ✓' : ` — encore ${r.min-n} au minimum`}</span>`;
+}
+function photoRuleError(kind, n){
+  const r = PHOTO_RULES[kind];
+  if(n < r.min) return `⚠️ Ajoutez au moins ${r.min} photos (${n} pour l'instant).`;
+  if(n > r.max) return `⚠️ ${r.max} photos maximum (${n} actuellement).`;
+  return null;
+}
+// Guide « bien vendre votre prestation » affiché à côté de l'envoi des photos.
+function photoGuideHTML(kind){
+  const isAnn = kind === 'annonce';
+  const r = PHOTO_RULES[kind];
+  const shots = isAnn
+    ? ['La façade ou l\'entrée', 'La pièce principale (salon, patio)', 'Chaque chambre, lit bien visible', 'La salle de bain — la photo la plus rassurante', 'La cuisine ou l\'espace petit-déjeuner', 'Vos atouts : terrasse, vue mer, piscine, déco', 'Les environs : plage, médina, rue']
+    : ['La photo phare : le paysage ou le moment fort', 'Des participants en pleine activité', 'Le guide ou l\'hôte, pour créer la confiance', 'Ce qui est inclus : repas, équipement, véhicule', 'Le point de départ, pour s\'y retrouver le jour J'];
+  return `
+  <details class="photo-guide" style="background:#f0f7ff;border:1px solid #cfe2ff;border-radius:var(--r-md);padding:12px 16px;margin:0 0 14px;" open>
+    <summary style="cursor:pointer;font-size:14px;font-weight:800;color:var(--blue);">💡 Bien vendre votre ${isAnn?'logement':'excursion'} : ${r.min} photos minimum, ${isAnn?'10 à 20':'6 à 10'} idéalement</summary>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 18px;margin-top:10px;font-size:13px;color:var(--gray-700);line-height:1.5;">
+      ${shots.map(t=>`<div>📷 ${t}</div>`).join('')}
+    </div>
+    <div style="font-size:12.5px;color:var(--gray-600);margin-top:10px;line-height:1.55;">
+      Photos à la lumière du jour, à l'horizontale, ${isAnn?'pièces rangées et lits faits':'avec de vrais moments vécus'}. La première photo est celle qui s'affiche dans les résultats : choisissez la plus belle.
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid #cfe2ff;">
+      ${typeof aliyaAvatar==='function' ? aliyaAvatar(30) : ''}
+      <div style="font-size:12.5px;color:var(--gray-700);line-height:1.5;"><strong>Aliya, votre assistante, peut vous donner son avis.</strong> Une fois votre annonce en ligne, cliquez sur <strong>« ✨ Avis d'Aliya »</strong> dans ${isAnn?'« Mes annonces »':'« Gérer les excursions »'} : elle analyse photos, description, équipements et prix, et vous propose des améliorations.</div>
+    </div>
+  </details>`;
+}
+
 function annStep2(ad){
   const hasPhotos = ad.photos.length > 0;
   return `<div class="ann-card">
   <div class="ann-sec">Photos de l'hébergement</div>
+  ${photoGuideHTML('annonce')}
 
   <!-- Hidden real file input -->
   <input type="file" id="photo-file-input" accept="image/*" multiple style="display:none" onchange="handlePhotoFiles(this.files)">
@@ -4524,13 +4605,13 @@ function annStep2(ad){
     ondrop="event.preventDefault();this.style.borderColor='';this.style.background='';handlePhotoFiles(event.dataTransfer.files)">
     <div style="font-size:36px;">📷</div>
     <p style="font-size:15px;font-weight:600;color:var(--gray-700);margin-top:10px;">Cliquez ou glissez vos photos ici</p>
-    <small style="font-size:12px;color:var(--gray-500);">JPG, PNG, WebP — max 10 Mo par photo — plusieurs fichiers acceptés</small>
+    <small style="font-size:12px;color:var(--gray-500);">JPG, PNG, WebP — ${PHOTO_RULES.annonce.min} à ${PHOTO_RULES.annonce.max} photos — optimisées automatiquement</small>
     <div style="margin-top:12px;background:var(--blue);color:#fff;padding:8px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;display:inline-block;">Parcourir les fichiers</div>
   </div>
 
   <!-- Photo count indicator -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-    <span style="font-size:13px;color:var(--gray-600);">${ad.photos.length} photo${ad.photos.length>1?'s':''} ajoutée${ad.photos.length>1?'s':''} ${ad.photos.length<3?'<span style=\"color:var(--red);font-weight:600;\">(minimum 3 recommandées)</span>':''}</span>
+    ${photoCountHTML('annonce', ad.photos.length)}
     ${ad.photos.length>0?`<button onclick="appState.annonceData.photos=[];annRefresh()" style="font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-weight:600;">🗑️ Tout supprimer</button>`:''}
   </div>
 
@@ -4890,41 +4971,14 @@ function annToggleAmen(id){
   annRefresh();
 }
 
-function handlePhotoFiles(files){
+async function handlePhotoFiles(files){
   if(!files||files.length===0) return;
-  const MAX_SIZE = 10 * 1024 * 1024; // 10MB
-  const allowed = ['image/jpeg','image/png','image/webp','image/gif'];
-  let loaded = 0;
-  const total = files.length;
-  Array.from(files).forEach(file => {
-    if(!allowed.includes(file.type)){
-      showToast('⚠️ Format non supporté : '+file.name,'var(--red)');
-      loaded++; return;
-    }
-    if(file.size > MAX_SIZE){
-      showToast('⚠️ Fichier trop lourd : '+file.name+' (max 10Mo)','var(--red)');
-      loaded++; return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(e){
-      appState.annonceData.photos.push({
-        id: Date.now() + Math.random(),
-        name: file.name,
-        dataUrl: e.target.result,
-        size: file.size,
-      });
-      loaded++;
-      if(loaded === total){
-        annRefresh();
-        showToast('✅ '+total+' photo'+( total>1?'s':'')+' ajoutée'+(total>1?'s':''),'var(--green)');
-      }
-    };
-    reader.onerror = function(){
-      showToast('Erreur lecture : '+file.name,'var(--red)');
-      loaded++;
-    };
-    reader.readAsDataURL(file);
-  });
+  const ad = appState.annonceData;
+  const added = await readPhotoFiles(files, PHOTO_RULES.annonce.max - ad.photos.length);
+  if(!added.length) return;
+  ad.photos.push(...added);
+  annRefresh();
+  showToast('✅ '+added.length+' photo'+(added.length>1?'s':'')+' ajoutée'+(added.length>1?'s':''),'var(--green)');
 }
 
 let dragSrcId = null;
@@ -4970,6 +5024,9 @@ function annValidate(){
     if(!ad.address.trim()||!ad.governorate||!ad.city||!ad.zip.trim()){showToast('⚠️ Remplissez l\'adresse, le gouvernorat, la ville et le code postal.','var(--red)');return false;}
     if(ad.city==='__OTHER__'&&!(ad.cityCustom||'').trim()){showToast('⚠️ Indiquez le nom de la ville ou localité.','var(--red)');return false;}
     if(!ad.lat||!ad.lng){showToast('⚠️ Cliquez sur la carte pour positionner votre bien.','var(--red)');return false;}
+  }
+  if(cur===2){
+    const pe = photoRuleError('annonce', ad.photos.length); if(pe){ showToast(pe,'var(--red)'); return false; }
   }
   if(cur===3){
     if(!ad.price_night||ad.price_night<1){showToast('⚠️ Entrez un prix par nuit valide.','var(--red)');return false;}
@@ -5114,7 +5171,7 @@ function buildAnnonceSuccess(){
         <div class="suc-ref">${ref}</div>
         <p style="font-size:13px;color:var(--gray-500);margin-top:10px;">Conservez cette référence pour suivre votre annonce.</p>
         <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;flex-wrap:wrap;">
-          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[{id:1,emoji:'🛏️'},{id:2,emoji:'🛁'},{id:3,emoji:'🍳'}],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
+          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
           <button onclick="navigate('home')" style="background:var(--gray-100);color:var(--gray-800);padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">🏠 Accueil</button>
         </div>
       </div>
@@ -5895,6 +5952,7 @@ function buildMesAnnonces(){
                 style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
                 ✏️ Modifier
               </button>
+              ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excursionId||e.id}')" title="Aliya analyse votre excursion et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
               <button onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})"
                 style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 👁️ Voir la fiche
@@ -5972,6 +6030,7 @@ function buildMesAnnonces(){
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button onclick="loadAnnonceEditOwner(null,'${a.id}')" style="background:#eef2f7;color:#003580;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #b3c9e0;cursor:pointer;">✏️ Modifier l'annonce</button>
+              ${a.status==='publiée'?`<button onclick="askAliyaReview('annonce','${a.id}')" title="Aliya analyse votre annonce et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
               <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">📊 Statistiques</button>
               <button onclick="navigate('host-calendar',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📅 Gestion du calendrier</button>
               <button onclick="appState.bookingRequestsAnnonceId='${a.id}';appState.bookingRequestsFilter='all';navigate('booking-requests')" style="background:#fff4e0;color:#a05a00;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #ffe0a0;cursor:pointer;">📨 Réservations</button>
@@ -7498,9 +7557,10 @@ function excFormStep1(fd){
 
     <!-- Photos section -->
     <div style="margin-top:20px;">
-      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:10px;">📸 Photos (3 maximum)</label>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;">
-        ${[0,1,2].map(i=>{
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:10px;">📸 Photos (${PHOTO_RULES.excursion.min} à ${PHOTO_RULES.excursion.max})</label>
+      ${photoGuideHTML('excursion')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:12px;">
+        ${Array.from({length: Math.min(PHOTO_RULES.excursion.max, Math.max(PHOTO_RULES.excursion.min, (fd.photos||[]).length + 1))}, (_,i)=>i).map(i=>{
           const photo = (fd.photos||[])[i];
           return '<div style="aspect-ratio:4/3;border-radius:var(--r-md);border:2px dashed var(--gray-300);overflow:hidden;position:relative;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">'
             +(photo
@@ -7518,10 +7578,10 @@ function excFormStep1(fd){
           📤 Choisir depuis l'appareil
           <input type="file" accept="image/*" multiple style="display:none;" onchange="excUploadPhotos(this)">
         </label>
-        <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">JPG, PNG, WEBP</span>
+        <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">JPG, PNG, WEBP — optimisées automatiquement</span>
       </div>
 
-      <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">${(fd.photos||[]).length}/3 photo${(fd.photos||[]).length>1?'s':''} ajoutée${(fd.photos||[]).length>1?'s':''}</div>
+      <div style="margin-top:4px;">${photoCountHTML('excursion', (fd.photos||[]).length)}</div>
     </div>
 
     ${excNavBtns()}
@@ -7529,34 +7589,14 @@ function excFormStep1(fd){
 }
 
 /* ── Photo management ── */
-function excUploadPhotos(input){
-  const files = Array.from(input.files);
+async function excUploadPhotos(input){
   const fd = appState.excursionFormData;
   if(!fd.photos) fd.photos = [];
-  const remaining = 3 - fd.photos.length;
-  if(remaining <= 0){ showToast('Maximum 3 photos atteint', 'var(--red)'); return; }
-  const allowed = ['image/jpeg','image/png','image/webp','image/gif'];
-  const MAX_SIZE = 10*1024*1024;
-  const toProcess = files.slice(0, remaining);
-  let loaded = 0;
-  const total = toProcess.length;
-  toProcess.forEach(function(file){
-    if(!allowed.includes(file.type)){
-      showToast('⚠️ Format non supporté : '+file.name,'var(--red)');
-      loaded++; return;
-    }
-    if(file.size > MAX_SIZE){
-      showToast('⚠️ Fichier trop lourd : '+file.name+' (max 10Mo)','var(--red)');
-      loaded++; return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(e){
-      fd.photos.push({ id: Date.now()+Math.random(), name: file.name, dataUrl: e.target.result, size: file.size });
-      loaded++;
-      if(loaded===total) excRefresh();
-    };
-    reader.readAsDataURL(file);
-  });
+  const added = await readPhotoFiles(input.files, PHOTO_RULES.excursion.max - fd.photos.length);
+  input.value = '';
+  if(!added.length) return;
+  fd.photos.push(...added);
+  excRefresh();
 }
 
 /* excAddPhotoUrl removed */
@@ -7705,6 +7745,9 @@ function excFormValidate(){
     if(!fd.address?.trim()||!fd.governorate||!fd.city){showToast('⚠️ Remplissez l\'adresse, le gouvernorat et la ville','var(--red)');return false;}
     if(fd.city==='__OTHER__'&&!(fd.cityCustom||'').trim()){showToast('⚠️ Indiquez le nom de la ville ou localité','var(--red)');return false;}
     { const de = descLengthError(fd.description); if(de){ showToast(de,'var(--red)'); return false; } }
+  }
+  if(cur===1){
+    const pe = photoRuleError('excursion', (fd.photos||[]).length); if(pe){ showToast(pe,'var(--red)'); return false; }
   }
   if(cur===2){
     if(!fd.price||fd.price<1){showToast('⚠️ Indiquez un prix valide','var(--red)');return false;}
@@ -8135,24 +8178,15 @@ function edRemoveNewPhoto(id){
   aeRefresh();
 }
 
-function edUploadPhotos(files){
+async function edUploadPhotos(files){
   if(!files||files.length===0) return;
   const ed = appState.annEditData;
   if(!ed.newPhotos) ed.newPhotos=[];
-  const MAX_SIZE = 10*1024*1024;
-  const allowed = ['image/jpeg','image/png','image/webp','image/gif'];
-  let loaded=0; const total=files.length;
-  Array.from(files).forEach(file=>{
-    if(!allowed.includes(file.type)){ showToast('⚠️ Format non supporté : '+file.name,'var(--red)'); loaded++; return; }
-    if(file.size>MAX_SIZE){ showToast('⚠️ Fichier trop lourd : '+file.name+' (max 10Mo)','var(--red)'); loaded++; return; }
-    const reader = new FileReader();
-    reader.onload = function(e){
-      ed.newPhotos.push({ id: Date.now()+Math.random(), name: file.name, dataUrl: e.target.result, size: file.size });
-      loaded++;
-      if(loaded===total) aeRefresh();
-    };
-    reader.readAsDataURL(file);
-  });
+  const room = PHOTO_RULES.annonce.max - (ed.photos||[]).length - ed.newPhotos.length;
+  const added = await readPhotoFiles(files, room);
+  if(!added.length) return;
+  ed.newPhotos.push(...added);
+  aeRefresh();
 }
 
 function buildAnnonceEditFormOwner(){
@@ -8265,7 +8299,8 @@ function buildAnnonceEditFormOwnerInner(){
 
     <!-- Photos -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:24px;">
-      <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📷 Photos (${(ed.photos||[]).length + (ed.newPhotos||[]).length})</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">📷 Photos ${photoCountHTML('annonce', (ed.photos||[]).length + (ed.newPhotos||[]).length)}</div>
+      ${photoGuideHTML('annonce')}
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px;">
         ${(ed.photos||[]).map(url=>`
           <div style="position:relative;">
@@ -8504,6 +8539,11 @@ async function saveAnnonceEditOwner(){
   const ed = appState.annEditData;
   if(!ed || !ed.id) return;
   { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
+  // Modification : seul le maximum bloque (la plupart des annonces publiées
+  // avant la règle des 5 photos en ont moins) ; le compteur et le guide
+  // encouragent à compléter.
+  { const nPh = (ed.photos||[]).length + (ed.newPhotos||[]).length;
+    if(nPh > PHOTO_RULES.annonce.max){ showToast(photoRuleError('annonce', nPh),'var(--red)'); return; } }
 
   // Upload des nouvelles photos ajoutées (les photos existantes sont déjà en ligne)
   let finalPhotos = ed.photos||[];
@@ -9802,6 +9842,7 @@ function buildManageExcursions(){
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
               <button onclick="loadExcursionEdit(null,'${e.id}')" style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;">✏️ Modifier</button>
+              ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.id}')" title="Aliya analyse votre excursion et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
               ${(()=>{
                 const n = e.instant_book ? 0 : (pendingMap[e.id]||0);
                 return n
@@ -13570,6 +13611,45 @@ function appendAssistantBubble(role, text){
   box.scrollTop = box.scrollHeight;
 }
 
+// Clé publique « anon » (non secrète, déjà présente dans le site).
+const SUPABASE_ANON_KEY_ALIYA = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk';
+const ALIYA_URL = 'https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/mytunigo-assistant';
+
+// « ✨ Avis d'Aliya » : Aliya relit l'annonce EN LIGNE (côté serveur) et
+// propose des améliorations ; la réponse reste dans la conversation pour
+// pouvoir poursuivre (« réécris ma description », etc.).
+async function askAliyaReview(kind, id){
+  if(!_mtAssistantOpen) toggleAssistant();
+  const ask = kind==='annonce' ? "✨ Peux-tu me donner ton avis sur mon annonce de logement et me dire comment l'améliorer ?"
+                               : "✨ Peux-tu me donner ton avis sur mon excursion et me dire comment l'améliorer ?";
+  appendAssistantBubble('user', ask);
+  const box = document.getElementById('mt-assistant-msgs');
+  const typingEl = document.createElement('div');
+  typingEl.id = 'mt-typing';
+  typingEl.style.cssText = 'align-self:flex-start;font-size:13px;color:var(--gray-400);padding:4px 8px;';
+  typingEl.textContent = '⏳ Aliya analyse votre annonce…';
+  box?.appendChild(typingEl);
+  if(box) box.scrollTop = box.scrollHeight;
+  let reply;
+  try{
+    const res = await fetch(ALIYA_URL, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY_ALIYA },
+      body: JSON.stringify({ action:'review_listing', kind, id })
+    });
+    const data = await res.json().catch(()=>({}));
+    reply = data?.reply
+      || (data?.error==='annonce_introuvable' ? "Je ne trouve pas cette annonce en ligne. Je peux donner mon avis une fois qu'elle a été validée et publiée."
+      : "Désolée, je n'ai pas pu analyser votre annonce pour le moment. Réessayez dans un instant.");
+    if(data?.title) reply = `« ${data.title} »\n\n` + reply;
+  } catch(e){
+    reply = "Connexion impossible pour le moment. Réessayez dans un instant.";
+  }
+  document.getElementById('mt-typing')?.remove();
+  appendAssistantBubble('assistant', reply);
+  _mtAssistantHistory.push({role:'user', text:ask}, {role:'assistant', text:reply});
+}
+
 async function sendAssistantMessage(){
   const input = document.getElementById('mt-assistant-input');
   const text = input?.value?.trim();
@@ -13587,11 +13667,11 @@ async function sendAssistantMessage(){
   box.scrollTop = box.scrollHeight;
 
   try{
-    const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/mytunigo-assistant', {
+    const res = await fetch(ALIYA_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4YmV0YWt1ZXFremlwc3F2dGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDk1MjAsImV4cCI6MjA5ODEyNTUyMH0.e3RRfDjfmH4EJjRiX2UDJhyNKzhWhiHYay8wJFoQYNk'
+        'Authorization': 'Bearer '+SUPABASE_ANON_KEY_ALIYA
       },
       body: JSON.stringify({ message: text, history: _mtAssistantHistory })
     });
