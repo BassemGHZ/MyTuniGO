@@ -8350,7 +8350,7 @@ function buildAnnonceEditFormOwnerInner(){
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📋 Informations générales</div>
       <div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 14px;font-size:13px;color:#856404;margin-bottom:16px;">
-        🔒 Seuls la description, les équipements, la politique & règles de séjour et les photos sont modifiables une fois l'annonce créée. Tout le reste (identité, caractéristiques, contact) est verrouillé pour éviter qu'un bien déjà en ligne (avec avis) change discrètement de nature. Besoin de corriger une erreur ? <a href="mailto:contact@mytunigo.com?subject=${encodeURIComponent('Correction d\'identité — annonce '+(ed.id||''))}" style="color:#003580;font-weight:700;">Contactez l'administrateur</a>.
+        🔒 Seuls la capacité, la description, les équipements, la politique & règles de séjour et les photos sont modifiables une fois l'annonce créée. Tout le reste (identité, caractéristiques, contact) est verrouillé pour éviter qu'un bien déjà en ligne (avec avis) change discrètement de nature. Besoin de corriger une erreur ? <a href="mailto:contact@mytunigo.com?subject=${encodeURIComponent('Correction d\'identité — annonce '+(ed.id||''))}" style="color:#003580;font-weight:700;">Contactez l'administrateur</a>.
       </div>
       ${lockedField("Nom de l'hébergement", ed.name)}
       ${lockedField('Type', (TYPES_ANN.find(t=>t.id===ed.type)||{}).name || ed.type)}
@@ -8363,7 +8363,11 @@ function buildAnnonceEditFormOwnerInner(){
         ${ed.type==='hotel' ? lockedField('Étoiles', ed.stars?'★'.repeat(ed.stars):'') : ''}
         ${lockedField('Chambres', ed.rooms)}
         ${lockedField('Salles de bain', ed.bathrooms)}
-        ${lockedField('Capacité (voyageurs)', ed.capacity)}
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Capacité (voyageurs) <span style="color:var(--green);font-weight:600;text-transform:none;">✏️ modifiable</span></label>
+          <input type="number" min="1" max="30" step="1" value="${ed.capacity||''}" oninput="aeSet('capacity', Math.max(1, Math.min(30, parseInt(this.value)||0)) || '')"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;box-sizing:border-box;">
+        </div>
       </div>
       ${lockedField('Position GPS', (ed.lat&&ed.lng) ? (parseFloat(ed.lat).toFixed(6)+', '+parseFloat(ed.lng).toFixed(6)) : '—')}
     </div>
@@ -8660,6 +8664,7 @@ async function saveAnnonceEditOwner(){
   const ed = appState.annEditData;
   if(!ed || !ed.id) return;
   { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
+  { const cap = parseInt(ed.capacity); if(!(cap>=1 && cap<=30)){ showToast('⚠️ Indiquez une capacité entre 1 et 30 voyageurs.','var(--red)'); return; } ed.capacity = cap; }
   // Modification : seul le maximum bloque (la plupart des annonces publiées
   // avant la règle des 5 photos en ont moins) ; le compteur et le guide
   // encouragent à compléter.
