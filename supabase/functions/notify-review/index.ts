@@ -15,6 +15,8 @@
 //          A) 1er e-mail : réservation 'terminée', départ + 24h passé,
 //             jamais envoyé, pas encore d'avis ;
 //          B) relance unique 24h après le 1er e-mail, toujours pas d'avis.
+//          Même principe pour les excursions (excursion_bookings 'terminée',
+//          le lendemain de l'excursion, puis une relance).
 //          Traitement par lot et idempotent (chaque réservation est
 //          « réservée » avant l'envoi) : un appel en trop n'envoie rien de plus.
 //
@@ -174,6 +176,78 @@ async function hasReview(r: any) {
   return (count ?? 0) > 0;
 }
 
+// ---------- demandes d'avis après une excursion ----------
+// deno-lint-ignore no-explicit-any
+async function sendExcRequest(b: any, kind: "request" | "reminder") {
+  const [{ data: guest }, { data: exc }] = await Promise.all([
+    admin.from("profiles").select("email,first_name").eq("id", b.guest_id).maybeSingle(),
+    admin.from("excursions").select("title,city").eq("id", b.excursion_id).maybeSingle(),
+  ]);
+  const title = exc?.title ?? "";
+  const reminder = kind === "reminder";
+  const subject = reminder
+    ? `⭐ On attend toujours votre avis${title ? " sur " + title : ""}`
+    : `⭐ Comment s'est passée votre excursion${title ? " « " + title + " »" : ""} ?`;
+  return sendMail(
+    guest?.email,
+    subject.slice(0, 150),
+    layout(
+      reminder ? "Votre avis compte" : "Comment s'est passée votre excursion ?",
+      `Bonjour ${esc(guest?.first_name ?? "")},<br><br>` + (reminder
+        ? `Vous n'avez pas encore laissé d'avis sur votre excursion${title ? ` <strong>${esc(title)}</strong>` : ""} du ${fmtDateLong(b.date)}.`
+        : `Votre excursion${title ? ` <strong>${esc(title)}</strong>` : ""}${exc?.city ? ` à ${esc(exc.city)}` : ""} a eu lieu le ${fmtDateLong(b.date)}. Nous espérons que vous avez passé un excellent moment !`)
+        + `<br><br>Votre avis (note + commentaire) aide les futurs voyageurs et le prestataire. Rendez-vous dans « Mes voyages », onglet Excursions : cela ne prend qu'une minute.`,
+      "",
+      { label: "⭐ Laisser un avis", url: SITE },
+      `Réservation ${esc(b.reference ?? "")}`,
+    ),
+  );
+}
+
+// deno-lint-ignore no-explicit-any
+async function hasExcReview(b: any) {
+  const { count, error } = await admin.from("avis").select("id", { count: "exact", head: true })
+    .eq("excursion_id", b.excursion_id).eq("author_id", b.guest_id);
+  if (error) throw new Error(`lecture avis : ${error.message}`);
+  return (count ?? 0) > 0;
+}
+
+async function excursionReviewRequests(now: number) {
+  let sent = 0, reminded = 0;
+  // A) premier e-mail : excursion terminée (passée), jamais envoyé
+  const { data: firsts, error: e1 } = await admin.from("excursion_bookings")
+    .select("id,guest_id,excursion_id,date,reference")
+    .eq("status", "terminée").is("review_email_sent_at", null)
+    .lte("date", new Date(now - DAY_MS).toISOString().slice(0, 10));
+  if (e1) throw new Error(`excursion_bookings : ${e1.message}`);
+  for (const b of firsts ?? []) {
+    if (await hasExcReview(b)) continue;
+    const { data: claimed, error: claimErr } = await admin.from("excursion_bookings")
+      .update({ review_email_sent_at: new Date().toISOString() })
+      .eq("id", b.id).is("review_email_sent_at", null).select("id");
+    if (claimErr) throw new Error(`réservation d'excursion ${b.id} : ${claimErr.message}`);
+    if (!claimed?.length) continue;
+    if (await sendExcRequest(b, "request")) sent++;
+  }
+  // B) relance unique 24 h après le premier e-mail
+  const { data: seconds, error: e2 } = await admin.from("excursion_bookings")
+    .select("id,guest_id,excursion_id,date,reference")
+    .eq("status", "terminée").is("review_reminder_sent_at", null)
+    .not("review_email_sent_at", "is", null)
+    .lte("review_email_sent_at", new Date(now - DAY_MS).toISOString());
+  if (e2) throw new Error(`excursion_bookings : ${e2.message}`);
+  for (const b of seconds ?? []) {
+    if (await hasExcReview(b)) continue;
+    const { data: claimed, error: claimErr } = await admin.from("excursion_bookings")
+      .update({ review_reminder_sent_at: new Date().toISOString() })
+      .eq("id", b.id).is("review_reminder_sent_at", null).select("id");
+    if (claimErr) throw new Error(`réservation d'excursion ${b.id} : ${claimErr.message}`);
+    if (!claimed?.length) continue;
+    if (await sendExcRequest(b, "reminder")) reminded++;
+  }
+  return { sent, reminded };
+}
+
 async function reviewRequests() {
   const now = Date.now();
   let sent = 0, reminded = 0;
@@ -212,7 +286,8 @@ async function reviewRequests() {
     if (await sendRequest(r, "reminder")) reminded++;
   }
 
-  return json({ ok: true, sent, reminded });
+  const exc = await excursionReviewRequests(now);
+  return json({ ok: true, sent, reminded, excursions_sent: exc.sent, excursions_reminded: exc.reminded });
 }
 
 Deno.serve(async (req) => {
