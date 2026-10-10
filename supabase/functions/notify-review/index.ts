@@ -1,10 +1,12 @@
 // =====================================================================
 // MyTunigo — Edge Function "notify-review"
-// E-mails liés aux avis sur les logements.
+// E-mails liés aux avis sur les logements et les excursions.
 //
 // Appels (POST JSON) :
 //   { type: "new_review", annonce_id }            (JWT du VOYAGEUR connecté)
 //       -> e-mail à l'hôte : nouvel avis (ou avis modifié) sur son logement.
+//   { type: "new_review", excursion_id }          (JWT du VOYAGEUR connecté)
+//       -> e-mail au prestataire : nouvel avis sur son excursion.
 //          L'avis est relu en base (auteur = appelant, mis à jour il y a
 //          moins de 10 min) : le navigateur n'envoie ni destinataire ni texte.
 //
@@ -91,18 +93,22 @@ async function newReview(req: Request, body: Record<string, unknown>) {
   if (!uid) return json({ error: "unauthorized" }, 401);
 
   const annonceId = String(body.annonce_id ?? "");
-  if (!annonceId) return json({ error: "annonce_id manquant" }, 400);
+  const excursionId = String(body.excursion_id ?? "");
+  if (!annonceId && !excursionId) return json({ error: "annonce_id ou excursion_id manquant" }, 400);
+  const isExc = !annonceId;
 
   const { data: avis, error: avisErr } = await admin.from("avis")
     .select("rating,comment,created_at,updated_at")
-    .eq("author_id", uid).eq("logement_id", annonceId).maybeSingle();
+    .eq("author_id", uid).eq(isExc ? "excursion_id" : "logement_id", isExc ? excursionId : annonceId).maybeSingle();
   if (avisErr) return json({ error: avisErr.message }, 500);
   if (!avis) return json({ error: "not_found" }, 404);
   const last = new Date(avis.updated_at ?? avis.created_at).getTime();
   if (Date.now() - last > NEW_REVIEW_MAX_AGE_MS) return json({ error: "too_old" }, 409);
 
   const [{ data: ann }, { data: author }] = await Promise.all([
-    admin.from("annonces").select("name,contact_email,contact_firstname").eq("id", annonceId).maybeSingle(),
+    isExc
+      ? admin.from("excursions").select("name:title,contact_email,contact_firstname").eq("id", excursionId).maybeSingle()
+      : admin.from("annonces").select("name,contact_email,contact_firstname").eq("id", annonceId).maybeSingle(),
     admin.from("profiles").select("first_name").eq("id", uid).maybeSingle(),
   ]);
   if (!ann?.contact_email) return json({ error: "host_email_missing" }, 422);
@@ -110,7 +116,7 @@ async function newReview(req: Request, body: Record<string, unknown>) {
   const rating = Math.max(1, Math.min(5, Number(avis.rating) || 0));
   const stars = "★".repeat(rating) + "☆".repeat(5 - rating);
   const comment = String(avis.comment ?? "").slice(0, 2000);
-  const propName = ann.name ?? "votre hébergement";
+  const propName = ann.name ?? (isExc ? "votre excursion" : "votre hébergement");
   const reviewer = author?.first_name || "Un voyageur";
 
   await sendMail(
@@ -123,7 +129,7 @@ async function newReview(req: Request, body: Record<string, unknown>) {
          <div style="font-size:20px;color:#e6a800;letter-spacing:2px;">${stars}</div>
          ${comment ? `<div style="font-size:15px;line-height:1.6;margin-top:8px;white-space:pre-wrap;">${esc(comment)}</div>` : ""}
        </div>`,
-      { label: "Voir sur MyTunigo", url: SITE },
+      { label: "Voir sur MyTunigo", url: isExc ? `${SITE}/?exc=${encodeURIComponent(excursionId)}` : SITE },
     ),
   );
   if (mailErrors.length) return json({ error: "mail_failed" }, 502);
