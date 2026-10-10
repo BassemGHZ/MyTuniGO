@@ -7545,7 +7545,7 @@ function excFormStep1(fd){
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE FIN (optionnel)</label>
-          <input type="time" value="${fd.meetingTimeEnd||''}" oninput="excSet('meetingTimeEnd',this.value);excAutoDuration('exc')"
+          <input id="ef-meeting-time-end" type="time" value="${fd.meetingTimeEnd||''}" oninput="excSet('meetingTimeEnd',this.value);excAutoDuration('exc')"
             style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;">
         </div>
         <div>
@@ -7560,7 +7560,7 @@ function excFormStep1(fd){
           </div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--gray-400);margin-top:6px;">La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster (ex. excursion sur plusieurs jours).</div>
+      <div id="ef-time-hint" style="font-size:11px;color:var(--gray-400);margin-top:6px;">La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster (ex. excursion sur plusieurs jours).</div>
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Quoi apporter</label>
@@ -7732,12 +7732,41 @@ function excSet(key, val){ appState.excursionFormData[key] = val; }
 // trois champs restent cohérents. 'exc' = création (nombre + unité),
 // 'ed' = modification (texte « 3h », « 2h30 »). Ne fait rien si l'heure de
 // fin manque ou n'est pas après l'heure de début.
+// Écart en minutes entre l'heure de début et l'heure de fin :
+//  - null si l'une des deux manque ;
+//  - 0 si elles sont identiques (erreur, signalée au prestataire) ;
+//  - fin avant début = l'excursion se termine le lendemain (ex. 22:00 → 02:00).
+function excTimeSpan(start, end){
+  if(!start || !end) return null;
+  const toMin = t => { const [h,m] = String(t).split(':').map(Number); return h*60+(m||0); };
+  let mins = toMin(end) - toMin(start);
+  if(mins < 0) mins += 24*60;
+  return mins;
+}
+function _excTimeHint(key, mins, d){
+  const el = document.getElementById(key==='ed' ? 'ed-time-hint' : 'ef-time-hint');
+  const endInput = key==='ed' ? document.querySelectorAll('#ed-times input[type="time"]')[1] : document.getElementById('ef-meeting-time-end');
+  if(!el) return;
+  if(mins === 0){
+    el.textContent = "⚠️ L'heure de fin doit être différente de l'heure de début.";
+    el.style.color = 'var(--red)';
+  } else if(mins != null && String(d.meetingTimeEnd) < String(d.meetingTime)){
+    el.textContent = "🌙 L'excursion se termine le lendemain. La durée a été calculée automatiquement ; vous pouvez l'ajuster.";
+    el.style.color = 'var(--gray-500)';
+  } else {
+    el.textContent = key==='ed'
+      ? "La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster."
+      : "La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster (ex. excursion sur plusieurs jours).";
+    el.style.color = 'var(--gray-400)';
+  }
+  if(endInput) endInput.style.borderColor = mins === 0 ? 'var(--red)' : '';
+}
 function excAutoDuration(key){
   const d = key==='ed' ? appState.excEditData : appState.excursionFormData;
-  if(!d || !d.meetingTime || !d.meetingTimeEnd) return;
-  const toMin = t => { const [h,m] = String(t).split(':').map(Number); return h*60+(m||0); };
-  const mins = toMin(d.meetingTimeEnd) - toMin(d.meetingTime);
-  if(!(mins > 0)) return;
+  if(!d) return;
+  const mins = excTimeSpan(d.meetingTime, d.meetingTimeEnd);
+  _excTimeHint(key, mins, d);
+  if(!mins) return; // heure manquante ou identique : on ne touche pas à la durée
   if(key==='ed'){
     const h = Math.floor(mins/60), m = mins%60;
     d.duration = h ? (h+'h'+(m?String(m).padStart(2,'0'):'')) : (m+' min');
@@ -7771,6 +7800,7 @@ function excFormValidate(){
       if(t){ t.style.borderColor='var(--red)'; t.scrollIntoView({behavior:'smooth', block:'center'}); t.focus(); }
       return false;
     }
+    if(excTimeSpan(fd.meetingTime, fd.meetingTimeEnd) === 0){ showToast("⚠️ L'heure de fin doit être différente de l'heure de début",'var(--red)'); return false; }
     const pe = photoRuleError('excursion', (fd.photos||[]).length); if(pe){ showToast(pe,'var(--red)'); return false; }
   }
   if(cur===2){
@@ -10100,7 +10130,7 @@ function buildExcursionEditFormInner(){
             style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;box-sizing:border-box;">
         </div>
       </div>
-      <div style="font-size:11px;color:var(--gray-400);margin-top:-6px;">La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster.</div>
+      <div id="ed-time-hint" style="font-size:11px;color:var(--gray-400);margin-top:-6px;">La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster.</div>
     </div>
 
     <!-- Disponibilités -->
@@ -10166,6 +10196,7 @@ async function saveExcursionEdit(){
   { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
   if(_charCount(ed.schedule) > 200){ showToast('⚠️ Programme trop long : 200 caractères maximum.','var(--red)'); return; }
   if(!ed.meetingTime){ showToast("⚠️ Indiquez l'heure de début de l'excursion",'var(--red)'); return; }
+  if(excTimeSpan(ed.meetingTime, ed.meetingTimeEnd) === 0){ showToast("⚠️ L'heure de fin doit être différente de l'heure de début",'var(--red)'); return; }
   const updates = {
     title: ed.title, category: ed.category,
     category_label: (EXCURSION_CATS.find(c=>c.id===ed.category)||{}).label || '',
