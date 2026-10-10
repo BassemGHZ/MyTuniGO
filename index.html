@@ -2293,7 +2293,7 @@ function hotelCardHTML(h){
         <span>🛏️ ${h.rooms||1} chambre${(h.rooms||1)>1?'s':''}</span>
         <span>👥 ${h.capacity||2} voyageur${(h.capacity||2)>1?'s':''}</span>
       </div>
-      <div class="hc-rating"><div class="r-badge">${h.rating}★</div><span class="r-count">${h.reviews.toLocaleString()} avis</span></div>
+      <div class="hc-rating" title="Note moyenne des voyageurs"><div class="r-badge">${ratingBadgeText(h)}</div><span class="r-count">${reviewsText(h)}</span></div>
       ${hasDiscount?`<div style="font-size:13px;color:var(--gray-400);text-decoration:line-through;">${h.price}€</div>`:''}
       ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;">🏷️ Sur certaines dates</div>`:''}
       <div class="hc-price" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€<span style="font-size:13px;color:var(--gray-500);font-weight:400">/nuit</span></div>
@@ -2405,6 +2405,22 @@ function pickDestSuggestion(value){
 }
 
 /* ===================== RESULTS ===================== */
+/* Étoiles de CLASSEMENT (hôtels uniquement) ≠ NOTE des voyageurs (avis).
+   Auparavant tous les logements affichaient ★★★ (valeur par défaut 3), à
+   côté d'un badge « 4★ » de note : les deux se confondaient. */
+function classStarsHTML(h){
+  if(!h || h.type!=='Hôtel' || !(+h.stars>=1)) return '';
+  return `<span title="Classement de l'hôtel : ${+h.stars} étoile${+h.stars>1?'s':''}" style="color:#e6a800;letter-spacing:1px;">${'★'.repeat(+h.stars)}</span>`;
+}
+function ratingBadgeText(h){
+  const r = Number(h?.rating)||0;
+  return r ? r.toFixed(1).replace('.',',')+'/5' : 'Nouveau';
+}
+function reviewsText(h){
+  const n = Number(h?.reviews)||0;
+  return n ? `${n.toLocaleString()} avis voyageur${n>1?'s':''}` : 'Pas encore d\'avis';
+}
+
 function haversineKm(lat1, lng1, lat2, lng2){
   const R = 6371;
   const dLat = (lat2-lat1) * Math.PI/180;
@@ -3117,13 +3133,13 @@ function resultCardHTML(h){
           <div class="rc-name">${h.name}</div>
           <button id="fav-btn-${h.id}" onclick="event.stopPropagation();toggleFavorite(${h.id})" style="background:none;border:none;font-size:22px;cursor:pointer;flex-shrink:0;line-height:1;padding:0;transition:transform .15s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${getFavIcon(h.id)}</button>
         </div>
-        <div class="rc-type">${h.type} ${'★'.repeat(h.stars)}</div>
+        <div class="rc-type">${h.type} ${classStarsHTML(h)}</div>
         <div class="rc-loc">📍 ${h.address||(h.city+', '+h.country)}${h._distanceKm!=null?` <span style="color:#e6a800;font-weight:700;">· à ${Math.round(h._distanceKm)} km de votre recherche</span>`:''}</div>
         <div class="rc-tags">${h.features.slice(0,4).map(f=>`<span class="rc-tag">${amenIcon(f)} ${amenLabel(f)}</span>`).join('')}</div>
         <div class="rc-desc">${h.desc.substring(0,120)}…</div>
       </div>
       <div class="rc-price">
-        <div style="display:flex;align-items:center;gap:6px;"><div class="r-badge">${h.rating}★</div><div><div style="font-size:12px;font-weight:700;color:var(--gray-700)">${h.ratingLabel}</div><div style="font-size:11px;color:var(--gray-500)">${h.reviews.toLocaleString()} avis</div></div></div>
+        <div style="display:flex;align-items:center;gap:6px;" title="Note moyenne des voyageurs"><div class="r-badge">${ratingBadgeText(h)}</div><div><div style="font-size:12px;font-weight:700;color:var(--gray-700)">${(Number(h.rating)||0)?h.ratingLabel:''}</div><div style="font-size:11px;color:var(--gray-500)">${reviewsText(h)}</div></div></div>
         <div class="rc-badges">
           ${h.freeCancellation?'<span class="badge-green">✓ Annulation gratuite</span>':''}
           <span class="badge-green">✓ Paiement après accord de l'hôte</span>
@@ -3331,10 +3347,10 @@ function buildDetail(){
     </div>
     <div class="det-meta">
       <span style="background:var(--gray-100);color:var(--gray-700);font-size:13px;font-weight:700;padding:4px 12px;border-radius:20px;">${({'Hôtel':'🏨','Appartement':'🏢','Maison':'🏡','Studio':'🛋️','Chalet':'🏔️'})[h.type]||'🏠'} ${h.type||'Hébergement'}</span>
-      <span class="stars-txt">${'★'.repeat(h.stars)}</span>
-      <div class="r-badge">${h.rating}★</div>
-      <strong>${h.ratingLabel}</strong>
-      <span style="color:var(--gray-500)">· ${h.reviews.toLocaleString()} avis</span>
+      ${classStarsHTML(h)?`<span class="stars-txt">${classStarsHTML(h)}</span>`:''}
+      <div class="r-badge" title="Note moyenne des voyageurs">${ratingBadgeText(h)}</div>
+      ${(Number(h.rating)||0)?`<strong>${h.ratingLabel}</strong>`:''}
+      <span style="color:var(--gray-500)">· ${reviewsText(h)}</span>
       <span class="det-loc">📍 ${h.address||(h.city+', '+h.country)}</span>
     </div>
     <div class="gallery">
