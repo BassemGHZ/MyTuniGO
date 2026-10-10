@@ -7406,15 +7406,6 @@ function excFormStep0(fd){
       ${charCounterHTML('ef-desc-count', fd.description, DESC_MAX, DESC_MIN)}</div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:14px;margin-bottom:14px;">
-      <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée</label>
-        <div style="display:flex;gap:6px;">
-          <input type="number" min="1" max="30" value="${fd.duration||2}" oninput="excSet('duration',this.value)"
-            style="flex:1;padding:10px 8px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
-          <select oninput="excSet('durationUnit',this.value)" style="padding:10px 8px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:13px;">
-            <option value="h" ${fd.durationUnit==='h'?'selected':''}>heures</option>
-            <option value="j" ${fd.durationUnit==='j'?'selected':''}>jours</option>
-          </select>
-        </div></div>
       <div><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Groupe max</label>
         <input type="number" min="1" max="100" value="${fd.groupSize}" oninput="excSet('groupSize',+this.value)"
           style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
@@ -7469,18 +7460,30 @@ function excFormStep1(fd){
       <input type="text" maxlength="70" placeholder="Ex : Devant la grande porte de la médina, Place Jemaa el-Fna" value="${fd.meetingPoint||''}"
         oninput="excSet('meetingPoint',this.value)"
         style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE DÉBUT</label>
-          <input type="time" value="${fd.meetingTime||''}" oninput="excSet('meetingTime',this.value)"
+          <input type="time" value="${fd.meetingTime||''}" oninput="excSet('meetingTime',this.value);excAutoDuration('exc')"
             style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;">
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE FIN (optionnel)</label>
-          <input type="time" value="${fd.meetingTimeEnd||''}" oninput="excSet('meetingTimeEnd',this.value)"
+          <input type="time" value="${fd.meetingTimeEnd||''}" oninput="excSet('meetingTimeEnd',this.value);excAutoDuration('exc')"
             style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;">
         </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">DURÉE</label>
+          <div style="display:flex;gap:6px;">
+            <input id="ef-duration" type="number" min="0.5" max="30" step="0.5" value="${fd.duration||2}" oninput="excSet('duration',this.value)"
+              style="flex:1;min-width:0;padding:9px 8px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;">
+            <select id="ef-duration-unit" onchange="excSet('durationUnit',this.value)" style="padding:9px 6px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:13px;">
+              <option value="h" ${fd.durationUnit!=='j'?'selected':''}>heures</option>
+              <option value="j" ${fd.durationUnit==='j'?'selected':''}>jours</option>
+            </select>
+          </div>
+        </div>
       </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:6px;">La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster (ex. excursion sur plusieurs jours).</div>
     </div>
 
     <div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Quoi apporter</label>
@@ -7667,6 +7670,27 @@ function excFormStep3(fd){
 }
 
 function excSet(key, val){ appState.excursionFormData[key] = val; }
+// Durée déduite des heures de début et de fin (même journée), pour que les
+// trois champs restent cohérents. 'exc' = création (nombre + unité),
+// 'ed' = modification (texte « 3h », « 2h30 »). Ne fait rien si l'heure de
+// fin manque ou n'est pas après l'heure de début.
+function excAutoDuration(key){
+  const d = key==='ed' ? appState.excEditData : appState.excursionFormData;
+  if(!d || !d.meetingTime || !d.meetingTimeEnd) return;
+  const toMin = t => { const [h,m] = String(t).split(':').map(Number); return h*60+(m||0); };
+  const mins = toMin(d.meetingTimeEnd) - toMin(d.meetingTime);
+  if(!(mins > 0)) return;
+  if(key==='ed'){
+    const h = Math.floor(mins/60), m = mins%60;
+    d.duration = h ? (h+'h'+(m?String(m).padStart(2,'0'):'')) : (m+' min');
+    const el = document.getElementById('ed-duration'); if(el) el.value = d.duration;
+  } else {
+    d.duration = Math.max(0.5, Math.round(mins/30)/2);
+    d.durationUnit = 'h';
+    const el = document.getElementById('ef-duration'); if(el) el.value = d.duration;
+    const u = document.getElementById('ef-duration-unit'); if(u) u.value = 'h';
+  }
+}
 function excRefresh(){ const el=document.getElementById('exc-form-step'); if(el){ el.innerHTML=excFormStep(appState.excursionFormPage||0, appState.excursionFormData); if((appState.excursionFormPage||0)===0) setTimeout(()=>initExcPosPicker('exc'), 50); } }
 function excToggleLang(l){ const arr=appState.excursionFormData.language||[]; if(arr.includes(l)) appState.excursionFormData.language=arr.filter(x=>x!==l); else arr.push(l); excRefresh(); }
 function excToggleInclude(id){ const arr=appState.excursionFormData.includes||[]; if(arr.includes(id)) appState.excursionFormData.includes=arr.filter(x=>x!==id); else arr.push(id); excRefresh(); }
@@ -7805,7 +7829,10 @@ async function excFormPublish(){
   }
   const cat = EXCURSION_CATS.find(c=>c.id===fd.category)||{icon:'✈️',label:'Excursion'};
   const ref = 'EXC-'+Math.random().toString(36).substr(2,8).toUpperCase();
-  const durationStr = (fd.duration||2)+(fd.durationUnit==='j'?' jour':'h');
+  // « 3.5 » heures → « 3h30 » (format français)
+  const _dur = parseFloat(fd.duration)||2;
+  const durationStr = fd.durationUnit==='j' ? _dur+' jour'+(_dur>1?'s':'')
+    : (Number.isInteger(_dur) ? _dur+'h' : Math.floor(_dur)+'h'+String(Math.round((_dur%1)*60)).padStart(2,'0'));
 
   const btn = document.querySelector('.btn-publish');
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-sm"></span> Publication…';}
@@ -9897,7 +9924,6 @@ function buildExcursionEditFormInner(){
             <option selected>Tunisie</option>
           </select>
         </div>
-        ${field('Durée (ex: 3h, 1 jour)','duration')}
         ${field('Âge minimum','minAge','number')}
         ${field('Prix (€)','price','number')}
         ${field('Participants max','maxParticipants','number')}
@@ -9950,10 +9976,16 @@ function buildExcursionEditFormInner(){
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📍 Point de rendez-vous</div>
       ${field('Adresse / lieu','meetingPoint')}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div id="ed-times" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;" oninput="if(event.target.type==='time') excAutoDuration('ed')">
         ${field('Heure début','meetingTime','time')}
         ${field('Heure fin','meetingTimeEnd','time')}
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Durée</label>
+          <input id="ed-duration" type="text" placeholder="ex : 3h, 1 jour" value="${(ed.duration??'').toString().replace(/"/g,'&quot;')}" oninput="edSet('duration', this.value)"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;box-sizing:border-box;">
+        </div>
       </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:-6px;">La durée se calcule automatiquement à partir des heures de début et de fin ; vous pouvez l'ajuster.</div>
     </div>
 
     <!-- Disponibilités -->
