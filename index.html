@@ -2475,7 +2475,14 @@ const RADIUS_MAX_KM = 100;
 
 async function loadNearbyFallback(query){
   appState._nearbyFallback = { query, loading:true };
-  const known = (typeof govCenter==='function') ? govCenter(query) : null;
+  // 1) La destination est le nom d'un logement (suggestion « Bien ») : le
+  //    périmètre se mesure autour de ce logement.
+  const q = String(query||'').trim().toLowerCase();
+  const bien = hotels.find(h=>h.country==='Tunisie' && (h.name||'').trim().toLowerCase()===q
+    && h.lat!=null && h.lng!=null && !isNaN(h.lat) && !isNaN(h.lng));
+  // 2) Sinon un gouvernorat ou une ville connus ; 3) sinon Nominatim.
+  const known = bien ? [parseFloat(bien.lat), parseFloat(bien.lng)]
+    : (typeof govCenter==='function') ? govCenter(query) : null;
   if(known){
     // Centre connu : disponible tout de suite (getFiltered le relit aussitôt).
     appState._nearbyFallback = { query, loading:false, centerLat:known[0], centerLng:known[1] };
@@ -2633,6 +2640,8 @@ function radiusFilterHTML(){
         </div>
         <div style="font-size:12px;color:var(--gray-500);margin-top:8px;line-height:1.5;">
           ${!hasDest ? 'Saisissez une destination pour régler le périmètre.'
+            : (appState._nearbyFallback && appState._nearbyFallback.query===appState.searchDest && (appState._nearbyFallback.notFound || appState._nearbyFallback.error))
+              ? `⚠️ Impossible de situer « ${String(appState.searchDest).replace(/</g,'&lt;')} » sur la carte : le périmètre ne peut pas s'appliquer. Essayez une ville ou un gouvernorat.`
             : auto ? `Automatique : biens à moins de ${AUTO_RADIUS_KM} km ajoutés s'il y a peu de résultats. Déplacez le curseur pour choisir.`
             : r===0 ? `Uniquement « ${appState.searchDest} ».`
             : `« ${appState.searchDest} » et les biens à moins de ${r} km.`}
