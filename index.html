@@ -1160,7 +1160,7 @@ function render() {
   if(pg==='excursion-detail' && appState.excBookingDate){
     setTimeout(()=>updateExcSpotsLeft(appState.selectedExcursionId, appState.excBookingDate), 160);
   }
-  if(pg==='annonce' && appState.annoncePage===1) setTimeout(initAnnMap, 200);
+  if(pg==='annonce' && appState.annoncePage===1) setTimeout(()=>initExcPosPicker('ann'), 200);
   if(pg==='excursion-form' && !(appState.excursionFormPage||0)) setTimeout(()=>initExcPosPicker('exc'), 200);
 }
 
@@ -4486,19 +4486,7 @@ function annStep1(ad){
   return `<div class="ann-card">
   <div class="ann-sec">Adresse de l'hébergement</div>
   ${addressBlockHTML('ann', ad)}
-  <div style="margin-top:12px;">
-    <button onclick="geocodeAddress()" style="background:var(--blue);color:#fff;padding:9px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">🔍 Localiser sur la carte</button>
-    <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">La carte se centre sur votre adresse</span>
-  </div>
-
-  <!-- Carte -->
-  <div style="margin-top:16px;">
-    <div style="font-size:13px;color:var(--gray-700);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-weight:600;">
-      🗺️ <span>Localisation du bien <span style="color:var(--red);">*</span> — <strong>cliquez sur la carte pour positionner un point</strong></span>
-    </div>
-    <div id="ann-map" style="height:420px;border-radius:var(--r-lg);border:1.5px solid var(--gray-300);overflow:hidden;z-index:1;"></div>
-    <div id="ann-map-coords" style="font-size:12px;color:${ad.lat&&ad.lng?'var(--green)':'var(--red)'};margin-top:6px;text-align:right;font-weight:600;">${ad.lat&&ad.lng?'✅ Coordonnées : '+parseFloat(ad.lat).toFixed(6)+', '+parseFloat(ad.lng).toFixed(6):'⚠️ Aucun point positionné — cliquez sur la carte'}</div>
-  </div>
+  ${excPosPickerHTML('ann')}
 
   <div class="ann-sec" style="margin-top:20px;">Accès</div>
   <div class="ann-full a-field"><label>Instructions d\'acces</label>
@@ -4886,7 +4874,7 @@ function resolveCityName(vals){
 function addrGovPicked(prefix, gov){
   const c = _addrCtx(prefix);
   c.set('governorate', gov); c.set('city',''); c.set('zip','');
-  if(prefix==='exc'){ c.data.lat = null; c.data.lng = null; }
+  c.data.lat = null; c.data.lng = null; // le point placé n'est plus valable
   c.refresh();
 }
 
@@ -4961,7 +4949,7 @@ function annAutoFill(){
 function annRefresh(){
   const el=document.getElementById('ann-step');
   if(el) el.innerHTML=annStep(appState.annoncePage,appState.annonceData);
-  if(appState.annoncePage===1) setTimeout(initAnnMap, 150);
+  if(appState.annoncePage===1) setTimeout(()=>initExcPosPicker('ann'), 150);
 }
 
 function annToggleAmen(id){
@@ -8436,8 +8424,8 @@ function govCenter(name){
   return k ? TUNISIA_GOV_CENTERS[k] : null;
 }
 
-const _excPos = { exc:{map:null,marker:null}, ed:{map:null,marker:null} };
-function _excPosData(key){ return key==='ed' ? appState.excEditData : appState.excursionFormData; }
+const _excPos = { exc:{map:null,marker:null}, ed:{map:null,marker:null}, ann:{map:null,marker:null} };
+function _excPosData(key){ return key==='ed' ? appState.excEditData : key==='ann' ? appState.annonceData : appState.excursionFormData; }
 // Centre de repli : ville d'abord (si connue), puis gouvernorat.
 function _excPosFallback(d){
   return govCenter(resolveCityName(d||{})) || govCenter(d?.governorate) || govCenter(d?.city) || null;
@@ -8445,19 +8433,23 @@ function _excPosFallback(d){
 
 function excPosPickerHTML(key){
   const d = _excPosData(key) || {};
-  const has = d.lat!=null && d.lng!=null && !isNaN(parseFloat(d.lat)) && !isNaN(parseFloat(d.lng));
+  const has = d.lat!=null && d.lat!=='' && d.lng!=null && d.lng!=='' && !isNaN(parseFloat(d.lat)) && !isNaN(parseFloat(d.lng));
+  const isAnn = key==='ann';
   return `
   <div style="margin:4px 0 16px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
-      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;">📍 Position sur la carte</label>
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;">📍 Position sur la carte${isAnn?' <span style="color:var(--red);">*</span>':''}</label>
       <button type="button" onclick="excPosLocate('${key}')" style="background:var(--blue);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:12px;font-weight:700;border:none;cursor:pointer;">🔍 Localiser l'adresse</button>
     </div>
-    <div id="exc-pos-map-${key}" style="height:240px;border-radius:var(--r-md);border:1.5px solid var(--gray-300);background:var(--gray-100);"></div>
-    <div id="exc-pos-coords-${key}" style="font-size:12px;margin-top:6px;color:${has?'var(--green)':'var(--gray-600)'};">
+    <div id="exc-pos-map-${key}" style="height:${isAnn?300:240}px;border-radius:var(--r-md);border:1.5px solid var(--gray-300);background:var(--gray-100);"></div>
+    <div id="exc-pos-coords-${key}" style="font-size:12px;margin-top:6px;color:${has?'var(--green)':(isAnn?'var(--red)':'var(--gray-600)')};">
       ${has ? `✅ Coordonnées : ${parseFloat(d.lat).toFixed(5)}, ${parseFloat(d.lng).toFixed(5)}`
-            : "Cliquez sur la carte pour placer le point de départ. Sans point, le centre du gouvernorat sera utilisé."}
+            : isAnn ? "⚠️ Cliquez sur la carte (ou « Localiser l'adresse ») pour placer votre logement — obligatoire."
+                    : "Cliquez sur la carte pour placer le point de départ. Sans point, le centre du gouvernorat sera utilisé."}
     </div>
-    <div style="font-size:11px;color:var(--gray-500);margin-top:2px;">Cette position permet de proposer votre excursion aux voyageurs qui logent à moins de 50 km.</div>
+    <div style="font-size:11px;color:var(--gray-500);margin-top:2px;">${isAnn
+      ? "Ce point montre aux voyageurs où se trouve votre logement et sert à leur proposer les excursions à proximité. Vous pouvez déplacer le point en le faisant glisser."
+      : "Cette position permet de proposer votre excursion aux voyageurs qui logent à moins de 50 km."}</div>
   </div>`;
 }
 
@@ -13272,8 +13264,6 @@ async function uploadProfilPhoto(event){
 }
 
 /* ===================== LEAFLET MAPS ===================== */
-let annMap = null;
-let annMarker = null;
 let hotelMap = null;
 
 // Hotel coords lookup
@@ -13307,98 +13297,6 @@ function initHotelMap(hId){
     L.circle(coords, {radius:300, color:'var(--blue)', fillColor:'#003580', fillOpacity:0.07, weight:1.5}).addTo(map);
     hotelMap = map;
   }, 100);
-}
-
-function initAnnMap(){
-  const mapEl = document.getElementById('ann-map');
-  if(!mapEl){ console.warn('ann-map not found'); return; }
-  // Destroy existing map instance if any
-  if(annMap){ try{ annMap.remove(); }catch(e){} annMap=null; annMarker=null; }
-
-  // Initialize map synchronously (DOM element already exists)
-  annMap = L.map('ann-map', {scrollWheelZoom:false}).setView([46.6034, 1.8883], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    subdomains:'abc', maxZoom:19
-  }).addTo(annMap);
-
-  // Click on map to place marker
-  annMap.on('click', function(e){
-    placeAnnMarker(e.latlng.lat, e.latlng.lng);
-  });
-
-  // If coords already saved → place marker immediately
-  const savedLat = parseFloat(appState.annonceData.lat);
-  const savedLng = parseFloat(appState.annonceData.lng);
-  if(!isNaN(savedLat) && !isNaN(savedLng)){
-    annMap.setView([savedLat, savedLng], 14);
-    placeAnnMarker(savedLat, savedLng);
-  }
-}
-
-function placeAnnMarker(lat, lng){
-  if(!annMap) return;
-  const icon = L.divIcon({
-    html:'<div style="background:#cc0000;border:3px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
-    iconSize:[18,18], iconAnchor:[9,9], className:''
-  });
-  if(annMarker) annMap.removeLayer(annMarker);
-  annMarker = L.marker([lat,lng], {icon, draggable:true}).addTo(annMap);
-  annMarker.on('dragend', function(e){
-    const p = e.target.getLatLng();
-    updateCoordsDisplay(p.lat, p.lng);
-  });
-  updateCoordsDisplay(lat, lng);
-  appState.annonceData.lat = lat;
-  appState.annonceData.lng = lng;
-}
-
-function updateCoordsDisplay(lat, lng){
-  const el = document.getElementById('ann-map-coords');
-  if(el){
-    el.textContent = '✅ Coordonnées : ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
-    el.style.color = 'var(--green)';
-  }
-  appState.annonceData.lat = lat;
-  appState.annonceData.lng = lng;
-}
-
-async function geocodeAddress(){
-  const ad = appState.annonceData;
-  const query = [ad.address, ad.city, ad.zip, ad.country].filter(Boolean).join(', ');
-  if(!query.trim()){showToast('⚠️ Remplissez d\'abord votre adresse','var(--red)');return;}
-
-  // Find button by text content (more robust)
-  const btns = Array.from(document.querySelectorAll('button'));
-  const btn = btns.find(b=>b.textContent.includes('Localiser'));
-  if(btn){btn.textContent='⏳ Recherche...';btn.disabled=true;}
-
-  try {
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(query)+'&limit=1';
-    const res = await fetch(url, {headers:{'Accept-Language':'fr','User-Agent':'MyTunigo/1.0'}});
-    const data = await res.json();
-    if(data && data.length>0){
-      const lat=parseFloat(data[0].lat), lng=parseFloat(data[0].lon);
-      // Ensure map is ready before placing marker
-      if(!annMap){
-        initAnnMap();
-        setTimeout(()=>{
-          if(annMap){annMap.setView([lat,lng],15);placeAnnMarker(lat,lng);}
-        },400);
-      } else {
-        annMap.setView([lat,lng],15);
-        placeAnnMarker(lat,lng);
-      }
-      appState.annonceData.lat=lat;
-      appState.annonceData.lng=lng;
-      showToast('📍 Adresse localisée avec succès !','var(--green)');
-    } else {
-      showToast('Adresse introuvable — vérifiez ou cliquez sur la carte','var(--gray-700)');
-    }
-  } catch(e){
-    showToast('Erreur réseau — vérifiez votre connexion','var(--red)');
-  }
-  if(btn){btn.textContent='🔍 Localiser sur la carte';btn.disabled=false;}
 }
 
 // Map init calls are handled directly in render() and annRefresh()
