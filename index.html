@@ -1185,6 +1185,38 @@ document.addEventListener('click', function(e){
 
 const NAV_ID_KEYS = ['selectedHotelId','selectedAnnonceId','selectedConvId','selectedExcursionId','selectedHostId','selectedResaId'];
 
+// Adresse web propre à chaque annonce / excursion (lien partageable et
+// rechargement fiable) :
+//   logement  : https://mytunigo.com/?logement=<id annonce>#detail
+//   excursion : https://mytunigo.com/?exc=<id excursion>#excursion-detail
+// Les autres pages gardent l'adresse simple https://mytunigo.com/#page.
+function pageUrl(page){
+  const base = window.location.pathname;
+  try{
+    if(page==='detail'){
+      const h = hotels.find(x=>x.id===appState.selectedHotelId);
+      const aid = h?.annonceId || appState._deepAnnonceId;
+      if(aid) return base+'?logement='+encodeURIComponent(aid)+'#detail';
+    }
+    if(page==='excursion-detail'){
+      const sel = String(appState.selectedExcursionId||'');
+      const uuid = sel.startsWith('REAL-EXC-') ? sel.slice(9)
+        : ((appState.myExcursions||[]).find(x=>x.id===sel)?.excursionId || (/^[0-9a-f-]{36}$/i.test(sel)?sel:''));
+      if(uuid) return base+'?exc='+encodeURIComponent(uuid)+'#excursion-detail';
+    }
+  }catch(e){}
+  return base+'#'+page;
+}
+
+// Lien de la page affichée, copié dans le presse-papiers (bouton « Partager »).
+async function copyPageLink(btn){
+  const url = window.location.origin + pageUrl(appState.page);
+  try{ await navigator.clipboard.writeText(url); }
+  catch(e){ window.prompt('Copiez ce lien :', url); return; }
+  showToast('🔗 Lien copié : vous pouvez le partager','var(--green)');
+  if(btn){ const t = btn.innerHTML; btn.innerHTML = '✓ Lien copié'; setTimeout(()=>{ btn.innerHTML = t; }, 2000); }
+}
+
 function navigate(page, extra){
   const heroDD = document.getElementById('hero-cal-dropdown');
   if(heroDD) heroDD.remove();
@@ -1217,8 +1249,8 @@ function navigate(page, extra){
   const samePlace = page===prevPage && NAV_ID_KEYS.every((k,i)=>prevIds[i]===newIds[i]);
   const histState = { page, ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) };
   try{
-    if(samePlace) history.replaceState(histState, '', '#'+page);
-    else history.pushState(histState, '', '#'+page);
+    if(samePlace) history.replaceState(histState, '', pageUrl(page));
+    else history.pushState(histState, '', pageUrl(page));
   }catch(e){ /* ignore (ex: sandbox sans accès à l'historique) */ }
 
   render();
@@ -3341,9 +3373,10 @@ function buildDetail(){
   <div class="detail-wrap">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px;">
       <div class="det-name" style="margin-bottom:0;">${h.name}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">${h.annonceId?`<button onclick="copyPageLink(this)" style="background:none;border:1.5px solid var(--gray-300);border-radius:var(--r-md);padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer;">🔗 Partager</button>`:''}
       <button onclick="toggleFavorite(${h.id});render()" style="background:none;border:1.5px solid var(--gray-300);border-radius:var(--r-md);padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--gray-700);transition:all .2s;" onmouseover="this.style.borderColor='#e74c3c'" onmouseout="this.style.borderColor='var(--gray-300)'">
         ${getFavIcon(h.id)} ${appState.favorites.includes(h.id)?'Sauvegardé':'Sauvegarder'}
-      </button>
+      </button></div>
     </div>
     <div class="det-meta">
       <span style="background:var(--gray-100);color:var(--gray-700);font-size:13px;font-weight:700;padding:4px 12px;border-radius:20px;">${({'Hôtel':'🏨','Appartement':'🏢','Maison':'🏡','Studio':'🛋️','Chalet':'🏔️'})[h.type]||'🏠'} ${h.type||'Hébergement'}</span>
@@ -6924,9 +6957,10 @@ function buildExcursionDetail(){
           <span style="font-size:14px;color:var(--blue-l);">📍 ${e.city}, ${e.country}</span>
         </div>
       </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">${e.excursionId?`<button onclick="copyPageLink(this)" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);background:#fff;font-size:14px;font-weight:600;cursor:pointer;">🔗 Partager</button>`:''}
       <button onclick="toggleExcFavorite('${e.id}')" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);background:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='#e74c3c'" onmouseout="this.style.borderColor='var(--gray-300)'">
         ${isFav?'❤️ Sauvegardé':'🤍 Sauvegarder'}
-      </button>
+      </button></div>
     </div>
 
     <!-- Hero image -->
@@ -13107,6 +13141,18 @@ try{
       '', window.location.pathname+'#reservation-payment'
     );
   }
+  // Lien vers un logement : https://mytunigo.com/?logement=<id annonce>
+  // (l'identifiant interne du logement n'est connu qu'après le chargement
+  // des annonces : il est résolu juste avant le premier affichage).
+  const _logParam = new URLSearchParams(window.location.search).get('logement');
+  if(!_payParam && _logParam && /^[0-9a-f-]{36}$/i.test(_logParam)){
+    appState._deepAnnonceId = _logParam;
+    appState.selectedHotelId = null;
+    history.replaceState(
+      { page:'detail', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
+      '', window.location.pathname+'?logement='+encodeURIComponent(_logParam)+'#detail'
+    );
+  }
   // Lien vers une excursion (e-mails « excursions à proximité ») :
   // https://mytunigo.com/?exc=<id de l'excursion>
   const _excParam = new URLSearchParams(window.location.search).get('exc');
@@ -13114,7 +13160,7 @@ try{
     appState.selectedExcursionId = 'REAL-EXC-'+_excParam;
     history.replaceState(
       { page:'excursion-detail', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
-      '', window.location.pathname+'#excursion-detail'
+      '', window.location.pathname+'?exc='+encodeURIComponent(_excParam)+'#excursion-detail'
     );
   }
 }catch(e){}
@@ -13133,7 +13179,7 @@ try{
 try{
   history.replaceState(
     { page: appState.page, ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
-    '', '#'+appState.page
+    '', pageUrl(appState.page)
   );
 }catch(e){}
 
@@ -13169,6 +13215,15 @@ if(_restoredPage && _restoredPage!=='home'){
       }
     }).catch(e => console.warn('Restauration de session échouée:', e.message))
   ]).finally(()=>{
+    // Lien ?logement= : retrouve le logement par l'identifiant de l'annonce.
+    // (Sert aussi au rechargement d'une fiche : l'identifiant interne des
+    // logements change d'un chargement à l'autre, celui de l'annonce non.)
+    if(appState.page==='detail' && appState._deepAnnonceId){
+      const h = hotels.find(x=>x.annonceId===appState._deepAnnonceId);
+      if(h) appState.selectedHotelId = h.id;
+      else { appState.page = 'home'; setTimeout(()=>showToast("Cette annonce n'est plus disponible.",'var(--gray-700)'), 300); }
+    }
+    appState._deepAnnonceId = null;
     renderAuthArea();
     render();
     if(auth.currentUser) loadUserFavorites();
