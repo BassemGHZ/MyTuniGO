@@ -3023,7 +3023,7 @@ function buildResults(){
       <!-- 4. Note (expandable) -->
       <div class="f-section">
         <div class="f-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleFilter('ratings')">
-          <span>⭐ Note</span>
+          <span>⭐ Note des voyageurs</span>
           <span id="arrow-ratings" style="font-size:11px;transition:transform .2s;color:var(--gray-400);">▼</span>
         </div>
         <div id="filter-ratings">
@@ -3221,14 +3221,15 @@ function renderAmenitiesFilterHTML(){
     +(appState.filterExpanded?.amenities ? '▲ Voir moins' : '▼ Voir '+(allAmen.length-3)+' de plus')+'</button>' : '');
 }
 
+// Note = moyenne des avis des voyageurs (sur 5), à ne pas confondre avec les
+// étoiles de classement d'un hôtel. Choix courts : tous affichés.
 function renderRatingsFilterHTML(){
-  const allRatings = [{v:0,l:'Toutes'},{v:5,l:'5★'},{v:4,l:'4★ et +'},{v:3,l:'3★ et +'},{v:2,l:'2★ et +'}];
-  const visibleCount = appState.filterExpanded?.ratings ? allRatings.length : 3;
-  return allRatings.slice(0, visibleCount).map(r=>'<div class="f-opt">'
-    +'<input type="radio" name="rat" value="'+r.v+'" '+(appState.filters.minRating==r.v?'checked':'')+' onchange="updateRatingF('+r.v+')">'
-    +'<label>'+r.l+'</label></div>').join('')
-  + (allRatings.length > 3 ? '<button onclick="toggleFilterExpand(\'ratings\')" style="margin-top:6px;background:none;border:none;color:var(--blue-l);font-size:13px;font-weight:600;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px;">'
-    +(appState.filterExpanded?.ratings ? '▲ Voir moins' : '▼ Voir '+(allRatings.length-3)+' de plus')+'</button>' : '');
+  const allRatings = [{v:0,l:'Toutes les notes'},{v:4.5,l:'4,5 et +'},{v:4,l:'4 et +'},{v:3.5,l:'3,5 et +'},{v:3,l:'3 et +'}];
+  return allRatings.map(r=>'<div class="f-opt">'
+    +'<input type="radio" name="rat" id="rat-'+String(r.v).replace('.','-')+'" value="'+r.v+'" '+(appState.filters.minRating==r.v?'checked':'')+' onchange="updateRatingF('+r.v+')">'
+    +'<label for="rat-'+String(r.v).replace('.','-')+'">'+(r.v?'<span style="color:#f5a623;">★</span> ':'')+r.l+'</label></div>').join('')
+  + '<div style="font-size:11.5px;color:var(--gray-500);margin-top:6px;line-height:1.45;">Moyenne des avis laissés par les voyageurs (sur 5).'
+  + (appState.filters.minRating>0 ? ' Les logements sans avis sont masqués.' : '') + '</div>';
 }
 
 function toggleFilterExpand(section){
