@@ -23,6 +23,8 @@
 //          le lendemain de l'excursion, puis une relance).
 //          Et un e-mail unique à l'hôte (le lendemain du départ) pour qu'il
 //          évalue son voyageur (table guest_reviews), s'il ne l'a pas déjà fait.
+//          Fenêtre d'avis de 14 jours après le départ / l'excursion : les
+//          e-mails donnent la date limite et ne partent plus une fois passée.
 //          Traitement par lot et idempotent (chaque réservation est
 //          « réservée » avant l'envoi) : un appel en trop n'envoie rien de plus.
 //
@@ -39,6 +41,19 @@ const SITE = (Deno.env.get("SITE_URL") ?? "https://mytunigo.com").replace(/\/$/,
 
 const NEW_REVIEW_MAX_AGE_MS = 10 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Fenêtre d'avis (modèle Airbnb) : voyageur et hôte ont 14 jours après le
+// départ (ou la date de l'excursion) pour donner leur avis. Même règle en base.
+const REVIEW_WINDOW_DAYS = 14;
+// Date du jour à Tunis (YYYY-MM-DD), décalée de n jours.
+const tunisDate = (ms: number, n = 0) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tunis" }).format(new Date(ms + n * DAY_MS));
+const addDaysISO = (iso: string, n: number) => {
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+// Dernier jour pour donner son avis
+const reviewDeadline = (endISO: string) => addDaysISO(endISO, REVIEW_WINDOW_DAYS);
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -162,9 +177,10 @@ async function guestReviewNotice(req: Request, body: Record<string, unknown>) {
   if (!gr) return json({ error: "not_found" }, 404);
   if (Date.now() - new Date(gr.created_at).getTime() > NEW_REVIEW_MAX_AGE_MS) return json({ error: "too_old" }, 409);
 
-  const [{ data: guest }, { data: ann }, { count, error: avisErr }] = await Promise.all([
+  const [{ data: guest }, { data: ann }, { data: resa }, { count, error: avisErr }] = await Promise.all([
     admin.from("profiles").select("email,first_name").eq("id", gr.guest_id).maybeSingle(),
     admin.from("annonces").select("name").eq("id", gr.logement_id).maybeSingle(),
+    admin.from("reservations").select("check_out").eq("id", reservationId).maybeSingle(),
     admin.from("avis").select("id", { count: "exact", head: true })
       .eq("logement_id", gr.logement_id).eq("author_id", gr.guest_id),
   ]);
@@ -172,6 +188,7 @@ async function guestReviewNotice(req: Request, body: Record<string, unknown>) {
   const alreadyReviewed = (count ?? 0) > 0;
   const propName = ann?.name ?? "";
   const where = propName ? ` à <strong>${esc(propName)}</strong>` : "";
+  const deadline = resa?.check_out ? reviewDeadline(resa.check_out) : null;
 
   await sendMail(
     guest?.email,
@@ -180,8 +197,9 @@ async function guestReviewNotice(req: Request, body: Record<string, unknown>) {
       "Votre hôte a laissé un avis",
       `Bonjour ${esc(guest?.first_name ?? "")},<br><br>Votre hôte${where} a laissé un avis sur votre séjour.`
         + (alreadyReviewed
-          ? `<br><br>Comme vous avez déjà évalué le logement, vous pouvez le consulter dès maintenant dans <strong>Mon profil</strong>, section « Avis des hôtes ».`
-          : `<br><br>Laissez le vôtre sur le logement pour le découvrir : il apparaîtra aussitôt dans <strong>Mon profil</strong>, section « Avis des hôtes ». Sinon, il sera visible dans 14 jours.`),
+          ? `<br><br>Comme vous avez déjà évalué le logement, vous pouvez le consulter dès maintenant dans <strong>Mon profil</strong>, section « Avis des hôtes ». Votre propre avis est désormais définitif.`
+          : `<br><br>Laissez le vôtre sur le logement${deadline ? ` avant le <strong>${fmtDateLong(deadline)}</strong> inclus` : ""} pour le découvrir : il apparaîtra aussitôt dans <strong>Mon profil</strong>, section « Avis des hôtes ».`
+            + (deadline ? ` Passé ce délai, vous ne pourrez plus évaluer le logement et l'avis de votre hôte vous sera montré.` : "")),
       alreadyReviewed ? "" : `<div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.6;color:#495057;">
          Sur MyTunigo : <strong>Mes voyages</strong>, bouton <strong>⭐ Laisser un avis</strong> sur ce séjour.
        </div>`,
@@ -213,7 +231,8 @@ async function sendRequest(r: any, kind: "request" | "reminder") {
       `Bonjour ${esc(guest?.first_name ?? "")},<br><br>` + (reminder
         ? `Vous n'avez pas encore laissé d'avis sur votre séjour${propName ? ` à <strong>${esc(propName)}</strong>` : ""} (départ le ${fmtDateLong(r.check_out)}).`
         : `Votre séjour${propName ? ` à <strong>${esc(propName)}</strong>` : ""} s'est terminé le ${fmtDateLong(r.check_out)}. Nous espérons que tout s'est bien passé !`)
-        + `<br><br>Votre avis (note + commentaire) aide les futurs voyageurs et votre hôte. Cela ne prend qu'une minute.`,
+        + `<br><br>Votre avis (note + commentaire) aide les futurs voyageurs et votre hôte. Cela ne prend qu'une minute.`
+        + `<br><br>⏳ Vous avez jusqu'au <strong>${fmtDateLong(reviewDeadline(r.check_out))}</strong> pour donner votre avis.`,
       "",
       { label: "⭐ Laisser un avis", url: SITE },
       `Réservation ${esc(r.reference ?? "")}`,
@@ -251,7 +270,8 @@ async function sendExcRequest(b: any, kind: "request" | "reminder") {
       `Bonjour ${esc(guest?.first_name ?? "")},<br><br>` + (reminder
         ? `Vous n'avez pas encore laissé d'avis sur votre excursion${title ? ` <strong>${esc(title)}</strong>` : ""} du ${fmtDateLong(b.date)}.`
         : `Votre excursion${title ? ` <strong>${esc(title)}</strong>` : ""}${exc?.city ? ` à ${esc(exc.city)}` : ""} a eu lieu le ${fmtDateLong(b.date)}. Nous espérons que vous avez passé un excellent moment !`)
-        + `<br><br>Votre avis (note + commentaire) aide les futurs voyageurs et le prestataire. Rendez-vous dans « Mes voyages », onglet Excursions : cela ne prend qu'une minute.`,
+        + `<br><br>Votre avis (note + commentaire) aide les futurs voyageurs et le prestataire. Rendez-vous dans « Mes voyages », onglet Excursions : cela ne prend qu'une minute.`
+        + `<br><br>⏳ Vous avez jusqu'au <strong>${fmtDateLong(reviewDeadline(b.date))}</strong> pour donner votre avis.`,
       "",
       { label: "⭐ Laisser un avis", url: SITE },
       `Réservation ${esc(b.reference ?? "")}`,
@@ -273,7 +293,8 @@ async function excursionReviewRequests(now: number) {
   const { data: firsts, error: e1 } = await admin.from("excursion_bookings")
     .select("id,guest_id,excursion_id,date,reference")
     .eq("status", "terminée").is("review_email_sent_at", null)
-    .lte("date", new Date(now - DAY_MS).toISOString().slice(0, 10));
+    .lte("date", new Date(now - DAY_MS).toISOString().slice(0, 10))
+    .gte("date", tunisDate(now, -REVIEW_WINDOW_DAYS));
   if (e1) throw new Error(`excursion_bookings : ${e1.message}`);
   for (const b of firsts ?? []) {
     if (await hasExcReview(b)) continue;
@@ -289,7 +310,8 @@ async function excursionReviewRequests(now: number) {
     .select("id,guest_id,excursion_id,date,reference")
     .eq("status", "terminée").is("review_reminder_sent_at", null)
     .not("review_email_sent_at", "is", null)
-    .lte("review_email_sent_at", new Date(now - DAY_MS).toISOString());
+    .lte("review_email_sent_at", new Date(now - DAY_MS).toISOString())
+    .gte("date", tunisDate(now, -REVIEW_WINDOW_DAYS));
   if (e2) throw new Error(`excursion_bookings : ${e2.message}`);
   for (const b of seconds ?? []) {
     if (await hasExcReview(b)) continue;
@@ -327,7 +349,8 @@ async function sendHostRequest(r: any) {
       "Évaluez votre voyageur",
       `Bonjour ${esc(ann?.contact_firstname ?? "")},<br><br>`
         + `Le séjour de <strong>${esc(guestName)}</strong>${propName ? ` à <strong>${esc(propName)}</strong>` : ""} s'est terminé le ${fmtDateLong(r.check_out)}.`
-        + `<br><br>Donnez-lui une note et, si vous le souhaitez, un commentaire (respect du logement, communication…). Votre avis aide les autres hôtes à accepter leurs demandes en confiance.`,
+        + `<br><br>Donnez-lui une note et, si vous le souhaitez, un commentaire (respect du logement, communication…). Votre avis aide les autres hôtes à accepter leurs demandes en confiance.`
+        + `<br><br>⏳ Vous avez jusqu'au <strong>${fmtDateLong(reviewDeadline(r.check_out))}</strong> pour l'évaluer.`,
       `<div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.6;color:#495057;">
          Sur MyTunigo : <strong>Mes annonces → 📨 Réservations</strong>, onglet <strong>Terminées</strong>, bouton <strong>⭐ Évaluer le voyageur</strong>.
        </div>`,
@@ -344,7 +367,8 @@ async function hostReviewRequests(now: number) {
   const { data: rows, error } = await admin.from("reservations")
     .select("id,guest_id,logement_id,check_out,reference")
     .eq("status", "terminée").is("host_review_email_sent_at", null)
-    .lte("check_out", new Date(now - DAY_MS).toISOString().slice(0, 10));
+    .lte("check_out", new Date(now - DAY_MS).toISOString().slice(0, 10))
+    .gte("check_out", tunisDate(now, -REVIEW_WINDOW_DAYS));
   if (error) throw new Error(`reservations (hôtes) : ${error.message}`);
   for (const r of rows ?? []) {
     if (await hasGuestReview(r)) continue;
@@ -366,7 +390,8 @@ async function reviewRequests() {
   const { data: firsts, error: e1 } = await admin.from("reservations")
     .select("id,guest_id,logement_id,check_out,reference")
     .eq("status", "terminée").is("review_email_sent_at", null)
-    .lte("check_out", new Date(now - DAY_MS).toISOString().slice(0, 10));
+    .lte("check_out", new Date(now - DAY_MS).toISOString().slice(0, 10))
+    .gte("check_out", tunisDate(now, -REVIEW_WINDOW_DAYS));
   if (e1) return json({ error: e1.message }, 500);
   for (const r of firsts ?? []) {
     if (await hasReview(r)) continue;
@@ -384,7 +409,8 @@ async function reviewRequests() {
     .select("id,guest_id,logement_id,check_out,reference")
     .eq("status", "terminée").is("review_reminder_sent_at", null)
     .not("review_email_sent_at", "is", null)
-    .lte("review_email_sent_at", new Date(now - DAY_MS).toISOString());
+    .lte("review_email_sent_at", new Date(now - DAY_MS).toISOString())
+    .gte("check_out", tunisDate(now, -REVIEW_WINDOW_DAYS));
   if (e2) return json({ error: e2.message }, 500);
   for (const r of seconds ?? []) {
     if (await hasReview(r)) continue;
