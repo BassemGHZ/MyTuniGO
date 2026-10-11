@@ -5317,6 +5317,7 @@ async function loadReservations(container){
       createdAt: r.created_at,
       paymentDeadline: r.payment_deadline||null,
       expiredReason: r.expired_reason||null,
+      bookingCode: r.booking_code||null,
       _propName: ann.name || (h?h.name:'Hébergement'),
       _propCity: ann.city || (h?h.city:'—'),
       _propCountry: ann.country || (h?h.country:'—'),
@@ -5351,7 +5352,8 @@ async function loadReservations(container){
         title: ex.title || 'Excursion', city: ex.city || '—', country: ex.country || '—',
         photo: firstPhotoUrl(ex.photos),
         date: b.date, participants: b.participants||1, total: b.total||0,
-        status: b.status||'en attente', paymentMethod: b.payment_method||'en ligne', createdAt: b.created_at
+        status: b.status||'en attente', paymentMethod: b.payment_method||'en ligne', createdAt: b.created_at,
+        bookingCode: b.booking_code||null
       };
     });
   }
@@ -5464,6 +5466,7 @@ function buildReservations(){
                 ${isMultiRoomType(h)?`<span>🛏️ ${r.rooms} chambre${r.rooms>1?'s':''}</span>`:''}
                 <span>🔖 Réf: <code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.id}</code></span>
               </div>
+              ${r.status==='confirmée'?bookingCodeHTML(r.bookingCode,'guest-logement'):''}
               ${r.status==='acceptée'?(timeLeftLabel(r.paymentDeadline)
                 ?`<div style="margin-top:8px;font-size:12.5px;color:#0071c2;font-weight:700;">✅ Acceptée par l'hôte — payez avant le ${fmtDateTimeFR(r.paymentDeadline)} (il reste ${timeLeftLabel(r.paymentDeadline)})</div>`
                 :`<div style="margin-top:8px;font-size:12px;color:var(--red);font-weight:600;">⌛ Délai de paiement dépassé — la réservation va être annulée</div>`):''}
@@ -5590,6 +5593,7 @@ function buildExcursionReservations(){
                 <span>🔖 Réf: <code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.id}</code></span>
                 ${r.paymentMethod==='Paiement sur place'?`<span style="color:#e6a800;font-weight:600;">💵 À payer sur place</span>`:''}
               </div>
+              ${r.status==='confirmée'?bookingCodeHTML(r.bookingCode,'guest-excursion'):''}
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:120px;">
               <div style="text-align:right;">
@@ -9695,7 +9699,8 @@ async function loadBookingRequests(container){
       total: r.total||0, message: r.notes||'',
       status: r.status, // 'en attente' | 'acceptée' | 'confirmée' | 'refusée' | 'expirée' …
       paymentDeadline: r.payment_deadline||null,
-      refusedReason: r.expired_reason||null
+      refusedReason: r.expired_reason||null,
+      bookingCode: r.booking_code||null
     };
   });
   appState._bookingReqById = Object.fromEntries(all.map(r=>[r.id,r]));
@@ -9779,6 +9784,7 @@ async function loadBookingRequests(container){
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
               </div>
               ${conflictOf(req)?`<div style="font-size:12.5px;color:var(--red);font-weight:700;margin-bottom:8px;">⚠️ Ces dates chevauchent la demande de ${conflictOf(req).guestName} (${conflictOf(req).status==='confirmée'?'confirmée':'acceptée, paiement en cours'}). Vous ne pouvez pas accepter celle-ci${conflictOf(req).status==='acceptée'?" tant que l'autre n'a pas expiré":''}.</div>`:''}
+              ${req.status==='confirmée'?bookingCodeHTML(req.bookingCode,'host-logement'):''}
               ${req.status==='acceptée'?`<div style="font-size:12.5px;color:#0071c2;font-weight:700;margin-bottom:8px;">💳 Vous avez accepté — le voyageur a jusqu'au ${fmtDateTimeFR(req.paymentDeadline)} pour payer. Les dates restent bloquées jusque-là.</div>`:''}
               ${req.status==='refusée'&&req.refusedReason==='dates_taken'?`<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:8px;">Refusée automatiquement : ces dates ont été réservées par un autre voyageur.</div>`:''}
               ${req.status==='expirée'?`<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:8px;">${req.refusedReason==='no_host_reply'?"Expirée : la date d'arrivée est passée sans réponse de votre part.":req.refusedReason==='checkin_passed'?"Expirée : le voyageur n'a pas payé avant la date d'arrivée.":"Expirée : le voyageur n'a pas payé sous 24h. Les dates ont été libérées."}</div>`:''}
@@ -9800,6 +9806,24 @@ async function loadBookingRequests(container){
         </div>
       </div>`;
     }).join('')}
+  </div>`;
+}
+
+/* ── Code de réservation (6 caractères) ──────────────────────────────
+   Créé en base à la confirmation, unique sur toute la plateforme. Contrôle
+   supplémentaire à l'arrivée : ne prouve pas l'identité. */
+function bookingCodeHTML(code, role){
+  if(!code) return '';
+  const hint = {
+    'guest-logement': "À communiquer à votre hôte à l'arrivée s'il vous le demande.",
+    'guest-excursion': "À communiquer à l'organisateur s'il vous le demande. Vous réservez pour d'autres personnes ? Transmettez-leur ce code.",
+    'host-logement': "Demandez ce code au voyageur à son arrivée pour vérifier qu'il s'agit bien de cette réservation.",
+    'host-excursion': "Demandez ce code aux participants pour vérifier qu'il s'agit bien de cette réservation."
+  }[role] || '';
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f3f0ff;border:1px solid #d9d0ff;border-radius:var(--r-md);padding:8px 12px;margin:8px 0;">
+    <span style="font-size:12px;font-weight:700;color:#5b3fc4;">🔐 Code de réservation</span>
+    <code style="font-size:16px;font-weight:800;letter-spacing:3px;background:#fff;border:1px dashed #b9a8ff;border-radius:6px;padding:2px 10px;color:#3a2a8a;">${escHTML(code)}</code>
+    <span style="font-size:11.5px;color:var(--gray-500);flex-basis:100%;">${hint}</span>
   </div>`;
 }
 
@@ -10002,7 +10026,8 @@ async function loadExcursionBookingRequests(container){
       excursionTitle: excMap[r.excursion_id]?.title || 'Excursion',
       guestName, guestAvatar: guestName.slice(0,2).toUpperCase(),
       date: r.date, participants: r.participants||1,
-      total: r.total||0, status: r.status, paymentMethod: r.payment_method||'en ligne'
+      total: r.total||0, status: r.status, paymentMethod: r.payment_method||'en ligne',
+      bookingCode: r.booking_code||null
     };
   });
 
@@ -10049,6 +10074,7 @@ async function loadExcursionBookingRequests(container){
                 ${isExpiring?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#fff0f0;color:var(--red);">⚠️ Date dépassée — sera refusée automatiquement</span>':''}
               </div>
               <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">✈️ ${req.excursionTitle}</div>
+              ${req.status==='confirmée'?bookingCodeHTML(req.bookingCode,'host-excursion'):''}
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Date</div><div style="font-size:13px;font-weight:600;">${dt}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Participants</div><div style="font-size:13px;font-weight:600;">👥 ${req.participants}</div></div>
