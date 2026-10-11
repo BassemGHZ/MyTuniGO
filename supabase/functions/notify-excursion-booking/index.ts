@@ -88,6 +88,24 @@ function recapBlock(b: any, title: string) {
     </tbody></table>`;
 }
 
+// Code de réservation (6 caractères, créé en base à la confirmation).
+// Contrôle à l'arrivée : ne prouve pas l'identité.
+function codeBlock(code: string | null | undefined, who: "guest" | "host", kind: "logement" | "excursion") {
+  if (!code) return "";
+  const hint = who === "guest"
+    ? (kind === "logement"
+      ? "À communiquer à votre hôte à l'arrivée s'il vous le demande."
+      : "À communiquer à l'organisateur s'il vous le demande. Vous réservez pour d'autres personnes ? Transmettez-leur ce code.")
+    : (kind === "logement"
+      ? "Demandez ce code au voyageur à son arrivée pour vérifier qu'il s'agit bien de cette réservation."
+      : "Demandez ce code aux participants pour vérifier qu'il s'agit bien de cette réservation.");
+  return `<div style="margin-top:16px;padding:14px 16px;background:#f3f0ff;border:1px solid #d9d0ff;border-radius:8px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;color:#5b3fc4;">🔐 Code de réservation</div>
+    <div style="font-size:26px;font-weight:800;letter-spacing:6px;color:#3a2a8a;font-family:'Courier New',monospace;margin:6px 0;">${esc(code)}</div>
+    <div style="font-size:12.5px;color:#6c757d;line-height:1.5;">${hint}</div>
+  </div>`;
+}
+
 const hostNote = (msg: string) => msg
   ? `<div style="margin-top:14px;padding:10px 14px;border-left:3px solid #0071c2;background:#f0f7ff;font-style:italic;">« ${esc(msg)} »<br><span style="font-style:normal;font-size:12px;color:#6c757d;">— votre prestataire</span></div>`
   : "";
@@ -166,6 +184,9 @@ Deno.serve(async (req) => {
     const guestName = guest?.first_name ?? "";
     const hostName = exc?.contact_firstname ?? "";
     const recap = recapBlock(b, title);
+    // Réservation confirmée : on joint le code de réservation
+    const recapGuest = b.status === "confirmée" ? recap + codeBlock(b.booking_code, "guest", "excursion") : recap;
+    const recapHost = b.status === "confirmée" ? recap + codeBlock(b.booking_code, "host", "excursion") : recap;
 
     if (type === "created") {
       if (b.guest_id !== uid) return json({ error: "not_guest" }, 403);
@@ -179,7 +200,7 @@ Deno.serve(async (req) => {
             `Bonjour ${esc(guestName)},<br><br>` + (instant
               ? `Votre réservation pour <strong>${esc(title)}</strong> est confirmée. Le prestataire a été prévenu.`
               : `Votre demande de réservation pour <strong>${esc(title)}</strong> a bien été transmise au prestataire. Vous recevrez un e-mail dès sa réponse.`),
-            recap, { label: "🧳 Voir mes voyages", url: SITE },
+            recapGuest, { label: "🧳 Voir mes voyages", url: SITE },
             "Pensez à vérifier vos spams si vous ne recevez pas nos e-mails.")),
         sendMail(exc?.contact_email,
           instant ? `🎉 Nouvelle réservation — ${title}` : `📨 Nouvelle demande de réservation — ${title}`,
@@ -187,7 +208,7 @@ Deno.serve(async (req) => {
             `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Un voyageur")}</strong> ` + (instant
               ? `a réservé <strong>${esc(title)}</strong> (réservation instantanée).`
               : `souhaite réserver <strong>${esc(title)}</strong>. Acceptez ou refusez la demande depuis votre espace, rubrique « Demandes d'excursions ».`),
-            recap, { label: instant ? "Voir la réservation" : "Répondre à la demande", url: SITE })),
+            recapHost, { label: instant ? "Voir la réservation" : "Répondre à la demande", url: SITE })),
       ]);
     } else if (type === "decision") {
       if (exc?.owner_id !== uid) return json({ error: "not_owner" }, 403);
@@ -200,7 +221,7 @@ Deno.serve(async (req) => {
           `Bonjour ${esc(guestName)},<br><br>` + (ok
             ? `Bonne nouvelle : le prestataire a accepté votre demande pour <strong>${esc(title)}</strong>. Votre réservation est confirmée.`
             : `Le prestataire n'a pas pu accepter votre demande pour <strong>${esc(title)}</strong>.`) + hostNote(msg),
-          recap, ok ? { label: "🧳 Voir mes voyages", url: SITE } : { label: "🔍 Voir d'autres excursions", url: SITE }));
+          recapGuest, ok ? { label: "🧳 Voir mes voyages", url: SITE } : { label: "🔍 Voir d'autres excursions", url: SITE }));
     } else if (type === "cancelled") {
       if (b.guest_id !== uid) return json({ error: "not_guest" }, 403);
       if (b.status !== "annulée") return json({ error: "invalid_state" }, 409);
