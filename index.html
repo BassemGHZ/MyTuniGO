@@ -5289,6 +5289,18 @@ async function loadReservations(container){
     : { data: [] };
   appState._myReviewsByAnnonce = Object.fromEntries((myReviews||[]).map(r=>[r.logement_id, r]));
 
+  // Avis des hôtes sur moi déjà visibles : si l'hôte a évalué un séjour encore
+  // dans la fenêtre de 14 jours, mon avis sur ce logement est figé.
+  appState._lockedReviewAnnonces = new Set();
+  const myResaIds = (data||[]).map(r=>r.id);
+  if(myResaIds.length && (myReviews||[]).length){
+    const { data: hostRevs, error: hrErr } = await _sb.from('guest_reviews')
+      .select('reservation_id,logement_id').eq('guest_id', uid).in('reservation_id', myResaIds);
+    if(hrErr){ console.warn('guest_reviews (mes voyages) :', hrErr.message); }
+    const coById = Object.fromEntries((data||[]).map(r=>[r.id, r.check_out]));
+    (hostRevs||[]).forEach(g=>{ if(reviewWindow(coById[g.reservation_id]).open) appState._lockedReviewAnnonces.add(g.logement_id); });
+  }
+
   appState.reservations = (data||[]).map(r=>{
     const h = hotels.find(x=>x.annonceId===r.logement_id);
     const ann = annMap[r.logement_id] || {};
@@ -5468,7 +5480,12 @@ function buildReservations(){
                   <button onclick="cancelReservation('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>
                 `:''}
                 ${r.status==='terminée'&&r.annonceId?`
-                  <button onclick="openReviewModal('${r.annonceId}')" style="background:${appState._myReviewsByAnnonce?.[r.annonceId]?'#fff8e0':'var(--gray-100)'};color:${appState._myReviewsByAnnonce?.[r.annonceId]?'#a07000':'var(--gray-700)'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid ${appState._myReviewsByAnnonce?.[r.annonceId]?'#f0d080':'var(--gray-300)'};cursor:pointer;">${appState._myReviewsByAnnonce?.[r.annonceId]?'✏️ Modifier mon avis':'⭐ Laisser un avis'}</button>
+                  ${reviewActionHTML({
+                    mine: !!appState._myReviewsByAnnonce?.[r.annonceId],
+                    win: reviewWindow(r.checkOut),
+                    locked: appState._lockedReviewAnnonces?.has(r.annonceId),
+                    onclick: `openReviewModal('${r.annonceId}')`
+                  })}
                   ${r.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Réserver à nouveau</button>`:''}
                 `:''}
                 ${r.status==='acceptée'&&timeLeftLabel(r.paymentDeadline)?`
@@ -5578,8 +5595,12 @@ function buildExcursionReservations(){
               <div style="text-align:right;">
                 <div style="font-size:20px;font-weight:800;color:var(--gray-900);">${r.total.toLocaleString()}€</div>
               </div>
-              ${excBookingReviewable(r)?(()=>{ const mine = appState._myReviewsByExcursion?.[r.excursionId];
-                return `<button onclick="openReviewModal('${r.excursionId}','excursion')" style="background:${mine?'#fff8e0':'var(--gray-100)'};color:${mine?'#a07000':'var(--gray-700)'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid ${mine?'#f0d080':'var(--gray-300)'};cursor:pointer;margin-top:8px;">${mine?'✏️ Modifier mon avis':'⭐ Laisser un avis'}</button>`; })():''}
+              ${excBookingReviewable(r)?`<div style="margin-top:8px;">${reviewActionHTML({
+                mine: !!appState._myReviewsByExcursion?.[r.excursionId],
+                win: reviewWindow(r.date),
+                locked: false,
+                onclick: `openReviewModal('${r.excursionId}','excursion')`
+              })}</div>`:''}
               ${(r.status==='confirmée'||r.status==='en attente') && !excBookingReviewable(r)?`<button onclick="cancelExcursionBooking('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>`:''}
             </div>
           </div>
@@ -8024,6 +8045,48 @@ async function loadExcursionReviews(){
   }).join('');
 }
 
+/* ── Fenêtre d'avis de 14 jours (modèle Airbnb) ──────────────────────
+   Voyageur et hôte ont 14 jours après le départ (ou la date de l'excursion)
+   pour donner leur avis. Mêmes règles qu'en base. */
+const REVIEW_WINDOW_DAYS = 14;
+function addDaysISO(iso, n){
+  const d = new Date(String(iso).slice(0,10)+'T12:00:00');
+  d.setDate(d.getDate()+n);
+  return localISODate(d);
+}
+// endISO = date de départ / de l'excursion. open : on peut encore publier ou
+// modifier ; daysLeft : jours restants après aujourd'hui (0 = dernier jour).
+function reviewWindow(endISO){
+  if(!endISO) return { open:false, daysLeft:-1, deadline:null };
+  const today = localISODate(new Date());
+  const deadline = addDaysISO(endISO, REVIEW_WINDOW_DAYS);
+  const daysLeft = Math.round((new Date(deadline+'T12:00:00') - new Date(today+'T12:00:00'))/86400000);
+  return { open: String(endISO).slice(0,10) <= today && daysLeft >= 0, daysLeft, deadline };
+}
+function reviewDaysLeftText(win){
+  if(!win.open) return '';
+  return win.daysLeft===0 ? "Dernier jour pour donner votre avis" : `Encore ${win.daysLeft} jour${win.daysLeft>1?'s':''} pour donner votre avis`;
+}
+// Bouton d'avis du voyageur (logement ou excursion) selon la fenêtre.
+function reviewActionHTML({ mine, win, locked, onclick }){
+  if(mine && (locked || !win.open)){
+    return `<span title="${locked?"Votre hôte a publié son avis : le vôtre ne peut plus être modifié.":"Le délai de modification est passé."}" style="display:inline-block;background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;">✓ Avis publié</span>`;
+  }
+  if(!win.open){
+    return `<span style="display:inline-block;font-size:12px;color:var(--gray-400);">Délai d'avis dépassé</span>`;
+  }
+  return `<button onclick="${onclick}" style="background:${mine?'#fff8e0':'var(--gray-100)'};color:${mine?'#a07000':'var(--gray-700)'};padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid ${mine?'#f0d080':'var(--gray-300)'};cursor:pointer;">${mine?'✏️ Modifier mon avis':'⭐ Laisser un avis'}</button>
+    <div style="font-size:11.5px;color:${win.daysLeft<=2?'#c05600':'var(--gray-500)'};margin-top:4px;text-align:right;">⏳ ${reviewDaysLeftText(win)}</div>`;
+}
+// Date limite de la fenêtre encore ouverte pour un logement / une excursion.
+function reviewDeadlineFor(targetId, kind){
+  const dates = kind==='excursion'
+    ? (appState.myExcursionBookings||[]).filter(b=>b.excursionId===targetId && excBookingReviewable(b)).map(b=>b.date)
+    : (appState.reservations||[]).filter(r=>r.annonceId===targetId && (r.status==='terminée'||r.status==='confirmée')).map(r=>r.checkOut);
+  const open = dates.map(reviewWindow).filter(w=>w.open).sort((a,b)=>b.daysLeft-a.daysLeft);
+  return open.length ? open[0].deadline : null;
+}
+
 // Un avis d'excursion est possible quand la réservation est terminée
 // (ou confirmée et sa date passée) — même règle qu'en base.
 function excBookingReviewable(r){
@@ -8058,7 +8121,11 @@ function openReviewModal(targetId, kind){
 
         <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Votre commentaire</label>
         <textarea id="review-comment" rows="4" maxlength="1000" placeholder="${isExc?"Racontez votre expérience : le guide, l'organisation, les moments forts…":"Racontez votre séjour : l'accueil, le logement, l'emplacement…"}"
-          style="width:100%;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;margin-bottom:18px;">${existing?.comment||''}</textarea>
+          style="width:100%;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;margin-bottom:12px;">${existing?.comment||''}</textarea>
+        ${(()=>{ const dl = reviewDeadlineFor(targetId, isExc?'excursion':'logement');
+          return `<div style="background:#f0f7ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;color:var(--blue-l);line-height:1.55;margin-bottom:16px;">
+            ⏳ ${dl?`Vous pouvez publier ou modifier votre avis jusqu'au <strong>${fmtDMY(dl)}</strong>.`:'Vous avez 14 jours après votre départ pour donner votre avis.'}${isExc?'':" Dès que votre hôte aura publié le sien, votre avis ne pourra plus être modifié."}
+          </div>`; })()}
 
         <button onclick="saveReview('${targetId}','${isExc?'excursion':'logement'}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Publier mon avis</button>
       </div>
@@ -8092,7 +8159,12 @@ async function saveReview(targetId, kind){
 
   if(error){
     console.error('saveReview error:', error.message);
-    showToast("Impossible d'enregistrer l'avis : "+error.message,'var(--red)');
+    const m = error.message||'';
+    const msg = /AVIS_LOCKED/.test(m) ? "Votre hôte a déjà publié son avis : le vôtre ne peut plus être modifié."
+      : /AVIS_WINDOW_CLOSED|row-level security/i.test(m) ? "Le délai de 14 jours pour donner votre avis est dépassé."
+      : "Impossible d'enregistrer l'avis : "+m;
+    showToast(msg,'var(--red)');
+    if(/AVIS_LOCKED|AVIS_WINDOW_CLOSED|row-level security/i.test(m)){ document.getElementById('modal-root').innerHTML=''; navigate('reservations'); }
     return;
   }
 
@@ -9717,7 +9789,10 @@ async function loadBookingRequests(container){
             </div>`:guestReviewable(req)?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
               ${appState._guestReviews?.byResa?.[req.id]
                 ? `<div style="background:#e8f9f0;color:var(--green);padding:10px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;text-align:center;">✓ Voyageur évalué<br><span style="color:#f5a623;font-size:15px;letter-spacing:1px;">${'★'.repeat(appState._guestReviews.byResa[req.id].rating)}</span></div>`
-                : `<button onclick="openGuestReviewModal('${req.id}')" style="background:var(--blue);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">⭐ Évaluer le voyageur</button>`}
+                : reviewWindow(req.checkOut).open
+                  ? `<button onclick="openGuestReviewModal('${req.id}')" style="background:var(--blue);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">⭐ Évaluer le voyageur</button>
+                     <div style="font-size:11.5px;color:${reviewWindow(req.checkOut).daysLeft<=2?'#c05600':'var(--gray-500)'};text-align:center;">⏳ ${reviewWindow(req.checkOut).daysLeft===0?'Dernier jour':'Encore '+reviewWindow(req.checkOut).daysLeft+' j'}</div>`
+                  : `<div style="font-size:12px;color:var(--gray-400);text-align:center;">Délai d'évaluation dépassé</div>`}
             </div>`:''}
           </div>
         </div>
@@ -9736,6 +9811,7 @@ function escHTML(v){
 function guestReviewable(req){
   return req.status==='terminée' || (req.status==='confirmée' && req.checkOut && req.checkOut <= localISODate(new Date()));
 }
+// (le bouton n'apparaît en plus que pendant la fenêtre de 14 jours : reviewWindow)
 
 function guestStarsHTML(rating, size){
   return `<span style="color:#f5a623;font-size:${size||13}px;letter-spacing:1px;">${'★'.repeat(rating)}<span style="color:var(--gray-300);">${'★'.repeat(5-rating)}</span></span>`;
@@ -9794,7 +9870,7 @@ function openGuestReviewModal(reqId){
         <textarea id="guest-review-comment" rows="4" maxlength="1000" placeholder="Respect du logement et du règlement, communication, ponctualité…"
           style="width:100%;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
         <div style="background:#f0f7ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;color:var(--blue-l);line-height:1.55;margin-bottom:16px;">
-          🔒 Votre avis n'est pas public : seuls les hôtes qui recevront une demande de ce voyageur pourront le lire. Le voyageur le verra après avoir lui-même évalué votre logement, ou au bout de 14 jours. Un avis publié ne peut plus être modifié.
+          🔒 Votre avis n'est pas public : seuls les hôtes qui recevront une demande de ce voyageur pourront le lire. Le voyageur le verra après avoir lui-même évalué votre logement, ou à la fin du délai d'avis (le ${fmtDMY(addDaysISO(req.checkOut, REVIEW_WINDOW_DAYS+1))}). Un avis publié ne peut plus être modifié.
         </div>
         <button id="guest-review-save" onclick="saveGuestReview('${req.id}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Publier mon avis</button>
       </div>
@@ -9881,7 +9957,7 @@ async function loadProfilHostReviews(){
       </div>`).join('')}
     </div>` : ''}
     <div style="font-size:12.5px;color:var(--gray-500);line-height:1.55;${list.length?'margin-top:12px;':''}">
-      ${list.length?'':"Aucun avis d'hôte pour l'instant. "}Après chaque séjour, l'hôte peut vous évaluer. Son avis apparaît ici dès que vous avez vous-même évalué le logement, ou 14 jours après. Ces avis ne sont pas publics : seuls les hôtes à qui vous envoyez une demande peuvent les lire.
+      ${list.length?'':"Aucun avis d'hôte pour l'instant. "}Après chaque séjour, vous et votre hôte avez 14 jours pour vous évaluer. Son avis apparaît ici dès que vous avez vous-même évalué le logement, ou à la fin de ces 14 jours. Ces avis ne sont pas publics : seuls les hôtes à qui vous envoyez une demande peuvent les lire.
     </div>
   </div>`;
 }
