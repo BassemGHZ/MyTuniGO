@@ -9819,6 +9819,21 @@ async function saveGuestReview(reqId){
   }
   document.getElementById('modal-root').innerHTML = '';
   showToast('✅ Merci ! Votre avis sur le voyageur est enregistré.','var(--green)');
+
+  // Prévient le voyageur (sans dévoiler l'avis). Le site n'envoie que
+  // l'identifiant de la réservation : notify-review relit tout en base.
+  try{
+    const { data: { session } } = await _sb.auth.getSession();
+    const resp = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-review', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+(session?.access_token||SB_ANON_KEY) },
+      body: JSON.stringify({ type: 'guest_review', reservation_id: req.id })
+    });
+    if(!resp.ok) console.error('notify-review HTTP', resp.status, await resp.text());
+  } catch(efErr){
+    console.error('notify-review error:', efErr.message);
+  }
+
   navigate('booking-requests');
 }
 

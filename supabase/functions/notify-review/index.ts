@@ -9,6 +9,10 @@
 //       -> e-mail au prestataire : nouvel avis sur son excursion.
 //          L'avis est relu en base (auteur = appelant, mis à jour il y a
 //          moins de 10 min) : le navigateur n'envoie ni destinataire ni texte.
+//   { type: "guest_review", reservation_id }      (JWT de l'HÔTE connecté)
+//       -> e-mail au voyageur : son hôte a laissé un avis (contenu non dévoilé ;
+//          invitation à noter le logement pour le découvrir). Même contrôle :
+//          avis relu en base, auteur = appelant, publié il y a moins de 10 min.
 //
 //   { type: "review_requests" }                   (tâche planifiée pg_cron)
 //       -> demandes d'avis aux voyageurs après leur séjour :
@@ -138,6 +142,55 @@ async function newReview(req: Request, body: Record<string, unknown>) {
   );
   if (mailErrors.length) return json({ error: "mail_failed" }, 502);
   return json({ ok: true });
+}
+
+// ---------- avis de l'hôte -> voyageur (sans dévoiler l'avis) ----------
+async function guestReviewNotice(req: Request, body: Record<string, unknown>) {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const { data: userData } = await admin.auth.getUser(token);
+  const uid = userData?.user?.id;
+  if (!uid) return json({ error: "unauthorized" }, 401);
+
+  const reservationId = String(body.reservation_id ?? "");
+  if (!reservationId) return json({ error: "reservation_id manquant" }, 400);
+
+  // L'avis est relu en base : auteur = appelant, publié il y a moins de 10 min.
+  const { data: gr, error: grErr } = await admin.from("guest_reviews")
+    .select("guest_id,logement_id,created_at")
+    .eq("reservation_id", reservationId).eq("author_id", uid).maybeSingle();
+  if (grErr) return json({ error: grErr.message }, 500);
+  if (!gr) return json({ error: "not_found" }, 404);
+  if (Date.now() - new Date(gr.created_at).getTime() > NEW_REVIEW_MAX_AGE_MS) return json({ error: "too_old" }, 409);
+
+  const [{ data: guest }, { data: ann }, { count, error: avisErr }] = await Promise.all([
+    admin.from("profiles").select("email,first_name").eq("id", gr.guest_id).maybeSingle(),
+    admin.from("annonces").select("name").eq("id", gr.logement_id).maybeSingle(),
+    admin.from("avis").select("id", { count: "exact", head: true })
+      .eq("logement_id", gr.logement_id).eq("author_id", gr.guest_id),
+  ]);
+  if (avisErr) throw new Error(`lecture avis : ${avisErr.message}`);
+  const alreadyReviewed = (count ?? 0) > 0;
+  const propName = ann?.name ?? "";
+  const where = propName ? ` à <strong>${esc(propName)}</strong>` : "";
+
+  await sendMail(
+    guest?.email,
+    `🏡 Votre hôte${propName ? " à " + propName : ""} a laissé un avis sur votre séjour`.slice(0, 150),
+    layout(
+      "Votre hôte a laissé un avis",
+      `Bonjour ${esc(guest?.first_name ?? "")},<br><br>Votre hôte${where} a laissé un avis sur votre séjour.`
+        + (alreadyReviewed
+          ? `<br><br>Comme vous avez déjà évalué le logement, vous pouvez le consulter dès maintenant dans <strong>Mon profil</strong>, section « Avis des hôtes ».`
+          : `<br><br>Laissez le vôtre sur le logement pour le découvrir : il apparaîtra aussitôt dans <strong>Mon profil</strong>, section « Avis des hôtes ». Sinon, il sera visible dans 14 jours.`),
+      alreadyReviewed ? "" : `<div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.6;color:#495057;">
+         Sur MyTunigo : <strong>Mes voyages</strong>, bouton <strong>⭐ Laisser un avis</strong> sur ce séjour.
+       </div>`,
+      { label: alreadyReviewed ? "Voir l'avis" : "⭐ Laisser mon avis", url: SITE },
+      "Les avis des hôtes ne sont pas publics : seuls les hôtes à qui vous envoyez une demande peuvent les lire.",
+    ),
+  );
+  if (mailErrors.length) return json({ error: "mail_failed" }, 502);
+  return json({ ok: true, already_reviewed: alreadyReviewed });
 }
 
 // ---------- demandes d'avis aux voyageurs (lot) ----------
@@ -358,6 +411,8 @@ Deno.serve(async (req) => {
     switch (body.type) {
       case "new_review":
         return await newReview(req, body);
+      case "guest_review":
+        return await guestReviewNotice(req, body);
       case "review_requests":
         return await reviewRequests();
       default:
