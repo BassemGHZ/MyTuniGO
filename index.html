@@ -648,6 +648,14 @@ function compareGuestReservations(a,b){
   }
   return compareByArrival(a,b);
 }
+// Première date d'arrivée possible pour un logement : demain. L'hôte ne peut
+// pas accepter une arrivée le jour même (le voyageur n'aurait plus le temps
+// de payer) — même règle qu'en base.
+function firstCheckInDate(){
+  const d = new Date(); d.setDate(d.getDate()+1);
+  return localISODate(d);
+}
+
 function localISODate(d){
   d = d || new Date();
   const pad = n => String(n).padStart(2,'0');
@@ -3429,14 +3437,14 @@ function buildDetail(){
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Arrivée</label>
             <input type="date" id="bk-ci" value="${appState.checkIn||appState.searchCheckIn}"
-              min="${localISODate(new Date())}"
+              min="${firstCheckInDate()}"
               onchange="updateBk();markBlockedDatesOnPicker('bk-co',appState.selectedHotelId,this.value)"
               style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
           </div>
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Départ</label>
             <input type="date" id="bk-co" value="${appState.checkOut||appState.searchCheckOut}"
-              min="${appState.checkIn ? localISODate(new Date(new Date(appState.checkIn).getTime()+86400000)) : localISODate(new Date())}"
+              min="${appState.checkIn ? localISODate(new Date(new Date(appState.checkIn).getTime()+86400000)) : addDaysISO(firstCheckInDate(),1)}"
               onchange="updateBk()"
               style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
           </div>
@@ -3550,14 +3558,15 @@ function updateBk(){
     }
   }
 
-  // Set min date for checkin = today
-  const todayStr = localISODate(new Date());
+  // Première arrivée possible = demain (pas d'arrivée le jour même)
+  const todayStr = firstCheckInDate();
   if(ciEl) ciEl.min = todayStr;
 
-  // If checkin is in the past, reset it
+  // Arrivée aujourd'hui ou passée : on la reporte à demain
   if(ci && ci < todayStr){
     if(ciEl) ciEl.value = todayStr;
     appState.checkIn = todayStr;
+    showToast("📅 Arrivée au plus tôt demain : l'hôte doit avoir le temps de répondre",'var(--blue)');
   } else {
     appState.checkIn = ci;
   }
@@ -4045,9 +4054,11 @@ async function payOnSite(hId, total){
   // Le calendrier bloque déjà le choix d'une date passée, mais rien ne
   // revérifiait ici avant l'enregistrement (même famille de bug que pour
   // les excursions).
-  const todayStr0 = localISODate(new Date());
+  const todayStr0 = firstCheckInDate();
   if(!appState.checkIn || appState.checkIn < todayStr0){
-    showToast('⚠️ La date d\'arrivée est passée — veuillez choisir de nouvelles dates','var(--red)');
+    showToast(appState.checkIn && appState.checkIn === localISODate(new Date())
+      ? "⚠️ Une arrivée le jour même n'est pas possible : choisissez une arrivée à partir de demain"
+      : '⚠️ La date d\'arrivée est passée — veuillez choisir de nouvelles dates','var(--red)');
     appState.checkIn=null; appState.checkOut=null;
     navigate('detail',{selectedHotelId:hId});
     return;
@@ -4089,7 +4100,10 @@ async function payOnSite(hId, total){
   if(error){
     console.error('payOnSite error:', error.message);
     const conflict = error.code === '23P01' || /exclu|overlap/i.test(error.message||'');
-    showToast(conflict ? '⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre.' : "La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
+    const tooSoon = /CHECKIN_TOO_SOON/.test(error.message||'');
+    showToast(conflict ? '⛔ Ces dates viennent d\'être réservées par quelqu\'un d\'autre.'
+      : tooSoon ? "⚠️ Une arrivée le jour même n'est pas possible : choisissez une arrivée à partir de demain"
+      : "La demande n'a pas pu être envoyée : "+error.message,'var(--red)');
     if(btn){btn.disabled=false;btn.innerHTML='📨 Envoyer ma demande de réservation';}
     return;
   }
@@ -11405,7 +11419,8 @@ function renderBookingMonth(year, month, unavailable, today, basePricePerNight){
   for(let day=1;day<=daysInMonth;day++){
     const ds = year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
     const isUnavail = unavailable.has(ds);
-    const isPast = ds < todayStr;
+    // Aujourd'hui n'est pas réservable comme date d'arrivée (au plus tôt demain)
+    const isPast = ds <= todayStr;
     const isCi = ds===ci, isCo = ds===co;
     const inRange = ci && co && ds>ci && ds<co;
     const clickable = !isUnavail && !isPast;
