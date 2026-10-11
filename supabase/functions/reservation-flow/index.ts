@@ -118,6 +118,24 @@ function recapBlock(r: any, propName: string) {
     </tbody></table>`;
 }
 
+// Code de réservation (6 caractères, créé en base à la confirmation).
+// Contrôle à l'arrivée : ne prouve pas l'identité.
+function codeBlock(code: string | null | undefined, who: "guest" | "host", kind: "logement" | "excursion") {
+  if (!code) return "";
+  const hint = who === "guest"
+    ? (kind === "logement"
+      ? "À communiquer à votre hôte à l'arrivée s'il vous le demande."
+      : "À communiquer à l'organisateur s'il vous le demande. Vous réservez pour d'autres personnes ? Transmettez-leur ce code.")
+    : (kind === "logement"
+      ? "Demandez ce code au voyageur à son arrivée pour vérifier qu'il s'agit bien de cette réservation."
+      : "Demandez ce code aux participants pour vérifier qu'il s'agit bien de cette réservation.");
+  return `<div style="margin-top:16px;padding:14px 16px;background:#f3f0ff;border:1px solid #d9d0ff;border-radius:8px;text-align:center;">
+    <div style="font-size:13px;font-weight:700;color:#5b3fc4;">🔐 Code de réservation</div>
+    <div style="font-size:26px;font-weight:800;letter-spacing:6px;color:#3a2a8a;font-family:'Courier New',monospace;margin:6px 0;">${esc(code)}</div>
+    <div style="font-size:12.5px;color:#6c757d;line-height:1.5;">${hint}</div>
+  </div>`;
+}
+
 // Excursions publiées à moins de 50 km du logement (fonction SQL
 // fn_excursions_near_annonce), des mieux notées aux moins bien notées.
 // Bloc facultatif : en cas d'erreur ou s'il n'y en a aucune, rien n'est ajouté.
@@ -271,7 +289,7 @@ async function confirmPayment(req: Request, body: any) {
       `🎉 Réservation confirmée — ${c.propName}`,
       layout("Votre réservation est confirmée !",
         `Bonjour ${esc(c.guestName)},<br><br>Votre paiement a bien été enregistré. Votre séjour à <strong>${esc(c.propName)}</strong> est confirmé.`,
-        recapBlock(r, c.propName),
+        recapBlock(r, c.propName) + codeBlock(r.booking_code, "guest", "logement"),
         { label: "🧳 Voir mes voyages", url: SITE },
         "", nearby),
     ),
@@ -280,7 +298,7 @@ async function confirmPayment(req: Request, body: any) {
       `🎉 Réservation confirmée et payée — ${c.propName}`,
       layout("Une réservation est confirmée",
         `Bonjour ${esc(c.hostName)},<br><br>Le voyageur a payé : la réservation pour <strong>${esc(c.propName)}</strong> est confirmée. Les dates sont bloquées dans votre calendrier.`,
-        recapBlock(r, c.propName),
+        recapBlock(r, c.propName) + codeBlock(r.booking_code, "host", "logement"),
         { label: "📨 Gérer mes réservations", url: SITE }),
     ),
   ]);
