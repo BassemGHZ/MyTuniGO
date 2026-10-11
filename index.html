@@ -1004,24 +1004,7 @@ let appState = {
   messageInput:'',
   calendarView:{year:new Date().getFullYear(),month:new Date().getMonth()+1},
   bookingRequestsFilter:'all',
-  myAnnonces:[
-    {id:'ANN-K7L8M9N0',ownerId:1,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:2,maxNights:30,hostId:2,hotelId:4,type:'apt',typeLabel:'Appartement',emoji:'🌞',name:'Casa del Sol — Vue Gaudí',city:'Barcelone',country:'Espagne',address:'Passeig de Gràcia 85',price_night:98,stars:4,rooms:2,bathrooms:1,capacity:4,status:'publiée',discount:0,createdAt:'2025-01-15',updatedAt:'2025-04-20',
-     stats:{vues:1284,clics:342,reservations:18,revenus:8820,tauxOccupation:62,noteMoyenne:4.7,avis:23,
-            vuesMois:[80,95,110,130,145,160,142,155,170,165,180,152],
-            revenusMois:[420,490,560,680,720,810,750,820,880,840,920,730]}},
-    {id:'ANN-O1P2Q3R4',ownerId:1,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:3,maxNights:30,hotelId:1,type:'house',typeLabel:'Maison',emoji:'🏡',name:'Villa Provençale avec Piscine',city:'Aix-en-Provence',country:'France',address:'Route des Calanques 12',price_night:175,stars:4,rooms:4,bathrooms:2,capacity:8,status:'publiée',discount:0,createdAt:'2024-11-03',updatedAt:'2025-03-10',
-     stats:{vues:876,clics:214,reservations:11,revenus:13650,tauxOccupation:45,noteMoyenne:4.9,avis:14,
-            vuesMois:[40,55,70,90,110,130,120,115,100,95,85,66],
-            revenusMois:[0,875,1050,1400,1750,2100,1925,1750,1575,1225,875,1125]}},
-    {id:'ANN-S5T6U7V8',ownerId:2,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:1,maxNights:30,hotelId:3,type:'studio',typeLabel:'Studio',emoji:'🛋️',name:'Studio cosy Montmartre',city:'Paris',country:'France',address:'Rue Lepic 34',price_night:65,stars:3,rooms:1,bathrooms:1,capacity:2,status:'en attente',discount:0,createdAt:'2025-04-18',updatedAt:'2025-04-18',
-     stats:{vues:124,clics:31,reservations:0,revenus:0,tauxOccupation:0,noteMoyenne:0,avis:0,
-            vuesMois:[0,0,0,0,0,0,0,0,0,0,0,124],
-            revenusMois:[0,0,0,0,0,0,0,0,0,0,0,0]}},
-    {id:'ANN-W9X0Y1Z2',ownerId:2,icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},minNights:4,maxNights:30,hotelId:null,type:'house',typeLabel:'Maison',emoji:'🌴',name:'Villa Sunset Marrakech',city:'Marrakech',country:'Maroc',address:'Palmeraie, Route de Fès',price_night:220,stars:5,rooms:5,bathrooms:3,capacity:10,status:'suspendue',discount:0,createdAt:'2024-06-01',updatedAt:'2024-12-15',
-     stats:{vues:2341,clics:587,reservations:29,revenus:41800,tauxOccupation:71,noteMoyenne:4.8,avis:41,
-            vuesMois:[180,195,220,240,260,280,270,265,250,245,230,206],
-            revenusMois:[2800,3200,3600,4000,4200,4600,4400,4200,3800,3600,3200,6200]}},
-  ],
+  myAnnonces:[], // chargées depuis Supabase (données de démonstration retirées)
 };
 
 /* ===================== RENDER ===================== */
@@ -2236,29 +2219,27 @@ function buildHome(){
             +'</div></div></div>';
         }).join('')}
 
-      <!-- Excursions deals -->
-      ${[
-        {id:'EX001',emoji:'🏛️',title:'Visite privée du Louvre',city:'Paris',country:'France',oldPrice:129,price:89,discount:31,duration:'3h',category:'Culture'},
-        {id:'EX003',emoji:'🍽️',title:'Atelier cuisine marocaine',city:'Marrakech',country:'Maroc',oldPrice:95,price:65,discount:32,duration:'4h',category:'Gastronomie'},
-        {id:'EX005',emoji:'🍵',title:'Cérémonie du thé — Kyoto',city:'Kyoto',country:'Japon',oldPrice:160,price:120,discount:25,duration:'2h30',category:'Culture'},
-        {id:'EX008',emoji:'💃',title:'Soirée flamenco — Grenade',city:'Grenade',country:'Espagne',oldPrice:99,price:72,discount:27,duration:'3h30',category:'Soirées'},
-      ].map(e=>`
+      <!-- Excursions en promotion : vraies excursions publiées avec une remise -->
+      ${excursions.filter(e=>e.excursionId && (Number(e.discount)||0)>0).map(e=>{
+        const d = Number(e.discount)||0;
+        const old = (Number(e.basePrice)||0) > (Number(e.price)||0) ? Number(e.basePrice) : Math.round((Number(e.price)||0)/(1-d/100));
+        return `
         <div class="deal-card" data-deal-type="excursion" onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})">
-          <div class="deal-img" style="background:linear-gradient(135deg,#1a1a2e,#0f3460);font-size:32px;">${e.emoji}</div>
+          <div class="deal-img" style="background:${e.photos&&e.photos.length?`url('${e.photos[0]}') center/cover no-repeat`:'linear-gradient(135deg,#1a1a2e,#0f3460)'};font-size:32px;">${e.photos&&e.photos.length?'':(e.emoji||'✈️')}</div>
           <div class="deal-body">
             <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
               <span style="font-size:10px;background:#f0edff;color:#7B61FF;padding:2px 7px;border-radius:20px;font-weight:700;">✈️ Excursion</span>
-              <div class="deal-badge">-${e.discount}%</div>
+              <div class="deal-badge">-${d}%</div>
             </div>
             <div class="deal-name">${e.title}</div>
             <div class="deal-loc">📍 ${e.city}, ${e.country} · ⏱️ ${e.duration}</div>
             <div class="deal-prices">
-              <span class="deal-old">${e.oldPrice}€</span>
+              <span class="deal-old">${old}€</span>
               <span class="deal-new">${e.price}€</span>
               <span style="font-size:12px;color:var(--gray-500)">/pers.</span>
             </div>
           </div>
-        </div>`).join('')}
+        </div>`; }).join('')}
     </div>
 
   <div class="stats-banner">
@@ -13271,6 +13252,8 @@ async function loadPublishedExcursions(){
         groupSize: e.max_participants || 10,
         minAge: e.min_age || 0,
         price: e.price || 0,
+        basePrice: e.base_price || 0,
+        discount: e.discount || 0,
         priceType: e.price_type || 'personne',
         // tenus à jour en base à chaque avis (trigger trg_avis_excursion_rating)
         rating: e.review_count ? Number(e.rating).toFixed(1) : 0,
