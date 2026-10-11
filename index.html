@@ -5340,6 +5340,18 @@ async function loadReservations(container){
   if(container && container.parentNode){ container.replaceWith(fresh); }
 }
 
+// Nombre de villes différentes où le voyageur a séjourné ou séjournera
+// (réservations confirmées ou terminées). Remplace l'ancien « Total dépensé »,
+// moins engageant pour le voyageur (le montant de chaque réservation reste
+// affiché sur sa carte).
+function visitedDestinationsCount(){
+  const cities = new Set((appState.reservations||[])
+    .filter(r=>r.status==='confirmée'||r.status==='terminée')
+    .map(r=>String(r._propCity||'').trim().toLowerCase())
+    .filter(c=>c && c!=='—'));
+  return cities.size;
+}
+
 function buildReservations(){
   if(!auth.currentUser){navigate('home');return document.createElement('div');}
   const typeTab = appState.resaTypeTab||'logements';
@@ -5373,7 +5385,7 @@ function buildReservations(){
     <!-- Stat cards -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px;">
       ${[
-        {label:'Total dépensé',val:appState.reservations.filter(r=>r.status==='confirmée'||r.status==='terminée').reduce((s,r)=>s+r.total,0).toLocaleString()+'€',icon:'💶',color:'var(--blue)'},
+        {label:'Destinations découvertes',val:visitedDestinationsCount(),icon:'🗺️',color:'var(--blue)'},
         {label:'Nuits réservées',val:appState.reservations.filter(r=>r.status==='confirmée'||r.status==='terminée').reduce((s,r)=>s+r.nights,0),icon:'🌙',color:'#8e44ad'},
         {label:'Confirmées',val:appState.reservations.filter(r=>r.status==='confirmée').length,icon:'✅',color:'var(--green)'},
         {label:'Terminées',val:appState.reservations.filter(r=>r.status==='terminée').length,icon:'🏁',color:'var(--gray-600)'},
@@ -6325,7 +6337,6 @@ function buildProfil(){
   const totalResa = appState.reservations.length;
   const totalFavs = appState.favorites.length;
   const totalAnns = appState.myAnnonces.length;
-  const totalDep  = appState.reservations.filter(r=>r.status==='confirmée'||r.status==='terminée').reduce((s,r)=>s+r.total,0);
 
   // Edit mode state
   const editing = appState.profilEditing || false;
@@ -6376,7 +6387,7 @@ function buildProfil(){
         {icon:'📅',val:totalResa,label:'Réservations',page:'reservations',color:'var(--blue)'},
         {icon:'❤️',val:totalFavs,label:'Favoris',page:'favoris',color:'#e74c3c'},
         {icon:'🏘️',val:totalAnns,label:'Annonces',page:'mesannonces',color:'#8e44ad'},
-        {icon:'💶',val:totalDep.toLocaleString()+'€',label:'Total dépensé',page:'reservations',color:'var(--green)'},
+        {icon:'🗺️',val:visitedDestinationsCount(),label:'Destinations découvertes',page:'reservations',color:'var(--green)'},
       ].map(s=>`
         <div onclick="navigate('${s.page}')" style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:16px;cursor:pointer;transition:all .2s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
           <div style="font-size:24px;margin-bottom:8px;">${s.icon}</div>
