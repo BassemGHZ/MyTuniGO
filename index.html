@@ -2824,6 +2824,12 @@ function initResultsMaps(){
   }
 }
 
+// Première photo exploitable (URL http) d'une liste de photos, sinon null.
+function firstPhotoUrl(photos){
+  const p = Array.isArray(photos) ? photos.find(x=>typeof x==='string' && /^https?:\/\//.test(x)) : null;
+  return p || null;
+}
+
 function photoOrEmoji(h){
   if(h.photos && h.photos.length && typeof h.photos[0]==='string' && h.photos[0].startsWith('http')){
     return `<img src="${h.photos[0]}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">`;
@@ -5273,7 +5279,7 @@ async function loadReservations(container){
 
   const logementIds = [...new Set((data||[]).map(r=>r.logement_id).filter(Boolean))];
   const { data: anns } = logementIds.length
-    ? await _sb.from('annonces').select('id,name,city,country,emoji').in('id', logementIds)
+    ? await _sb.from('annonces').select('id,name,city,country,emoji,photos').in('id', logementIds)
     : { data: [] };
   const annMap = Object.fromEntries((anns||[]).map(a=>[a.id,a]));
 
@@ -5303,6 +5309,7 @@ async function loadReservations(container){
       _propCity: ann.city || (h?h.city:'—'),
       _propCountry: ann.country || (h?h.country:'—'),
       _propEmoji: ann.emoji || (h?h.emoji:'🏨'),
+      _propPhoto: firstPhotoUrl(ann.photos) || firstPhotoUrl(h?.photos),
     };
   });
 
@@ -5318,7 +5325,7 @@ async function loadReservations(container){
   } else {
     const excIds2 = [...new Set((excBk||[]).map(b=>b.excursion_id).filter(Boolean))];
     const { data: excs2 } = excIds2.length
-      ? await _sb.from('excursions').select('id,title,city,country').in('id', excIds2)
+      ? await _sb.from('excursions').select('id,title,city,country,photos').in('id', excIds2)
       : { data: [] };
     const excMap2 = Object.fromEntries((excs2||[]).map(e=>[e.id,e]));
     const { data: myExcReviews } = excIds2.length
@@ -5330,6 +5337,7 @@ async function loadReservations(container){
       return {
         id: b.reference || b.id, _dbId: b.id, excursionId: b.excursion_id,
         title: ex.title || 'Excursion', city: ex.city || '—', country: ex.country || '—',
+        photo: firstPhotoUrl(ex.photos),
         date: b.date, participants: b.participants||1, total: b.total||0,
         status: b.status||'en attente', paymentMethod: b.payment_method||'en ligne', createdAt: b.created_at
       };
@@ -5419,8 +5427,8 @@ function buildReservations(){
       const co=r.checkOut?fmtDMY(r.checkOut):'—';
       return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
         <div style="display:flex;gap:0;flex-wrap:wrap;">
-          <div style="width:180px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:56px;flex-shrink:0;min-height:130px;">
-            ${h.emoji}
+          <div style="width:180px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:56px;flex-shrink:0;min-height:130px;overflow:hidden;${r.hotelId?'cursor:pointer;':''}" ${r.hotelId?`onclick="navigate('detail',{selectedHotelId:${r.hotelId}})"`:''}>
+            ${r._propPhoto?`<img src="${escHTML(r._propPhoto)}" alt="" loading="lazy" style="width:100%;height:100%;min-height:130px;object-fit:cover;display:block;" onerror="this.replaceWith(document.createTextNode('${h.emoji||'🏨'}'))">`:h.emoji}
           </div>
           <div style="flex:1;padding:18px 20px;display:flex;gap:16px;flex-wrap:wrap;">
             <div style="flex:1;min-width:200px;">
@@ -5551,7 +5559,7 @@ function buildExcursionReservations(){
       const dt=r.date?fmtDMY(r.date):'—';
       return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;">
         <div style="display:flex;gap:0;flex-wrap:wrap;">
-          <div style="width:110px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0;min-height:110px;">✈️</div>
+          <div style="width:110px;background:linear-gradient(135deg,#e8f4ff,#b3d4f0);display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0;min-height:110px;overflow:hidden;">${r.photo?`<img src="${escHTML(r.photo)}" alt="" loading="lazy" style="width:100%;height:100%;min-height:110px;object-fit:cover;display:block;" onerror="this.replaceWith(document.createTextNode('✈️'))">`:'✈️'}</div>
           <div style="flex:1;padding:16px 18px;display:flex;gap:16px;flex-wrap:wrap;">
             <div style="flex:1;min-width:200px;">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
