@@ -13179,7 +13179,12 @@ try{
 try{
   history.replaceState(
     { page: appState.page, ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
-    '', pageUrl(appState.page)
+    '',
+    // Retour de connexion (Google…) ou erreur d'authentification : on ne
+    // touche pas aux paramètres de l'adresse, Supabase peut en avoir besoin.
+    /[?&](code|error|error_description)=/.test(window.location.search)
+      ? window.location.pathname + window.location.search + '#' + appState.page
+      : pageUrl(appState.page)
   );
 }catch(e){}
 
@@ -13220,7 +13225,7 @@ if(_restoredPage && _restoredPage!=='home'){
     // logements change d'un chargement à l'autre, celui de l'annonce non.)
     if(appState.page==='detail' && appState._deepAnnonceId){
       const h = hotels.find(x=>x.annonceId===appState._deepAnnonceId);
-      if(h) appState.selectedHotelId = h.id;
+      if(h){ appState.selectedHotelId = h.id; logAnnonceView(h.id); }
       else { appState.page = 'home'; setTimeout(()=>showToast("Cette annonce n'est plus disponible.",'var(--gray-700)'), 300); }
     }
     appState._deepAnnonceId = null;
