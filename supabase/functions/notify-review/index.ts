@@ -17,6 +17,8 @@
 //          B) relance unique 24h après le 1er e-mail, toujours pas d'avis.
 //          Même principe pour les excursions (excursion_bookings 'terminée',
 //          le lendemain de l'excursion, puis une relance).
+//          Et un e-mail unique à l'hôte (le lendemain du départ) pour qu'il
+//          évalue son voyageur (table guest_reviews), s'il ne l'a pas déjà fait.
 //          Traitement par lot et idempotent (chaque réservation est
 //          « réservée » avant l'envoi) : un appel en trop n'envoie rien de plus.
 //
@@ -248,6 +250,61 @@ async function excursionReviewRequests(now: number) {
   return { sent, reminded };
 }
 
+// ---------- rappel à l'hôte : évaluer le voyageur ----------
+// deno-lint-ignore no-explicit-any
+async function hasGuestReview(r: any) {
+  const { count, error } = await admin.from("guest_reviews").select("id", { count: "exact", head: true })
+    .eq("reservation_id", r.id);
+  if (error) throw new Error(`lecture guest_reviews : ${error.message}`);
+  return (count ?? 0) > 0;
+}
+
+// deno-lint-ignore no-explicit-any
+async function sendHostRequest(r: any) {
+  const [{ data: guest }, { data: ann }] = await Promise.all([
+    admin.from("profiles").select("first_name").eq("id", r.guest_id).maybeSingle(),
+    admin.from("annonces").select("name,contact_email,contact_firstname").eq("id", r.logement_id).maybeSingle(),
+  ]);
+  const guestName = guest?.first_name || "votre voyageur";
+  const propName = ann?.name ?? "";
+  return sendMail(
+    ann?.contact_email,
+    `⭐ Comment s'est passé le séjour de ${guestName} ?`.slice(0, 150),
+    layout(
+      "Évaluez votre voyageur",
+      `Bonjour ${esc(ann?.contact_firstname ?? "")},<br><br>`
+        + `Le séjour de <strong>${esc(guestName)}</strong>${propName ? ` à <strong>${esc(propName)}</strong>` : ""} s'est terminé le ${fmtDateLong(r.check_out)}.`
+        + `<br><br>Donnez-lui une note et, si vous le souhaitez, un commentaire (respect du logement, communication…). Votre avis aide les autres hôtes à accepter leurs demandes en confiance.`,
+      `<div style="background:#f8f9fa;border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.6;color:#495057;">
+         Sur MyTunigo : <strong>Mes annonces → 📨 Réservations</strong>, onglet <strong>Terminées</strong>, bouton <strong>⭐ Évaluer le voyageur</strong>.
+       </div>`,
+      { label: "⭐ Évaluer le voyageur", url: SITE },
+      `Votre avis n'est pas public : seuls les hôtes qui recevront une demande de ce voyageur pourront le lire. Réservation ${esc(r.reference ?? "")}`,
+    ),
+  );
+}
+
+// Un seul e-mail par réservation (pas de relance) : séjour terminé depuis
+// au moins 24 h, jamais envoyé, l'hôte n'a pas encore évalué le voyageur.
+async function hostReviewRequests(now: number) {
+  let sent = 0;
+  const { data: rows, error } = await admin.from("reservations")
+    .select("id,guest_id,logement_id,check_out,reference")
+    .eq("status", "terminée").is("host_review_email_sent_at", null)
+    .lte("check_out", new Date(now - DAY_MS).toISOString().slice(0, 10));
+  if (error) throw new Error(`reservations (hôtes) : ${error.message}`);
+  for (const r of rows ?? []) {
+    if (await hasGuestReview(r)) continue;
+    const { data: claimed, error: claimErr } = await admin.from("reservations")
+      .update({ host_review_email_sent_at: new Date().toISOString() })
+      .eq("id", r.id).is("host_review_email_sent_at", null).select("id");
+    if (claimErr) throw new Error(`réservation ${r.id} : ${claimErr.message}`);
+    if (!claimed?.length) continue;
+    if (await sendHostRequest(r)) sent++;
+  }
+  return sent;
+}
+
 async function reviewRequests() {
   const now = Date.now();
   let sent = 0, reminded = 0;
@@ -287,7 +344,8 @@ async function reviewRequests() {
   }
 
   const exc = await excursionReviewRequests(now);
-  return json({ ok: true, sent, reminded, excursions_sent: exc.sent, excursions_reminded: exc.reminded });
+  const hostsSent = await hostReviewRequests(now);
+  return json({ ok: true, sent, reminded, excursions_sent: exc.sent, excursions_reminded: exc.reminded, hosts_sent: hostsSent });
 }
 
 Deno.serve(async (req) => {
