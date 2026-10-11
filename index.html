@@ -6396,6 +6396,9 @@ function buildProfil(){
         </div>`).join('')}
     </div>
 
+    <!-- Avis des hôtes (rempli après chargement) -->
+    <div id="profil-host-reviews"></div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
 
       <!-- Infos personnelles -->
@@ -6499,6 +6502,7 @@ function buildProfil(){
       </div>
     </div>
   </div>`;
+  setTimeout(loadProfilHostReviews, 0);
   return d;
 }
 
@@ -9578,6 +9582,21 @@ async function loadBookingRequests(container){
     : { data: [] };
   const profMap = Object.fromEntries((profs||[]).map(p=>[p.id,p]));
 
+  // Avis laissés par les hôtes sur ces voyageurs (les vôtres et ceux des
+  // autres hôtes) — la base ne renvoie que ceux que vous avez le droit de voir.
+  const gr = { byGuest: {}, byResa: {} };
+  if(guestIds.length){
+    const { data: grRows, error: grErr } = await _sb.from('guest_reviews')
+      .select('id,reservation_id,guest_id,author_id,rating,comment,created_at')
+      .in('guest_id', guestIds).order('created_at',{ascending:false});
+    if(grErr){ console.warn('guest_reviews :', grErr.message); }
+    (grRows||[]).forEach(g=>{
+      (gr.byGuest[g.guest_id] = gr.byGuest[g.guest_id] || []).push(g);
+      gr.byResa[g.reservation_id] = g;
+    });
+  }
+  appState._guestReviews = gr;
+
   const all = resaRows.map(r=>{
     const p = profMap[r.guest_id];
     const guestName = p ? (p.first_name||'Voyageur') : 'Voyageur';
@@ -9597,6 +9616,7 @@ async function loadBookingRequests(container){
       refusedReason: r.expired_reason||null
     };
   });
+  appState._bookingReqById = Object.fromEntries(all.map(r=>[r.id,r]));
 
   // Filtre optionnel par annonce, utilisé quand on arrive ici depuis le bouton
   // "📨 Réservations" d'une annonce précise dans "Mes annonces" — permet à
@@ -9639,7 +9659,7 @@ async function loadBookingRequests(container){
     </div>
 
     <!-- Tabs -->
-    <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);">
+    <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);flex-wrap:wrap;">
       ${[['all','Toutes'],['pending','En attente'],['awaiting','Attente paiement'],['accepted','Confirmées'],['completed','Terminées'],['declined','Refusées'],['cancelled','Annulées'],['expired','Expirées']].map(([v,l])=>{
         const n = v==='all' ? scoped.length : scoped.filter(r=>r.status===statusMap[v]).length;
         return `<button onclick="appState.bookingRequestsFilter='${v}';navigate('booking-requests')"
@@ -9668,6 +9688,7 @@ async function loadBookingRequests(container){
                 ${isExpiring?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#fff0f0;color:var(--red);">⚠️ Date d\'arrivée dépassée — sera refusée automatiquement</span>':''}
               </div>
               <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">${req.propertyEmoji} ${req.propertyName}</div>
+              ${guestReviewsSummaryHTML(req.guestId)}
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;">
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Arrivée</div><div style="font-size:13px;font-weight:600;">${ci}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Départ</div><div style="font-size:13px;font-weight:600;">${co}</div></div>
@@ -9685,11 +9706,160 @@ async function loadBookingRequests(container){
               <button onclick="decideBookingRequest('${req.id}','acceptée')" ${conflictOf(req)?'disabled':''} style="background:${conflictOf(req)?'var(--gray-300)':'var(--green)'};color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:${conflictOf(req)?'not-allowed':'pointer'};">✅ Accepter</button>
               <button onclick="decideBookingRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
               <button onclick="openConversationWithGuest('${req.annonceId}','${req.guestId}')" style="background:#fff;color:var(--blue-l);padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--blue-l);cursor:pointer;">💬 Contacter</button>
+            </div>`:guestReviewable(req)?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
+              ${appState._guestReviews?.byResa?.[req.id]
+                ? `<div style="background:#e8f9f0;color:var(--green);padding:10px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;text-align:center;">✓ Voyageur évalué<br><span style="color:#f5a623;font-size:15px;letter-spacing:1px;">${'★'.repeat(appState._guestReviews.byResa[req.id].rating)}</span></div>`
+                : `<button onclick="openGuestReviewModal('${req.id}')" style="background:var(--blue);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">⭐ Évaluer le voyageur</button>`}
             </div>`:''}
           </div>
         </div>
       </div>`;
     }).join('')}
+  </div>`;
+}
+
+/* ── Avis des hôtes sur les voyageurs ─────────────────────────────── */
+function escHTML(v){
+  return String(v??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// L'hôte peut évaluer le voyageur une fois le séjour fini : réservation
+// terminée, ou confirmée dont le jour de départ est arrivé (même règle qu'en base).
+function guestReviewable(req){
+  return req.status==='terminée' || (req.status==='confirmée' && req.checkOut && req.checkOut <= localISODate(new Date()));
+}
+
+function guestStarsHTML(rating, size){
+  return `<span style="color:#f5a623;font-size:${size||13}px;letter-spacing:1px;">${'★'.repeat(rating)}<span style="color:var(--gray-300);">${'★'.repeat(5-rating)}</span></span>`;
+}
+
+// Note du voyageur vue par l'hôte sur chaque demande reçue.
+function guestReviewsSummaryHTML(guestId){
+  const rows = appState._guestReviews?.byGuest?.[guestId] || [];
+  if(!rows.length){
+    return `<div style="font-size:12.5px;color:var(--gray-500);margin-bottom:10px;">🆕 Nouveau voyageur — aucun avis d'hôte pour l'instant</div>`;
+  }
+  const avg = rows.reduce((s,r)=>s+r.rating,0)/rows.length;
+  const withText = rows.filter(r=>r.comment);
+  return `<details style="font-size:13px;margin-bottom:10px;">
+    <summary style="cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--gray-800);">
+      ⭐ ${avg.toFixed(1).replace('.',',')} <span style="font-weight:500;color:var(--gray-500);">· ${rows.length} avis d'hôte${rows.length>1?'s':''}${withText.length?' — voir les commentaires':''}</span>
+    </summary>
+    <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+      ${rows.map(r=>`<div style="background:var(--gray-50);border-radius:var(--r-sm);padding:8px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">${guestStarsHTML(r.rating)}<span style="font-size:11.5px;color:var(--gray-400);">${r.author_id===auth.currentUser?.id?'Votre avis · ':''}${fmtDMY(r.created_at)}</span></div>
+        ${r.comment?`<div style="font-size:13px;color:var(--gray-700);line-height:1.5;margin-top:4px;">${escHTML(r.comment)}</div>`:''}
+      </div>`).join('')}
+    </div>
+  </details>`;
+}
+
+let _guestRatingValue = 0;
+function renderGuestReviewStars(selected){
+  _guestRatingValue = selected;
+  const el = document.getElementById('guest-review-stars');
+  if(!el) return;
+  el.innerHTML = [1,2,3,4,5].map(n =>
+    `<span onclick="renderGuestReviewStars(${n})" style="cursor:pointer;color:${n<=selected?'#f5a623':'var(--gray-300)'};transition:transform .1s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''">★</span>`
+  ).join('');
+}
+
+function openGuestReviewModal(reqId){
+  const req = appState._bookingReqById?.[reqId];
+  if(!req) return;
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-header" style="background:var(--blue);">
+        <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
+        <h2>⭐ Évaluer ${escHTML(req.guestName)}</h2>
+        <p>${escHTML(req.propertyName)} · ${req.checkIn?fmtDMY(req.checkIn):''} → ${req.checkOut?fmtDMY(req.checkOut):''}</p>
+      </div>
+      <div class="modal-body">
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:10px;">Votre note</label>
+        <div id="guest-review-stars" style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;font-size:36px;"></div>
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Votre commentaire (facultatif)</label>
+        <textarea id="guest-review-comment" rows="4" maxlength="1000" placeholder="Respect du logement et du règlement, communication, ponctualité…"
+          style="width:100%;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+        <div style="background:#f0f7ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;color:var(--blue-l);line-height:1.55;margin-bottom:16px;">
+          🔒 Votre avis n'est pas public : seuls les hôtes qui recevront une demande de ce voyageur pourront le lire. Le voyageur le verra après avoir lui-même évalué votre logement, ou au bout de 14 jours. Un avis publié ne peut plus être modifié.
+        </div>
+        <button id="guest-review-save" onclick="saveGuestReview('${req.id}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Publier mon avis</button>
+      </div>
+    </div>`;
+  root.appendChild(overlay);
+  renderGuestReviewStars(0);
+}
+
+async function saveGuestReview(reqId){
+  const req = appState._bookingReqById?.[reqId];
+  if(!req || !auth.currentUser) return;
+  if(_guestRatingValue<1){ showToast('⚠️ Choisissez une note de 1 à 5 étoiles','var(--red)'); return; }
+  const comment = document.getElementById('guest-review-comment')?.value?.trim() || '';
+  const btn = document.getElementById('guest-review-save');
+  if(btn){ btn.disabled = true; btn.textContent = 'Publication…'; }
+  const { error } = await _sb.from('guest_reviews').insert([{
+    reservation_id: req.id,
+    logement_id: req.annonceId,
+    guest_id: req.guestId,
+    author_id: auth.currentUser.id,
+    rating: _guestRatingValue,
+    comment: comment || null
+  }]);
+  if(error){
+    if(btn){ btn.disabled = false; btn.textContent = 'Publier mon avis'; }
+    const dup = error.code==='23505' || /duplicate/i.test(error.message||'');
+    showToast(dup ? 'Vous avez déjà évalué ce voyageur pour ce séjour.' : "Impossible d'enregistrer l'avis : "+error.message,'var(--red)');
+    if(dup){ document.getElementById('modal-root').innerHTML=''; navigate('booking-requests'); }
+    return;
+  }
+  document.getElementById('modal-root').innerHTML = '';
+  showToast('✅ Merci ! Votre avis sur le voyageur est enregistré.','var(--green)');
+  navigate('booking-requests');
+}
+
+// Section « Avis des hôtes » du profil voyageur. La base ne renvoie que les
+// avis déjà visibles (après votre propre avis sur le logement, ou 14 jours).
+async function loadProfilHostReviews(){
+  const box = document.getElementById('profil-host-reviews');
+  if(!box || !auth.currentUser) return;
+  const { data: rows, error } = await _sb.from('guest_reviews')
+    .select('id,logement_id,rating,comment,created_at')
+    .eq('guest_id', auth.currentUser.id).order('created_at',{ascending:false});
+  if(error){ console.warn('guest_reviews (profil) :', error.message); }
+  const list = rows||[];
+  const annIds = [...new Set(list.map(r=>r.logement_id).filter(Boolean))];
+  const nameOf = {};
+  annIds.forEach(id=>{ const h = hotels.find(x=>x.annonceId===id); if(h) nameOf[id] = h.name; });
+  const missing = annIds.filter(id=>!nameOf[id]);
+  if(missing.length){
+    const { data: anns } = await _sb.from('annonces').select('id,name').in('id', missing);
+    (anns||[]).forEach(a=>{ nameOf[a.id] = a.name; });
+  }
+  const target = document.getElementById('profil-host-reviews');
+  if(!target) return;
+  const avg = list.length ? list.reduce((s,r)=>s+r.rating,0)/list.length : 0;
+  target.innerHTML = `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;margin-bottom:24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:${list.length?14:8}px;">
+      <div style="font-size:16px;font-weight:700;">🏡 Avis des hôtes</div>
+      ${list.length?`<div style="font-size:14px;font-weight:800;color:var(--gray-800);">⭐ ${avg.toFixed(1).replace('.',',')} <span style="font-weight:500;color:var(--gray-500);font-size:13px;">· ${list.length} avis</span></div>`:''}
+    </div>
+    ${list.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
+      ${list.map(r=>`<div style="background:var(--gray-50);border-radius:var(--r-md);padding:10px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:700;color:var(--gray-700);">${escHTML(nameOf[r.logement_id]||'Hébergement')}</span>
+          <span style="display:flex;align-items:center;gap:8px;">${guestStarsHTML(r.rating,14)}<span style="font-size:11.5px;color:var(--gray-400);">${fmtDMY(r.created_at)}</span></span>
+        </div>
+        ${r.comment?`<div style="font-size:13.5px;color:var(--gray-700);line-height:1.55;margin-top:6px;">${escHTML(r.comment)}</div>`:''}
+      </div>`).join('')}
+    </div>` : ''}
+    <div style="font-size:12.5px;color:var(--gray-500);line-height:1.55;${list.length?'margin-top:12px;':''}">
+      ${list.length?'':"Aucun avis d'hôte pour l'instant. "}Après chaque séjour, l'hôte peut vous évaluer. Son avis apparaît ici dès que vous avez vous-même évalué le logement, ou 14 jours après. Ces avis ne sont pas publics : seuls les hôtes à qui vous envoyez une demande peuvent les lire.
+    </div>
   </div>`;
 }
 
