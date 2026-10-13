@@ -103,8 +103,10 @@ function layout(title: string, intro: string, recap: string, cta?: { label: stri
   </div></body></html>`;
 }
 
+// Récapitulatif. Pour l'hôte (hostNet fourni ou null), on n'affiche pas ce que
+// le voyageur paie mais ce que l'hôte reçoit (prix − commission MyTunigo).
 // deno-lint-ignore no-explicit-any
-function recapBlock(r: any, propName: string) {
+function recapBlock(r: any, propName: string, hostNet?: number | null) {
   const row = (k: string, v: string) =>
     `<tr><td style="padding:5px 0;color:#6c757d;">${k}</td><td style="padding:5px 0;text-align:right;font-weight:600;">${v}</td></tr>`;
   return `<table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8f9fa;border-radius:8px;padding:12px;">
@@ -114,8 +116,31 @@ function recapBlock(r: any, propName: string) {
       ${row("Départ", fmtDate(r.check_out))}
       ${row("Voyageurs", String(r.guests_count ?? 1))}
       ${row("Référence", esc(r.reference ?? "—"))}
-      ${row("Total", `<span style="color:#003580;font-size:16px;">${esc(r.total)}€</span>`)}
+      ${hostNet === undefined
+        ? row("Total", `<span style="color:#003580;font-size:16px;">${esc(r.total)}€</span>`)
+        : hostNet === null ? "" : row("Vous recevez", `<span style="color:#0a8f5c;font-size:16px;">${esc(fmtAmount(hostNet))}€</span>`)}
     </tbody></table>`;
+}
+
+function fmtAmount(n: number) {
+  return Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+}
+
+// Montant reçu par l'hôte : reversement figé à la confirmation s'il existe,
+// sinon devis selon son niveau (fondateur 0 %, standard 10 %, performant 8 %).
+// null si la grille n'est pas disponible : on n'affiche alors aucun montant.
+// deno-lint-ignore no-explicit-any
+async function hostNetFor(r: any, ownerId: string | null): Promise<number | null> {
+  const { data: pay } = await admin.from("booking_payouts").select("payout")
+    .eq("kind", "logement").eq("booking_id", r.id).maybeSingle();
+  if (pay && pay.payout != null) return Number(pay.payout);
+  if (!ownerId) return null;
+  const { data: q, error } = await admin.rpc("fn_commission_quote", {
+    p_owner: ownerId, p_kind: "logement", p_gross: Number(r.total ?? 0),
+  });
+  if (error) { mailErrors.push(`devis commission : ${error.message}`); return null; }
+  const row = Array.isArray(q) ? q[0] : q;
+  return row && row.payout != null ? Number(row.payout) : null;
 }
 
 // Code de réservation (6 caractères, créé en base à la confirmation).
@@ -178,7 +203,7 @@ async function nearbyExcursionsBlock(logementId: string | null | undefined): Pro
 // deno-lint-ignore no-explicit-any
 async function loadContext(r: any) {
   const [{ data: ann, error: annErr }, { data: guest, error: guestErr }] = await Promise.all([
-    admin.from("annonces").select("name,contact_email,contact_firstname").eq("id", r.logement_id).maybeSingle(),
+    admin.from("annonces").select("name,contact_email,contact_firstname,user_id").eq("id", r.logement_id).maybeSingle(),
     admin.from("profiles").select("email,first_name").eq("id", r.guest_id).maybeSingle(),
   ]);
   if (annErr) mailErrors.push(`lecture annonces : ${annErr.message}`);
@@ -187,6 +212,7 @@ async function loadContext(r: any) {
     propName: ann?.name ?? "votre hébergement",
     hostEmail: ann?.contact_email ?? null,
     hostName: ann?.contact_firstname ?? "",
+    ownerId: (ann?.user_id ?? null) as string | null,
     guestEmail: guest?.email ?? null,
     guestName: guest?.first_name ?? "",
   };
@@ -229,6 +255,7 @@ async function notifyRequestCreated(body: any) {
     return json({ error: "too_late" }, 409);
   }
   const c = await loadContext(r);
+  const net = await hostNetFor(r, c.ownerId);
   await Promise.all([
     sendMail(
       c.guestEmail,
@@ -246,7 +273,7 @@ async function notifyRequestCreated(body: any) {
         `Bonjour ${esc(c.hostName)},<br><br>${esc(c.guestName) || "Un voyageur"} souhaite réserver <strong>${esc(c.propName)}</strong>. Les dates ne sont pas encore bloquées : d'autres voyageurs peuvent demander la même période, c'est vous qui choisissez.
          <br><br>Si vous acceptez, le voyageur aura <strong>24h pour payer</strong> ; pendant ce délai les dates seront bloquées.
          ${r.notes ? `<div style="margin-top:14px;padding:10px 14px;border-left:3px solid #0071c2;background:#f0f7ff;font-style:italic;">« ${esc(r.notes)} »</div>` : ""}`,
-        recapBlock(r, c.propName),
+        recapBlock(r, c.propName, net),
         { label: "✅ Répondre à la demande", url: SITE }),
     ),
   ]);
@@ -283,6 +310,7 @@ async function confirmPayment(req: Request, body: any) {
   const r = updated[0];
 
   const [c, nearby] = await Promise.all([loadContext(r), nearbyExcursionsBlock(r.logement_id)]);
+  const net = await hostNetFor(r, c.ownerId);
   await Promise.all([
     sendMail(
       c.guestEmail,
@@ -298,7 +326,7 @@ async function confirmPayment(req: Request, body: any) {
       `🎉 Réservation confirmée et payée — ${c.propName}`,
       layout("Une réservation est confirmée",
         `Bonjour ${esc(c.hostName)},<br><br>Le voyageur a payé : la réservation pour <strong>${esc(c.propName)}</strong> est confirmée. Les dates sont bloquées dans votre calendrier.`,
-        recapBlock(r, c.propName) + codeBlock(r.booking_code, "host", "logement"),
+        recapBlock(r, c.propName, net) + codeBlock(r.booking_code, "host", "logement"),
         { label: "📨 Gérer mes réservations", url: SITE }),
     ),
   ]);
@@ -340,6 +368,7 @@ async function expire() {
 
   for (const r of expired ?? []) {
     const c = await loadContext(r);
+    const net = await hostNetFor(r, c.ownerId);
     await Promise.all([
       sendMail(
         c.guestEmail,
@@ -354,7 +383,7 @@ async function expire() {
         `⌛ Réservation non payée — dates libérées (${c.propName})`,
         layout("Réservation non finalisée",
           `Bonjour ${esc(c.hostName)},<br><br>Le voyageur n'a pas payé dans les 24h la réservation que vous aviez acceptée pour <strong>${esc(c.propName)}</strong>. Elle est annulée et les dates sont à nouveau disponibles. Si d'autres demandes sont en attente sur ces dates, vous pouvez maintenant les accepter.`,
-          recapBlock(r, c.propName),
+          recapBlock(r, c.propName, net),
           { label: "📨 Voir les demandes", url: SITE }),
       ),
     ]);

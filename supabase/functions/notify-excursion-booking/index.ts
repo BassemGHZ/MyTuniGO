@@ -73,8 +73,10 @@ function layout(title: string, intro: string, recap: string, cta?: { label: stri
   </div></body></html>`;
 }
 
+// Récapitulatif. Pour le prestataire (hostNet fourni ou null), on n'affiche pas
+// ce que le participant paie mais ce que le prestataire reçoit.
 // deno-lint-ignore no-explicit-any
-function recapBlock(b: any, title: string) {
+function recapBlock(b: any, title: string, hostNet?: number | null) {
   const row = (k: string, v: string) =>
     `<tr><td style="padding:5px 0;color:#6c757d;">${k}</td><td style="padding:5px 0;text-align:right;font-weight:600;">${v}</td></tr>`;
   return `<table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8f9fa;border-radius:8px;">
@@ -84,8 +86,30 @@ function recapBlock(b: any, title: string) {
       ${row("Participants", String(b.participants ?? 1))}
       ${row("Paiement", esc(b.payment_method ?? "—"))}
       ${row("Référence", esc(b.reference ?? "—"))}
-      ${row("Total", `<span style="color:#003580;font-size:16px;">${esc(b.total)}€</span>`)}
+      ${hostNet === undefined
+        ? row("Total", `<span style="color:#003580;font-size:16px;">${esc(b.total)}€</span>`)
+        : hostNet === null ? "" : row("Vous recevez", `<span style="color:#0a8f5c;font-size:16px;">${esc(fmtAmount(hostNet))}€</span>`)}
     </tbody></table>`;
+}
+
+function fmtAmount(n: number) {
+  return Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+}
+
+// Montant reçu par le prestataire : reversement figé à la confirmation s'il
+// existe, sinon devis (12 % par défaut ou taux négocié). null si indisponible.
+// deno-lint-ignore no-explicit-any
+async function hostNetFor(b: any, ownerId: string | null | undefined): Promise<number | null> {
+  const { data: pay } = await admin.from("booking_payouts").select("payout")
+    .eq("kind", "excursion").eq("booking_id", b.id).maybeSingle();
+  if (pay && pay.payout != null) return Number(pay.payout);
+  if (!ownerId) return null;
+  const { data: q, error } = await admin.rpc("fn_commission_quote", {
+    p_owner: ownerId, p_kind: "excursion", p_gross: Number(b.total ?? 0),
+  });
+  if (error) { console.warn("devis commission :", error.message); return null; }
+  const row = Array.isArray(q) ? q[0] : q;
+  return row && row.payout != null ? Number(row.payout) : null;
 }
 
 // Code de réservation (6 caractères, créé en base à la confirmation).
@@ -184,9 +208,10 @@ Deno.serve(async (req) => {
     const guestName = guest?.first_name ?? "";
     const hostName = exc?.contact_firstname ?? "";
     const recap = recapBlock(b, title);
+    const recapOwner = recapBlock(b, title, await hostNetFor(b, exc?.owner_id));
     // Réservation confirmée : on joint le code de réservation
     const recapGuest = b.status === "confirmée" ? recap + codeBlock(b.booking_code, "guest", "excursion") : recap;
-    const recapHost = b.status === "confirmée" ? recap + codeBlock(b.booking_code, "host", "excursion") : recap;
+    const recapHost = b.status === "confirmée" ? recapOwner + codeBlock(b.booking_code, "host", "excursion") : recapOwner;
 
     if (type === "created") {
       if (b.guest_id !== uid) return json({ error: "not_guest" }, 403);
@@ -229,7 +254,7 @@ Deno.serve(async (req) => {
         sendMail(exc?.contact_email, `❌ Réservation annulée — ${title}`,
           layout("Réservation annulée",
             `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Le voyageur")}</strong> a annulé sa réservation pour <strong>${esc(title)}</strong>. Les places sont de nouveau disponibles.`,
-            recap)),
+            recapOwner)),
         sendMail(guest?.email, `Votre annulation est confirmée — ${title}`,
           layout("Annulation confirmée",
             `Bonjour ${esc(guestName)},<br><br>Nous confirmons l'annulation de votre réservation pour <strong>${esc(title)}</strong>.`,
