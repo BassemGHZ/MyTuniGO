@@ -597,11 +597,11 @@
 </style>
 </head>
 <body>
-<!-- ========== BANDEAU 0% COMMISSION ========== -->
+<!-- ========== BANDEAU LANCEMENT ========== -->
 <div id="launch-banner" style="background:#1E2D4E;color:#fff;padding:9px 20px;text-align:center;position:relative;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
   <span style="font-size:13px;font-weight:500;">Réservez et publiez vos annonces</span>
-  <span style="background:#E84B10;color:#fff;font-size:12px;font-weight:800;padding:4px 14px;border-radius:20px;">0% de commission</span>
-  <span style="font-size:13px;font-weight:500;">Paiement sur place · Aucun frais caché</span>
+  <span style="background:#E84B10;color:#fff;font-size:12px;font-weight:800;padding:4px 14px;border-radius:20px;">0 % de frais voyageur</span>
+  <span style="font-size:13px;font-weight:500;">Le prix affiché est le prix payé · Hôtes fondateurs : 0 % de commission pendant 2 ans</span>
   <button onclick="document.getElementById('launch-banner').style.display='none'" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:13px;">✕</button>
 </div>
 
@@ -808,7 +808,128 @@ window._lastWidth = window.innerWidth;
 setTimeout(showDeviceBanner, 500);
 
 /* ===================== COMMISSION ===================== */
-const COMMISSION_RATE = 0.07; // 7% prélevée par MyTunigo sur chaque réservation
+const COMMISSION_RATE = 0.07; // démo admin uniquement — 7% prélevée par MyTunigo sur chaque réservation
+
+/* ===================== COMMISSIONS HÔTES (grille réelle) =====================
+   Le voyageur paie le prix annoncé : 0 % de frais voyageur.
+   L'hôte reçoit le prix moins la commission de son niveau :
+     fondateur 0 % pendant 2 ans (100 premiers hôtes qui publient),
+     standard 10 %, performant 8 % ; excursions 12 % par défaut (négociable).
+   Le montant réel est calculé et figé en base à la confirmation
+   (fn_commission_quote → booking_payouts). Ici on ne fait qu'afficher :
+   le voyageur ne voit jamais la commission, l'hôte ne voit que ce qu'il reçoit. */
+const FOUNDER_TOTAL = 100;
+const _hostComm = { plan:null, planUid:null, founders:null };
+
+function hostNetAmount(gross, rate){
+  const g = Math.max(0, +gross||0);
+  return Math.round((g - Math.round(g*(rate||0)*100)/100)*100)/100;
+}
+function fmtNet(n){
+  return (+n||0).toLocaleString('fr-FR',{maximumFractionDigits:2});
+}
+function ratePct(r){ return Math.round((r||0)*100)+' %'; }
+
+function computeHostPlan(row, slots){
+  if(!row){
+    // Pas encore d'annonce publiée : il deviendra fondateur s'il reste des places.
+    const founder = typeof slots==='number' && slots>0;
+    return { plan: founder?'fondateur':'standard', pending:true, rate: founder?0:0.10,
+             excRate:0.12, founderUntil:null, founderNumber:null, slots };
+  }
+  let until = null;
+  if(row.plan==='fondateur' && row.founder_since){
+    until = new Date(row.founder_since); until.setFullYear(until.getFullYear()+2);
+  }
+  const rate = (row.plan==='fondateur' && until && until.getTime()>Date.now()) ? 0
+             : row.plan==='performant' ? 0.08 : 0.10;
+  return { plan: row.plan, pending:false, rate,
+           excRate: row.excursion_rate!=null ? +row.excursion_rate : 0.12,
+           founderUntil: until, founderNumber: row.founder_number, slots };
+}
+
+async function loadMyHostPlan(force){
+  const uid = auth.currentUser?.id; if(!uid) return null;
+  if(!force && _hostComm.planUid===uid && _hostComm.plan) return _hostComm.plan;
+  let row = null, slots = null;
+  try{
+    const { data } = await _sb.from('host_plans')
+      .select('plan,founder_number,founder_since,excursion_rate').eq('user_id', uid).maybeSingle();
+    row = data || null;
+  }catch(e){}
+  try{
+    const { data, error } = await _sb.rpc('fn_founder_slots_left');
+    if(!error && typeof data==='number') slots = data;
+  }catch(e){}
+  _hostComm.plan = computeHostPlan(row, slots); _hostComm.planUid = uid;
+  return _hostComm.plan;
+}
+
+// Montant reçu par l'hôte pour chaque réservation : le reversement figé en base
+// s'il existe (réservation confirmée), sinon une estimation selon son niveau.
+async function fetchHostNets(kind, rows){
+  const out = {};
+  if(!rows || !rows.length) return out;
+  const plan = await loadMyHostPlan();
+  const rate = kind==='excursion' ? (plan ? plan.excRate : 0.12) : (plan ? plan.rate : 0.10);
+  const ids = rows.map(r=>r.id).filter(Boolean);
+  const pay = {};
+  for(let i=0;i<ids.length;i+=150){
+    try{
+      const { data, error } = await _sb.from('booking_payouts').select('booking_id,payout')
+        .eq('kind', kind).in('booking_id', ids.slice(i,i+150));
+      if(!error) (data||[]).forEach(x=>{ pay[x.booking_id] = +x.payout; });
+    }catch(e){}
+  }
+  rows.forEach(r=>{ out[r.id] = (r.id in pay) ? pay[r.id] : hostNetAmount(r.total||0, rate); });
+  return out;
+}
+
+async function loadFounderHosts(){
+  try{
+    const { data, error } = await _sb.rpc('fn_founder_hosts');
+    if(!error) _hostComm.founders = new Set((data||[]).map(x=> typeof x==='string' ? x : (x && (x.fn_founder_hosts||x.user_id))));
+  }catch(e){}
+  return _hostComm.founders || new Set();
+}
+
+function founderBadgeHTML(size){
+  const big = size==='lg';
+  return `<span title="Hôte fondateur MyTunigo" style="display:inline-flex;align-items:center;gap:4px;background:linear-gradient(90deg,#b8860b,#e0a526);color:#fff;font-size:${big?12:11}px;font-weight:800;padding:${big?'4px 11px':'3px 9px'};border-radius:20px;white-space:nowrap;">⭐ Hôte fondateur</span>`;
+}
+
+// Encadré « Ce que vous recevez » (formulaire d'annonce, modale de prix, excursion)
+function hostEarnBoxHTML(gross, kind, unit){
+  const p = _hostComm.plan;
+  const rate = kind==='excursion' ? (p ? p.excRate : 0.12) : (p ? p.rate : 0.10);
+  const net = hostNetAmount(gross, rate);
+  const u = unit || (kind==='excursion' ? '' : ' / nuit');
+  let info = '';
+  if(kind!=='excursion' && p && p.plan==='fondateur' && rate===0){
+    info = p.pending
+      ? `<div style="margin-top:8px;">${founderBadgeHTML()} <span style="font-size:12px;">Plus que <strong>${p.slots}</strong> place${p.slots>1?'s':''} sur ${FOUNDER_TOTAL} : publiez maintenant et payez <strong>0 % de commission pendant 2 ans</strong>.</span></div>`
+      : `<div style="margin-top:8px;">${founderBadgeHTML()} <span style="font-size:12px;">0 % de commission jusqu'au <strong>${p.founderUntil.toLocaleDateString('fr-FR')}</strong>.</span></div>`;
+    info += `<ul style="margin:8px 0 0 18px;padding:0;font-size:12px;line-height:1.6;color:#374151;">
+      <li>Badge « Hôte fondateur » sur votre profil et vos annonces</li>
+      <li>Meilleure visibilité au lancement de MyTunigo</li>
+      <li>Accompagnement prioritaire pour publier et optimiser votre logement</li>
+      <li>Participation aux améliorations de la plateforme</li></ul>`;
+  } else if(kind!=='excursion'){
+    info = `<div style="font-size:12px;color:#374151;margin-top:6px;">Commission MyTunigo : ${ratePct(rate)}${p&&p.plan==='performant'?' (hôte performant)':''}. Le voyageur paie le prix affiché, sans frais en plus.</div>`;
+  } else {
+    info = `<div style="font-size:12px;color:#374151;margin-top:6px;">Commission MyTunigo : ${ratePct(rate)}. Le participant paie le prix affiché, sans frais en plus.</div>`;
+  }
+  return `<div style="font-size:13px;font-weight:800;color:#0a5c3e;">💶 Ce que vous recevez</div>
+    <div style="font-size:22px;font-weight:900;color:#0a5c3e;margin-top:2px;">${fmtNet(net)}€<span style="font-size:13px;font-weight:600;">${u}</span></div>${info}`;
+}
+const HOST_EARN_BOX_STYLE = 'background:linear-gradient(135deg,#e8f9f0,#d4f0e0);border:2px solid var(--green);border-radius:var(--r-lg);padding:14px 18px;';
+function refreshHostEarnBox(id, gross, kind, unit){
+  const el = document.getElementById(id); if(el) el.innerHTML = hostEarnBoxHTML(gross, kind, unit);
+}
+function mountHostEarnBox(id, gross, kind, unit){
+  setTimeout(async ()=>{ await loadMyHostPlan(); refreshHostEarnBox(id, typeof gross==='function'?gross():gross, kind, unit); }, 0);
+  return `<div id="${id}" style="${HOST_EARN_BOX_STYLE}">${hostEarnBoxHTML(typeof gross==='function'?gross():gross, kind, unit)}</div>`;
+}
 
 // Calculate commission breakdown
 function calcCommission(grossTotal){
@@ -923,6 +1044,7 @@ function isDateBlockedForHotel(hId, dateStr){
 }
 
 const BADGE_INFO = {
+  fondateur:  {label:'Hôte fondateur', icon:'⭐', color:'#8a6200', bg:'#FFF6DB'},
   superhost:  {label:'Superhost',    icon:'🏆', color:'#FF385C', bg:'#FFF0F2'},
   verified:   {label:'Vérifié',      icon:'✅', color:'#00A699', bg:'#E6F9F7'},
   '5ans':     {label:'5 ans',        icon:'🎖️', color:'#484848', bg:'#F7F7F7'},
@@ -1944,6 +2066,8 @@ function getPopularDestinations(){
 function getFeaturedHotels(){
   const real = hotels.filter(h => h.annonceId && h.photos && h.photos.length > 0 && h.country==='Tunisie');
   real.sort((a,b) => {
+    const founderDiff = (b.founder?1:0) - (a.founder?1:0); // hôtes fondateurs mis en avant au lancement
+    if(founderDiff !== 0) return founderDiff;
     const photoDiff = (b.photos.length||0) - (a.photos.length||0);
     if(photoDiff !== 0) return photoDiff;
     // Les id 100000+i sont attribués dans l'ordre de récence (created_at desc
@@ -2281,6 +2405,7 @@ function hotelCardHTML(h){
     </div>
     <div class="hc-body">
       <div class="hc-name">${h.name}</div>
+      ${h.founder?`<div style="margin:2px 0 4px;">${founderBadgeHTML()}</div>`:''}
       <div class="hc-loc">📍 ${h.city}, ${h.country}</div>
       <div style="display:flex;gap:10px;font-size:12.5px;color:var(--gray-500);margin:2px 0 4px;">
         <span>🛏️ ${h.rooms||1} chambre${(h.rooms||1)>1?'s':''}</span>
@@ -2468,6 +2593,7 @@ function getFilteredBase(ignoreCity){
   });
   if(appState.sort==='price_asc') list.sort((a,b)=>a.price-b.price);
   else if(appState.sort==='rating') list.sort((a,b)=>b.rating-a.rating);
+  else list.sort((a,b)=>(b.founder?1:0)-(a.founder?1:0)); // « Recommandés » : hôtes fondateurs d'abord (visibilité au lancement)
   return list;
 }
 
@@ -3133,6 +3259,7 @@ function resultCardHTML(h){
           <button id="fav-btn-${h.id}" onclick="event.stopPropagation();toggleFavorite(${h.id})" style="background:none;border:none;font-size:22px;cursor:pointer;flex-shrink:0;line-height:1;padding:0;transition:transform .15s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${getFavIcon(h.id)}</button>
         </div>
         <div class="rc-type">${h.type} ${classStarsHTML(h)}</div>
+        ${h.founder?`<div style="margin:4px 0;">${founderBadgeHTML()}</div>`:''}
         <div class="rc-loc">📍 ${h.address||(h.city+', '+h.country)}${h._distanceKm!=null?` <span style="color:#e6a800;font-weight:700;">· à ${Math.round(h._distanceKm)} km de votre recherche</span>`:''}</div>
         <div class="rc-tags">${h.features.slice(0,4).map(f=>`<span class="rc-tag">${amenIcon(f)} ${amenLabel(f)}</span>`).join('')}</div>
         <div class="rc-desc">${h.desc.substring(0,120)}…</div>
@@ -4682,7 +4809,7 @@ function annStep3(ad){
   <div class="ann-sec">Tarification</div>
   <div class="price-row-ann">
     <div class="price-card"><label>Prix par nuit *</label>
-      <div class="pc-inp"><span>€</span><input id="af-price" type="number" min="1" value="${ad.price_night}" oninput="annSet('price_night',+this.value)"></div></div>
+      <div class="pc-inp"><span>€</span><input id="af-price" type="number" min="1" value="${ad.price_night}" oninput="annSet('price_night',+this.value);refreshHostEarnBox('ann-earn-box',+this.value,'logement')"></div></div>
     <div class="price-card"><label>Prix / semaine</label>
       <div class="pc-inp"><span>€</span><input type="number" min="0" value="${ad.price_week}" oninput="annSet('price_week',+this.value)"></div></div>
     <div class="price-card"><label>Prix / mois</label>
@@ -4725,33 +4852,9 @@ function annStep3(ad){
   </div>
   ${(ad.minNights||1)>1?`<div style="background:#e8f4ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--blue-l);">ℹ️ Les voyageurs devront réserver au minimum <strong>${ad.minNights} nuits</strong> pour ce logement.</div>`:''}
 
-  <div class="ann-sec" style="margin-top:20px;">💳 Mode de paiement accepté</div>
-  <p style="font-size:13px;color:var(--gray-500);margin-bottom:14px;">Choisissez comment vos voyageurs pourront payer leur séjour.</p>
-  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
-
-    <!-- Paiement sur place uniquement — version lancement -->
-    <div style="background:linear-gradient(135deg,#e8f9f0,#d4f0e0);border:2px solid var(--green);border-radius:var(--r-lg);padding:16px 18px;display:flex;align-items:flex-start;gap:14px;">
-      <div style="width:22px;height:22px;border-radius:4px;background:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">
-        <span style="color:#fff;font-size:14px;font-weight:800;">✓</span>
-      </div>
-      <div>
-        <div style="font-size:14px;font-weight:800;color:#0a5c3e;margin-bottom:4px;">🏨 Paiement sur place</div>
-        <div style="font-size:13px;color:#374151;line-height:1.6;">Le voyageur règle directement à l'hébergement à son arrivée (espèces, CB). Aucun prélèvement en ligne.</div>
-        <span style="display:inline-block;margin-top:8px;background:#0a5c3e;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">🎉 0% commission — Version lancement</span>
-      </div>
-    </div>
-
-    <!-- Paiement en ligne — désactivé -->
-    <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:14px 18px;display:flex;align-items:center;gap:14px;opacity:.45;cursor:not-allowed;">
-      <div style="width:22px;height:22px;border-radius:4px;background:var(--gray-300);flex-shrink:0;"></div>
-      <div style="flex:1;">
-        <div style="font-size:14px;font-weight:700;color:var(--gray-400);">💳 Paiement en ligne</div>
-        <div style="font-size:12px;color:var(--gray-400);margin-top:2px;">Carte bancaire & PayPal — Disponible dans la prochaine version</div>
-      </div>
-      <span style="font-size:11px;background:var(--gray-200);color:var(--gray-500);padding:3px 10px;border-radius:20px;font-weight:700;white-space:nowrap;">Bientôt</span>
-    </div>
-
-  </div>
+  <div class="ann-sec" style="margin-top:20px;">💶 Ce que vous recevez</div>
+  <p style="font-size:13px;color:var(--gray-500);margin-bottom:10px;">Le voyageur paie le prix par nuit que vous fixez, sans frais en plus. Vous recevez ce prix moins la commission MyTunigo de votre niveau.</p>
+  <div style="margin-bottom:20px;">${mountHostEarnBox('ann-earn-box', ()=>+(appState.annonceData.price_night||0), 'logement')}</div>
 
   ${annNavBtns()}
 </div>`;}
@@ -5813,17 +5916,18 @@ async function loadMesAnnonces(container){
   const resaStats = {};
   if(annIds.length){
     const { data: resaRows, error: resaErr } = await _sb.from('reservations')
-      .select('logement_id,total,status,check_in,check_out')
+      .select('id,logement_id,total,status,check_in,check_out')
       .in('logement_id', annIds)
       .in('status', ['confirmée','terminée']);
     if(resaErr){
       console.warn('Erreur chargement stats réservations:', resaErr.message);
     } else {
       const byAnnonce = {};
+      const nets = await fetchHostNets('logement', resaRows||[]);
       (resaRows||[]).forEach(r=>{
         if(!resaStats[r.logement_id]) resaStats[r.logement_id] = {count:0, revenue:0, occupancy:0};
         resaStats[r.logement_id].count++;
-        resaStats[r.logement_id].revenue += r.total||0;
+        resaStats[r.logement_id].revenue += nets[r.id]||0;
         if(!byAnnonce[r.logement_id]) byAnnonce[r.logement_id] = [];
         byAnnonce[r.logement_id].push(r);
       });
@@ -5877,16 +5981,17 @@ async function loadMesAnnonces(container){
     const bkStats = {};
     if(excIds.length){
       const { data: bkRows, error: bkErr } = await _sb.from('excursion_bookings')
-        .select('excursion_id,total,status')
+        .select('id,excursion_id,total,status')
         .in('excursion_id', excIds)
         .in('status', ['confirmée','terminée']);
       if(bkErr){
         console.warn('Erreur chargement stats réservations excursions:', bkErr.message);
       } else {
+        const bkNets = await fetchHostNets('excursion', bkRows||[]);
         (bkRows||[]).forEach(b=>{
           if(!bkStats[b.excursion_id]) bkStats[b.excursion_id] = {count:0, revenue:0};
           bkStats[b.excursion_id].count++;
-          bkStats[b.excursion_id].revenue += b.total||0;
+          bkStats[b.excursion_id].revenue += bkNets[b.id]||0;
         });
       }
     }
@@ -5963,7 +6068,7 @@ function buildMesAnnonces(){
       ${[
         {icon:'👁️',val:totalVues.toLocaleString(),label:'Vues totales',color:'var(--blue)'},
         {icon:'📅',val:totalResa,label:'Réservations',color:'var(--green)'},
-        {icon:'💶',val:totalRev.toLocaleString()+'€',label:'Revenus générés',color:'#8e44ad'},
+        {icon:'💶',val:totalRev.toLocaleString()+'€',label:'Revenus (après commission)',color:'#8e44ad'},
         {icon:'🏘️',val:publiees+'/'+list.length,label:'Annonces actives',color:'var(--blue-l)'},
       ].map(s=>`<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:16px 18px;">
         <div style="font-size:24px;margin-bottom:8px;">${s.icon}</div>
@@ -6196,12 +6301,13 @@ async function loadAnnonceDetail(container){
       ? await _sb.from('profiles').select('id,first_name,last_name').in('id', guestIds)
       : { data: [] };
     const profMap = Object.fromEntries((profs||[]).map(p=>[p.id,p]));
+    const nets = await fetchHostNets('logement', resaRows);
     realReservations = resaRows.map(r=>{
       const p = profMap[r.guest_id];
       return {
         guestName: p ? (p.first_name||'Voyageur') : 'Voyageur',
         checkIn: r.check_in, checkOut: r.check_out,
-        total: r.total||0, status: r.status||'confirmée'
+        total: nets[r.id]||0, status: r.status||'confirmée'
       };
     });
   }
@@ -6262,7 +6368,7 @@ async function loadAnnonceDetail(container){
         {icon:'👁️',val:s.vues.toLocaleString(),label:'Vues totales',sub:'30 derniers jours',color:'var(--blue)'},
         {icon:'🖱️',val:s.clics,label:'Clics',sub:`Taux ${s.vues>0?Math.round(s.clics/s.vues*100):0}%`,color:'#8e44ad'},
         {icon:'📅',val:s.reservations,label:'Réservations',sub:'Confirmées',color:'var(--green)'},
-        {icon:'💶',val:s.revenus.toLocaleString()+'€',label:'Revenus',sub:'Hors frais',color:'#c0392b'},
+        {icon:'💶',val:s.revenus.toLocaleString()+'€',label:'Revenus',sub:'Après commission',color:'#c0392b'},
         {icon:'📊',val:s.tauxOccupation+'%',label:'Taux occupation',sub:'Nuits réservées',color:'#e67e22'},
         {icon:'⭐',val:s.noteMoyenne>0?s.noteMoyenne+'/5':'—',label:'Note moyenne',sub:s.avis+' avis',color:'#f39c12'},
       ].map(k=>`<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:16px;">
@@ -6353,7 +6459,7 @@ async function loadAnnonceDetail(container){
             <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--gray-600);font-size:12px;text-transform:uppercase;">Voyageur</th>
             <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--gray-600);font-size:12px;text-transform:uppercase;">Arrivée</th>
             <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--gray-600);font-size:12px;text-transform:uppercase;">Départ</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--gray-600);font-size:12px;text-transform:uppercase;">Montant</th>
+            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--gray-600);font-size:12px;text-transform:uppercase;">Vous recevez</th>
             <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--gray-600);font-size:12px;text-transform:uppercase;">Statut</th>
           </tr></thead>
           <tbody>
@@ -6364,7 +6470,7 @@ async function loadAnnonceDetail(container){
                 <td style="padding:10px 14px;font-weight:600;">${r.guestName}</td>
                 <td style="padding:10px 14px;color:var(--gray-600);">${r.checkIn?fmtDMY(r.checkIn):'—'}</td>
                 <td style="padding:10px 14px;color:var(--gray-600);">${r.checkOut?fmtDMY(r.checkOut):'—'}</td>
-                <td style="padding:10px 14px;font-weight:700;">${r.total}€</td>
+                <td style="padding:10px 14px;font-weight:700;">${fmtNet(r.total)}€</td>
                 <td style="padding:10px 14px;"><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:${sBg[r.status]||'#f1f3f5'};color:${sColor[r.status]||'var(--gray-600)'};">${r.status.toUpperCase()}</span></td>
               </tr>`;
             }).join('')}
@@ -7617,15 +7723,16 @@ function excFormStep2(fd){
         <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Prix *</label>
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="font-size:18px;font-weight:600;color:var(--gray-500);">€</span>
-          <input id="ef-price" type="number" min="1" value="${fd.price||0}" oninput="excSet('price',+this.value)"
+          <input id="ef-price" type="number" min="1" value="${fd.price||0}" oninput="excSet('price',+this.value);refreshHostEarnBox('exc-earn-box',+this.value,'excursion',' / '+(document.getElementById('ef-price-type')?.value||'personne'))"
             style="flex:1;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:17px;font-weight:700;">
         </div></div>
       <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--r-md);padding:16px;">
         <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Par</label>
-        <select oninput="excSet('priceType',this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+        <select id="ef-price-type" oninput="excSet('priceType',this.value);refreshHostEarnBox('exc-earn-box',+(document.getElementById('ef-price')?.value||0),'excursion',' / '+this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
           ${['personne','groupe','couple'].map(t=>`<option value="${t}" ${fd.priceType===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
         </select></div>
     </div>
+    <div style="margin:-6px 0 20px;">${mountHostEarnBox('exc-earn-box', +(fd.price||0), 'excursion', ' / '+(fd.priceType||'personne'))}</div>
 
     <div style="font-size:15px;font-weight:700;margin-bottom:14px;">Politique d'annulation</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px;">
@@ -8232,10 +8339,12 @@ function openEditPriceModal(annonceId){
 
         <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Prix par nuit</label>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">
-          <input type="number" id="edit-price-input" min="1" value="${a.price_night}"
+          <input type="number" id="edit-price-input" min="1" value="${a.price_night}" oninput="refreshHostEarnBox('edit-earn-box',+this.value,'logement')"
             style="flex:1;padding:12px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:20px;font-weight:800;text-align:center;">
           <span style="font-size:20px;font-weight:700;color:var(--gray-600);">€</span>
         </div>
+
+        <div style="margin-bottom:18px;">${mountHostEarnBox('edit-earn-box', +a.price_night||0, 'logement')}</div>
 
         <button onclick="saveEditedPrice('${a.id}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Enregistrer le nouveau prix</button>
       </div>
@@ -9104,7 +9213,7 @@ function getHostForHotel(hId){
       phone: h.contactPhone || '',
       avatar: (h.contactFirstname?.[0]||'H')+(h.contactLastname?.[0]||''),
       superhost: isSuperhost,
-      badges: isSuperhost ? ['superhost','verified'] : ['verified'],
+      badges: (h.founder ? ['fondateur'] : []).concat(isSuperhost ? ['superhost','verified'] : ['verified']),
       rating: rating,
       reviews: reviews,
       totalStays: 0,
@@ -9717,6 +9826,8 @@ async function loadBookingRequests(container){
       bookingCode: r.booking_code||null
     };
   });
+  const _nets = await fetchHostNets('logement', all);
+  all.forEach(r=>{ r.net = _nets[r.id]; });
   appState._bookingReqById = Object.fromEntries(all.map(r=>[r.id,r]));
 
   // Filtre optionnel par annonce, utilisé quand on arrive ici depuis le bouton
@@ -9795,7 +9906,7 @@ async function loadBookingRequests(container){
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Départ</div><div style="font-size:13px;font-weight:600;">${co}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Durée</div><div style="font-size:13px;font-weight:600;">${nights} nuit${nights>1?'s':''}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Voyageurs</div><div style="font-size:13px;font-weight:600;">👥 ${req.guestsCount}</div></div>
-                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
+                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Vous recevez</div><div style="font-size:13px;font-weight:800;color:var(--green);">${fmtNet(req.net)}€</div></div>
               </div>
               ${conflictOf(req)?`<div style="font-size:12.5px;color:var(--red);font-weight:700;margin-bottom:8px;">⚠️ Ces dates chevauchent la demande de ${conflictOf(req).guestName} (${conflictOf(req).status==='confirmée'?'confirmée':'acceptée, paiement en cours'}). Vous ne pouvez pas accepter celle-ci${conflictOf(req).status==='acceptée'?" tant que l'autre n'a pas expiré":''}.</div>`:''}
               ${req.status==='confirmée'?bookingCodeHTML(req.bookingCode,'host-logement'):''}
@@ -10045,6 +10156,8 @@ async function loadExcursionBookingRequests(container){
     };
   });
 
+  const _excNets = await fetchHostNets('excursion', all);
+  all.forEach(r=>{ r.net = _excNets[r.id]; });
   const pendingCount = all.filter(r=>r.status==='en attente').length;
   const list = all.filter(r=>filter==='all' || r.status===statusMap[filter]);
 
@@ -10092,7 +10205,7 @@ async function loadExcursionBookingRequests(container){
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Date</div><div style="font-size:13px;font-weight:600;">${dt}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Participants</div><div style="font-size:13px;font-weight:600;">👥 ${req.participants}</div></div>
-                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Total</div><div style="font-size:13px;font-weight:800;color:var(--blue);">${req.total}€</div></div>
+                <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Vous recevez</div><div style="font-size:13px;font-weight:800;color:var(--green);">${fmtNet(req.net)}€</div></div>
                 <div style="background:${req.paymentMethod==='Paiement sur place'?'#fff8e0':'var(--gray-50)'};border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Paiement</div><div style="font-size:13px;font-weight:600;color:${req.paymentMethod==='Paiement sur place'?'#a16800':'inherit'};">${req.paymentMethod==='Paiement sur place'?'💵 Sur place':'💳 En ligne'}</div></div>
               </div>
             </div>
@@ -12932,7 +13045,7 @@ function buildAboutPage(){
     },
     { title:'Notre histoire',
       content:'Née d\'un constat simple — les grandes plateformes prélèvent des commissions excessives qui pénalisent à la fois les hôtes et les voyageurs — MyTunigo a été fondée avec une vision claire : créer une marketplace équitable, transparente et humaine.<br><br>'
-        +'Aujourd\'hui, MyTunigo propose des centaines de logements vérifiés dans plus de 20 pays, avec un modèle économique pensé pour les hôtes : <strong>0% de commission pendant la période de lancement</strong>.'
+        +'MyTunigo démarre en Tunisie avec un modèle simple : <strong>le voyageur paie le prix affiché, sans frais de service</strong>. Les 100 premiers hôtes qui publient deviennent <strong>hôtes fondateurs</strong> et ne paient aucune commission pendant 2 ans ; ensuite, la commission est de 10 % (8 % pour les hôtes les mieux notés), parmi les plus basses du marché.'
     },
     { title:'Nos valeurs',
       content:'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px;margin-top:16px;">'
@@ -13176,7 +13289,7 @@ function buildCGUPage(){
     {num:'4',title:'Services proposés',body:'Mise en relation Hôtes/Voyageurs pour location saisonnière. Services : publication d\'annonces, réservation, messagerie, calendrier, fidélité.<br><br>Conformément à l\'article L.324-1 du Code du tourisme, les locations courte durée peuvent nécessiter une déclaration en mairie. L\'Hôte en est seul responsable.'},
     {num:'5',title:'Obligations des Hôtes',body:'L\'Hôte s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Être propriétaire ou disposer des droits nécessaires</li><li>Respecter la législation (déclaration mairie, taxe de séjour, fiscalité)</li><li>Fournir des informations exactes et des photos représentatives</li><li>Souscrire une assurance couvrant les risques locatifs</li><li>Respecter le RGPD pour les données des Voyageurs</li></ul>'},
     {num:'6',title:'Obligations des Voyageurs',body:'Le Voyageur s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Utiliser le logement conformément à sa destination</li><li>Respecter le nombre maximum d\'occupants</li><li>Restituer le logement dans son état initial</li><li>Informer l\'Hôte en cas de dommages</li><li>Ne pas sous-louer sans accord écrit de l\'Hôte</li></ul>'},
-    {num:'7',title:'Paiement et commission',body:'<b>Version lancement :</b> MyTunigo ne prélève aucune commission (0%). Le paiement s\'effectue sur place entre Voyageur et Hôte. Aucun prélèvement en ligne effectué par MyTunigo.<br><br>Ce taux pourra évoluer avec un préavis de <b>30 jours</b> par email.'},
+    {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix affiché est le prix payé ; MyTunigo ne facture aucun frais de service au Voyageur.<br><br><b>Hôte :</b> MyTunigo prélève une commission sur le montant de chaque réservation confirmée, déduite du montant reversé à l\'Hôte :<br>• <b>Hôte fondateur</b> (100 premiers hôtes ayant publié une annonce) : 0 % pendant 2 ans à compter de la première publication ;<br>• <b>Hôte standard</b> : 10 % ;<br>• <b>Hôte performant</b> (note et taux d\'acceptation élevés, revu chaque trimestre) : 8 %.<br><br><b>Excursions :</b> commission de 12 % par défaut, pouvant être négociée avec le prestataire (minimum 8 %).<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
     {num:'8',title:'Annulations',body:'<b>Flexible</b> : remboursement intégral jusqu\'à 24h avant.<br><b>Modérée</b> : 50% si annulation moins de 7 jours avant.<br><b>Stricte</b> : non remboursable sauf force majeure.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
     {num:'9',title:'Responsabilité',body:'MyTunigo est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de MyTunigo est limitée aux sommes effectivement perçues.'},
     {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à MyTunigo une licence non-exclusive et gratuite d\'utilisation.'},
@@ -13458,6 +13571,7 @@ async function loadPublishedAnnonces(){
   try{
     const { data, error } = await _sb.from('annonces').select('*').eq('status','publiée').order('created_at',{ascending:false});
     if(error){ console.warn('Erreur chargement annonces publiées:', error.message); return; }
+    const founderSet = await loadFounderHosts();
 
     // Vraie moyenne + nombre d'avis par annonce (au lieu de 0 codé en dur)
     const annIds = (data||[]).map(a=>a.id);
@@ -13491,6 +13605,7 @@ async function loadPublishedAnnonces(){
         annonceId: a.id,
         annonceRef: a.ref,
         userId: a.user_id || null,
+        founder: !!(a.user_id && founderSet.has(a.user_id)),
         contactFirstname: a.contact_firstname || '',
         contactLastname: a.contact_lastname || '',
         contactEmail: a.contact_email || '',
