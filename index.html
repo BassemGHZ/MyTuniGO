@@ -600,8 +600,8 @@
 <!-- ========== BANDEAU LANCEMENT ========== -->
 <div id="launch-banner" style="background:#1E2D4E;color:#fff;padding:9px 20px;text-align:center;position:relative;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
   <span style="font-size:13px;font-weight:500;">Réservez et publiez vos annonces</span>
-  <span style="background:#E84B10;color:#fff;font-size:12px;font-weight:800;padding:4px 14px;border-radius:20px;">0 % de frais voyageur</span>
-  <span style="font-size:13px;font-weight:500;">Le prix affiché est le prix payé · Hôtes fondateurs : 0 % de commission pendant 2 ans</span>
+  <span style="background:#E84B10;color:#fff;font-size:12px;font-weight:800;padding:4px 14px;border-radius:20px;">Prix tout compris</span>
+  <span style="font-size:13px;font-weight:500;">Le prix affiché est le prix payé · Hôtes fondateurs : 0 % de commission la première année</span>
   <button onclick="document.getElementById('launch-banner').style.display='none'" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:13px;">✕</button>
 </div>
 
@@ -810,87 +810,76 @@ setTimeout(showDeviceBanner, 500);
 /* ===================== COMMISSION ===================== */
 const COMMISSION_RATE = 0.07; // démo admin uniquement — 7% prélevée par MyTunigo sur chaque réservation
 
-/* ===================== COMMISSIONS HÔTES (grille réelle) =====================
-   Le voyageur paie le prix annoncé : 0 % de frais voyageur.
-   L'hôte reçoit le prix moins la commission de son niveau :
-     fondateur 0 % pendant 2 ans (100 premiers hôtes qui publient),
-     standard 10 %, performant 8 % ; excursions 12 % par défaut (négociable).
-   Le montant réel est calculé et figé en base à la confirmation
-   (fn_commission_quote → booking_payouts). Ici on ne fait qu'afficher :
-   le voyageur ne voit jamais la commission, l'hôte ne voit que ce qu'il reçoit. */
-const FOUNDER_TOTAL = 100;
-const _hostComm = { plan:null, planUid:null, founders:null };
+/* ===================== GRILLE TARIFAIRE DES LOGEMENTS (17/10/2026) =====================
+   Voyageur : prix de l'hôte + 8 % de frais de service, affiché TOUT COMPRIS
+   (le voyageur ne voit jamais le prix de l'hôte).
+   Hôte : reçoit son prix − 8 % (il ne voit jamais ce que le voyageur paie).
+   Annonce badgée « Hôte fondateur » (choix de l'admin) : 0 % pendant 1 an à
+   partir de l'attribution, puis 8 %.
+   Excursions : inchangées (12 % prestataire, pas de frais voyageur).
+   Le total réel et le reversement sont calculés en base (fn_logement_pricing,
+   fn_commission_quote) ; ces fonctions ne servent qu'à l'affichage. */
+const GUEST_FEE_RATE = 0.08;
+const HOST_COMMISSION_RATE = 0.08;
+const EXCURSION_COMMISSION_RATE = 0.12;
+const FOUNDER_FREE_MONTHS = 12;
+const _hostComm = { excRate:null, excUid:null };
 
+// Prix voyageur d'une nuit à partir du prix de l'hôte (arrondi à l'euro, comme en base)
+function guestPrice(p){ return Math.round((+p||0)*(1+GUEST_FEE_RATE)); }
+// Prix voyageur d'une nuit, promos comprises : même calcul que fn_logement_pricing
+function guestNight(h, pct, override){
+  if(h && h.hostPrice!=null) return guestPrice(datePriceNight(h.hostPrice, pct, override));
+  return datePriceNight(h ? h.price : 0, pct, override);
+}
 function hostNetAmount(gross, rate){
   const g = Math.max(0, +gross||0);
   return Math.round((g - Math.round(g*(rate||0)*100)/100)*100)/100;
 }
-function fmtNet(n){
-  return (+n||0).toLocaleString('fr-FR',{maximumFractionDigits:2});
-}
-function ratePct(r){ return Math.round((r||0)*100)+' %'; }
+function fmtNet(n){ return (+n||0).toLocaleString('fr-FR',{maximumFractionDigits:2}); }
+function ratePct(r){ return (Math.round((r||0)*1000)/10).toString().replace('.',',')+' %'; }
 
-function computeHostPlan(row, slots){
-  if(!row){
-    // Pas encore d'annonce publiée : il deviendra fondateur s'il reste des places.
-    const founder = typeof slots==='number' && slots>0;
-    return { plan: founder?'fondateur':'standard', pending:true, rate: founder?0:0.10,
-             excRate:0.12, founderUntil:null, founderNumber:null, slots };
-  }
-  let until = null;
-  if(row.plan==='fondateur' && row.founder_since){
-    until = new Date(row.founder_since); until.setFullYear(until.getFullYear()+2);
-  }
-  const rate = (row.plan==='fondateur' && until && until.getTime()>Date.now()) ? 0
-             : row.plan==='performant' ? 0.08 : 0.10;
-  return { plan: row.plan, pending:false, rate,
-           excRate: row.excursion_rate!=null ? +row.excursion_rate : 0.12,
-           founderUntil: until, founderNumber: row.founder_number, slots };
+function founderUntil(founderSince){
+  if(!founderSince) return null;
+  const d = new Date(founderSince); d.setMonth(d.getMonth()+FOUNDER_FREE_MONTHS); return d;
 }
+function founderActive(founderSince){
+  const u = founderUntil(founderSince); return !!(u && u.getTime()>Date.now() && new Date(founderSince).getTime()<=Date.now());
+}
+function logementRate(founderSince){ return founderActive(founderSince) ? 0 : HOST_COMMISSION_RATE; }
 
-async function loadMyHostPlan(force){
-  const uid = auth.currentUser?.id; if(!uid) return null;
-  if(!force && _hostComm.planUid===uid && _hostComm.plan) return _hostComm.plan;
-  let row = null, slots = null;
+// Taux négocié des excursions du prestataire connecté (12 % par défaut)
+async function loadMyExcursionRate(){
+  const uid = auth.currentUser?.id; if(!uid) return EXCURSION_COMMISSION_RATE;
+  if(_hostComm.excUid===uid && _hostComm.excRate!=null) return _hostComm.excRate;
+  let rate = EXCURSION_COMMISSION_RATE;
   try{
-    const { data } = await _sb.from('host_plans')
-      .select('plan,founder_number,founder_since,excursion_rate').eq('user_id', uid).maybeSingle();
-    row = data || null;
+    const { data } = await _sb.from('host_plans').select('excursion_rate').eq('user_id', uid).maybeSingle();
+    if(data && data.excursion_rate!=null) rate = +data.excursion_rate;
   }catch(e){}
-  try{
-    const { data, error } = await _sb.rpc('fn_founder_slots_left');
-    if(!error && typeof data==='number') slots = data;
-  }catch(e){}
-  _hostComm.plan = computeHostPlan(row, slots); _hostComm.planUid = uid;
-  return _hostComm.plan;
+  _hostComm.excRate = rate; _hostComm.excUid = uid; return rate;
 }
 
-// Montant reçu par l'hôte pour chaque réservation : le reversement figé en base
-// s'il existe (réservation confirmée), sinon une estimation selon son niveau.
+// Montant reçu par l'hôte pour chaque réservation (calculé en base :
+// reversement figé s'il existe, sinon devis). Repli local si indisponible.
 async function fetchHostNets(kind, rows){
   const out = {};
   if(!rows || !rows.length) return out;
-  const plan = await loadMyHostPlan();
-  const rate = kind==='excursion' ? (plan ? plan.excRate : 0.12) : (plan ? plan.rate : 0.10);
   const ids = rows.map(r=>r.id).filter(Boolean);
-  const pay = {};
   for(let i=0;i<ids.length;i+=150){
     try{
-      const { data, error } = await _sb.from('booking_payouts').select('booking_id,payout')
-        .eq('kind', kind).in('booking_id', ids.slice(i,i+150));
-      if(!error) (data||[]).forEach(x=>{ pay[x.booking_id] = +x.payout; });
+      const { data, error } = await _sb.rpc('fn_my_booking_nets', { p_kind: kind, p_ids: ids.slice(i,i+150) });
+      if(!error) (data||[]).forEach(x=>{ out[x.booking_id] = +x.payout; });
     }catch(e){}
   }
-  rows.forEach(r=>{ out[r.id] = (r.id in pay) ? pay[r.id] : hostNetAmount(r.total||0, rate); });
+  const excRate = kind==='excursion' ? await loadMyExcursionRate() : 0;
+  rows.forEach(r=>{
+    if(r.id in out) return;
+    out[r.id] = kind==='excursion'
+      ? hostNetAmount(r.total||0, excRate)
+      : hostNetAmount(Math.round((r.total||0)/(1+GUEST_FEE_RATE)*100)/100, HOST_COMMISSION_RATE);
+  });
   return out;
-}
-
-async function loadFounderHosts(){
-  try{
-    const { data, error } = await _sb.rpc('fn_founder_hosts');
-    if(!error) _hostComm.founders = new Set((data||[]).map(x=> typeof x==='string' ? x : (x && (x.fn_founder_hosts||x.user_id))));
-  }catch(e){}
-  return _hostComm.founders || new Set();
 }
 
 function founderBadgeHTML(size){
@@ -899,36 +888,31 @@ function founderBadgeHTML(size){
 }
 
 // Encadré « Ce que vous recevez » (formulaire d'annonce, modale de prix, excursion)
-function hostEarnBoxHTML(gross, kind, unit){
-  const p = _hostComm.plan;
-  const rate = kind==='excursion' ? (p ? p.excRate : 0.12) : (p ? p.rate : 0.10);
+function hostEarnBoxHTML(gross, kind, unit, founderSince){
+  const rate = kind==='excursion' ? (_hostComm.excRate ?? EXCURSION_COMMISSION_RATE) : logementRate(founderSince);
   const net = hostNetAmount(gross, rate);
   const u = unit || (kind==='excursion' ? '' : ' / nuit');
-  let info = '';
-  if(kind!=='excursion' && p && p.plan==='fondateur' && rate===0){
-    info = p.pending
-      ? `<div style="margin-top:8px;">${founderBadgeHTML()} <span style="font-size:12px;">Plus que <strong>${p.slots}</strong> place${p.slots>1?'s':''} sur ${FOUNDER_TOTAL} : publiez maintenant et payez <strong>0 % de commission pendant 2 ans</strong>.</span></div>`
-      : `<div style="margin-top:8px;">${founderBadgeHTML()} <span style="font-size:12px;">0 % de commission jusqu'au <strong>${p.founderUntil.toLocaleDateString('fr-FR')}</strong>.</span></div>`;
-    info += `<ul style="margin:8px 0 0 18px;padding:0;font-size:12px;line-height:1.6;color:#374151;">
-      <li>Badge « Hôte fondateur » sur votre profil et vos annonces</li>
-      <li>Meilleure visibilité au lancement de MyTunigo</li>
-      <li>Accompagnement prioritaire pour publier et optimiser votre logement</li>
-      <li>Participation aux améliorations de la plateforme</li></ul>`;
-  } else if(kind!=='excursion'){
-    info = `<div style="font-size:12px;color:#374151;margin-top:6px;">Commission MyTunigo : ${ratePct(rate)}${p&&p.plan==='performant'?' (hôte performant)':''}. Le voyageur paie le prix affiché, sans frais en plus.</div>`;
+  let info;
+  if(kind!=='excursion' && founderSince){
+    const until = founderUntil(founderSince);
+    info = `<div style="margin-top:8px;">${founderBadgeHTML()} <span style="font-size:12px;">${founderActive(founderSince)
+      ? `0 % de commission jusqu'au <strong>${until.toLocaleDateString('fr-FR')}</strong>, puis ${ratePct(HOST_COMMISSION_RATE)}.`
+      : `Commission MyTunigo : ${ratePct(HOST_COMMISSION_RATE)}.`}</span></div>`;
   } else {
-    info = `<div style="font-size:12px;color:#374151;margin-top:6px;">Commission MyTunigo : ${ratePct(rate)}. Le participant paie le prix affiché, sans frais en plus.</div>`;
+    info = `<div style="font-size:12px;color:#374151;margin-top:6px;">Commission MyTunigo : ${ratePct(rate)}.</div>`;
   }
   return `<div style="font-size:13px;font-weight:800;color:#0a5c3e;">💶 Ce que vous recevez</div>
     <div style="font-size:22px;font-weight:900;color:#0a5c3e;margin-top:2px;">${fmtNet(net)}€<span style="font-size:13px;font-weight:600;">${u}</span></div>${info}`;
 }
 const HOST_EARN_BOX_STYLE = 'background:linear-gradient(135deg,#e8f9f0,#d4f0e0);border:2px solid var(--green);border-radius:var(--r-lg);padding:14px 18px;';
 function refreshHostEarnBox(id, gross, kind, unit){
-  const el = document.getElementById(id); if(el) el.innerHTML = hostEarnBoxHTML(gross, kind, unit);
+  const el = document.getElementById(id); if(!el) return;
+  el.innerHTML = hostEarnBoxHTML(gross, kind, unit, el.dataset.founder||null);
 }
-function mountHostEarnBox(id, gross, kind, unit){
-  setTimeout(async ()=>{ await loadMyHostPlan(); refreshHostEarnBox(id, typeof gross==='function'?gross():gross, kind, unit); }, 0);
-  return `<div id="${id}" style="${HOST_EARN_BOX_STYLE}">${hostEarnBoxHTML(typeof gross==='function'?gross():gross, kind, unit)}</div>`;
+function mountHostEarnBox(id, gross, kind, unit, founderSince){
+  const g = typeof gross==='function' ? gross : ()=>gross;
+  if(kind==='excursion') setTimeout(async ()=>{ await loadMyExcursionRate(); refreshHostEarnBox(id, g(), kind, unit); }, 0);
+  return `<div id="${id}" data-founder="${founderSince?escHTML(String(founderSince)):''}" style="${HOST_EARN_BOX_STYLE}">${hostEarnBoxHTML(g(), kind, unit, founderSince)}</div>`;
 }
 
 // Calculate commission breakdown
@@ -2334,7 +2318,7 @@ function buildHome(){
           const isReal = !!h.annonceId;
           // Pour une vraie annonce, h.price est le prix ORIGINAL (non réduit) ;
           // pour les hébergements de démo, h.price est déjà le prix affiché réduit.
-          const displayNew = isReal ? Math.round(h.price*(1-h.discount/100)) : h.price;
+          const displayNew = isReal ? guestNight(h, h.discount) : h.price;
           const displayOld = isReal ? h.price : Math.round(h.price/(1-h.discount/100));
           return '<div class="deal-card" data-deal-type="hotel" onclick="'+oc+'">'
             +'<div class="deal-img">'+h.emoji+'</div>'
@@ -2396,7 +2380,7 @@ function buildHome(){
 function hotelCardHTML(h){
   const hasDiscount = h.discount>0;
   const hasDatePromo = !hasDiscount && h.annonceId && (appState._resultsDiscountAnnonceIds||new Set()).has(h.annonceId);
-  const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : h.price;
+  const finalPrice = hasDiscount ? guestNight(h, h.discount) : h.price;
   return `<div class="hotel-card" onclick="navigate('detail',{selectedHotelId:${h.id}})">
     <div class="hc-img" style="background:linear-gradient(135deg,#e8f4ff,#cce0ff);overflow:hidden;position:relative;">
       ${photoOrEmoji(h)}
@@ -2888,7 +2872,7 @@ function computeResultsNightlyTotal(h, checkIn, checkOut){
     const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
     // Prix fixe saisi par l'hôte pour cette date en priorité, sinon pourcentage
     // (pct>0 réduction, pct<0 majoration), sinon prix de base.
-    total += datePriceNight(h.price, pct, prices[ds]);
+    total += guestNight(h, pct, prices[ds]);
     d.setDate(d.getDate()+1);
   }
   return total;
@@ -2973,7 +2957,7 @@ function photoOrEmoji(h){
 
 // Prix réellement facturé (tient compte d'une promotion flash active).
 function effectivePrice(h){
-  return (h && h.discount>0) ? Math.round(h.price*(1-h.discount/100)) : (h?h.price:0);
+  return (h && h.discount>0) ? guestNight(h, h.discount) : (h?h.price:0);
 }
 
 // Calcule le total d'un séjour nuit par nuit : une promotion sur une date
@@ -2993,7 +2977,7 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms){
     const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
     // Prix fixe saisi par l'hôte pour cette date en priorité, sinon
     // pourcentage (pct>0 réduction, pct<0 majoration), sinon prix de base.
-    const nightPrice = datePriceNight(h.price, pct, prices[ds]);
+    const nightPrice = guestNight(h, pct, prices[ds]);
     total += nightPrice;
     d.setDate(d.getDate()+1);
   }
@@ -3234,7 +3218,7 @@ function resultCardHTML(h){
   // date (hasDatePromo) on prend la meilleure réduction disponible pour
   // donner un prix "à partir de" représentatif.
   const bestDatePct = (h.annonceId && appState._resultsDatePromoBestPct) ? (appState._resultsDatePromoBestPct[h.annonceId]||0) : 0;
-  const finalPrice = hasDiscount ? Math.round(h.price*(1-h.discount/100)) : (hasDatePromo && bestDatePct>0 ? Math.round(h.price*(1-bestDatePct/100)) : h.price);
+  const finalPrice = hasDiscount ? guestNight(h, h.discount) : (hasDatePromo && bestDatePct>0 ? guestNight(h, bestDatePct) : h.price);
   let searchNights = 0;
   if(appState.searchCheckIn && appState.searchCheckOut){
     searchNights = Math.max(0, Math.round((new Date(appState.searchCheckOut)-new Date(appState.searchCheckIn))/86400000));
@@ -3649,16 +3633,15 @@ function calcBkHTML(h){
   if(n<=0)return `<div style="font-size:13px;color:var(--gray-500);text-align:center;padding:8px 0;">Sélectionnez vos dates pour voir le total</div>`;
   const sub = computeNightlyTotal(h, ci, co, rooms);
   const avgUnit = Math.round(sub/(n*rooms));
-  const taxes=Math.round(sub*.1), total=sub+taxes;
+  const total=sub; // frais de service voyageur déjà inclus dans le prix de chaque nuit
   // Prix plein tarif (sans aucune promo) pour la même période, afin d'afficher
   // l'ancien total barré en rouge quand une réduction (globale ou par date) s'applique.
   const origSub = h.price*n*rooms;
-  const origTotal = origSub + Math.round(origSub*.1);
+  const origTotal = origSub;
   const hasDiscount = origTotal > total;
   const lineLabel = multiRoom ? `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.` : `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''}`;
   return `<div class="bk-row"><span>${lineLabel}</span><span>${sub}€</span></div>
-    <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
-    <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
+    <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''}) <small style="font-weight:400;opacity:.8;">frais de service inclus</small></span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
 }
 
 function updateBk(){
@@ -3829,7 +3812,7 @@ function buildConfirm(){
   const nights=calcNights();
   const nights_calc=calcNights();
   const sub = computeNightlyTotal(h, appState.checkIn, appState.checkOut, appState.rooms||1);
-  const total = sub>0 ? sub+Math.round(sub*.1) : effectivePrice(h);
+  const total = sub>0 ? sub : effectivePrice(h);
   const canPayLater=h.payLater;
 
   const d=document.createElement('div');
@@ -4853,7 +4836,7 @@ function annStep3(ad){
   ${(ad.minNights||1)>1?`<div style="background:#e8f4ff;border:1px solid #b3d4f0;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--blue-l);">ℹ️ Les voyageurs devront réserver au minimum <strong>${ad.minNights} nuits</strong> pour ce logement.</div>`:''}
 
   <div class="ann-sec" style="margin-top:20px;">💶 Ce que vous recevez</div>
-  <p style="font-size:13px;color:var(--gray-500);margin-bottom:10px;">Le voyageur paie le prix par nuit que vous fixez, sans frais en plus. Vous recevez ce prix moins la commission MyTunigo de votre niveau.</p>
+  <p style="font-size:13px;color:var(--gray-500);margin-bottom:10px;">Vous recevez le prix par nuit que vous fixez, moins la commission MyTunigo.</p>
   <div style="margin-bottom:20px;">${mountHostEarnBox('ann-earn-box', ()=>+(appState.annonceData.price_night||0), 'logement')}</div>
 
   ${annNavBtns()}
@@ -5759,7 +5742,7 @@ async function activatePriceAlerts(){
   const rows = favHotels.map(h=>({
     user_id: auth.currentUser.id,
     annonce_id: h.annonceId,
-    tracked_price: h.price
+    tracked_price: h.hostPrice!=null ? h.hostPrice : h.price
   }));
   const { error } = await _sb.from('price_alerts').upsert(rows, { onConflict: 'user_id,annonce_id', ignoreDuplicates: true });
   if(error){
@@ -8344,7 +8327,7 @@ function openEditPriceModal(annonceId){
           <span style="font-size:20px;font-weight:700;color:var(--gray-600);">€</span>
         </div>
 
-        <div style="margin-bottom:18px;">${mountHostEarnBox('edit-earn-box', +a.price_night||0, 'logement')}</div>
+        <div style="margin-bottom:18px;">${mountHostEarnBox('edit-earn-box', +a.price_night||0, 'logement', '', a.founder_since)}</div>
 
         <button onclick="saveEditedPrice('${a.id}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Enregistrer le nouveau prix</button>
       </div>
@@ -8870,20 +8853,17 @@ function buildPayment(){
   if(pb.type==='hotel'){
     const h=hotels.find(x=>x.id===pb.hotelId)||{name:'Hébergement',city:'—',country:'—',emoji:'🏨'};
     itemName=h.name; itemLocation=h.city+', '+h.country; itemEmoji=h.emoji;
-    const sub=Math.round(pb.total/1.1), taxes=pb.total-sub;
     // Idem que sur la fiche du bien : prix plein tarif sur la même période pour
     // afficher l'ancien total barré en rouge si une promo est appliquée.
     const origSubPay = h.price*pb.nights*(pb.rooms||1);
-    const origTotalPay = origSubPay + Math.round(origSubPay*.1);
+    const origTotalPay = origSubPay;
     const hasDiscPay = origTotalPay > pb.total;
     summaryHTML=`<div class="sum-row"><span>Hébergement</span><span style="font-weight:600;">${h.name}</span></div>
       <div class="sum-row"><span>📍 Lieu</span><span>${h.city}, ${h.country}</span></div>
       <div class="sum-row"><span>📅 Arrivée</span><span>${pb.checkIn||'—'}</span></div>
       <div class="sum-row"><span>📅 Départ</span><span>${pb.checkOut||'—'}</span></div>
       <div class="sum-row"><span>🌙 Durée</span><span>${isMultiRoomType(h)?pb.rooms+' ch. · ':''}${pb.nights} nuit${pb.nights>1?'s':''}</span></div>
-      <div class="sum-row"><span>Sous-total</span><span>${sub}€</span></div>
-      <div class="sum-row"><span>Taxes (10%)</span><span>${taxes}€</span></div>
-      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span>${hasDiscPay?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotalPay}€</span>`:''}<span style="color:var(--blue)">${pb.total}€</span></span></div>`;
+      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total <small style="font-weight:400;color:var(--gray-500);">frais de service inclus</small></span><span>${hasDiscPay?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotalPay}€</span>`:''}<span style="color:var(--blue)">${pb.total}€</span></span></div>`;
   } else {
     itemName=pb.title; itemLocation=pb.city+', '+pb.country; itemEmoji=pb.emoji||'✈️';
     const origTotalExc = pb.oldUnitPrice ? pb.oldUnitPrice*pb.pax : 0;
@@ -11435,7 +11415,7 @@ async function initBlockedDatesPicker(hId){
     const todayStrPromo = localISODate(new Date());
     const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent,price_override').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
     (promoRows||[]).forEach(r=>{
-      appState._bkDatePromos[r.date] = datePriceRowPct(r, h.price);
+      appState._bkDatePromos[r.date] = datePriceRowPct(r, h.hostPrice!=null ? h.hostPrice : h.price);
       if(r.price_override!=null) appState._bkDatePrices[r.date] = Number(r.price_override);
     });
     const { data: stayRows } = await _sb.from('date_stay_rules').select('date,min_nights,max_nights').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
@@ -11470,7 +11450,7 @@ async function initBlockedDatesPicker(hId){
   const today = new Date();
   // Prix de base par nuit (après remise globale éventuelle sur l'annonce),
   // utilisé pour calculer le prix réel affiché jour par jour dans le mini-calendrier.
-  const basePricePerNight = h.discount>0 ? Math.round(h.price*(1-h.discount/100)) : h.price;
+  const basePricePerNight = h.discount>0 ? guestNight(h, h.discount) : h.price;
 
   function getCalMonths(){
     const ciVal = document.getElementById('bk-ci')?.value;
@@ -11550,9 +11530,8 @@ function renderBookingMonth(year, month, unavailable, today, basePricePerNight){
     // cette date), affiché directement au lieu du pourcentage — plus simple
     // à lire pour l'hôte et le voyageur.
     const fixedPrice = (appState._bkDatePrices||{})[ds];
-    const dayPrice = fixedPrice!=null ? Math.round(fixedPrice)
-      : promoPct>0 ? Math.round(basePricePerNight*(1-promoPct/100))
-      : promoPct<0 ? Math.round(basePricePerNight*(1+Math.abs(promoPct)/100))
+    const dayPrice = fixedPrice!=null ? guestNight(h, 0, fixedPrice)
+      : promoPct ? guestNight(h, promoPct)
       : basePricePerNight;
     html += '<div '+(clickable?`onclick="bkSelectDate('${ds}')" style="cursor:pointer;`:'style="cursor:not-allowed;')
       +'text-align:center;padding:6px 1px;font-size:11px;font-weight:'+fw+';background:'+bg+';color:'+color+';border:'+border+';border-radius:3px;transition:transform .1s;position:relative;"'
@@ -12015,11 +11994,30 @@ async function buildAdminAnnonces(content){
             style="background:#fff;color:#cc0000;border:1.5px solid #cc0000;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">❌ Rejeter les modifications</button>
           `:''}
           ${a.status==='publiée' && !a.pending_changes?`<button onclick="rejectAnnonce('${a.id}','${a.ref}','${(a.name||'').replace(/'/g,"\\'")}','${a.contact_email||''}','${a.contact_firstname||''}')" style="background:#cc0000;color:#fff;padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;">❌ Suspendre</button>`:''}
+          <button onclick="toggleFounderBadge('${a.id}', ${a.founder_since?'false':'true'})"
+            style="background:${a.founder_since?'#fff':'#b8860b'};color:${a.founder_since?'#8a6200':'#fff'};border:1.5px solid #b8860b;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">${a.founder_since?'⭐ Retirer le badge fondateur':'⭐ Badge Hôte fondateur'}</button>
           <button onclick="adminDeleteAnnonce('${a.id}','${(a.name||'').replace(/'/g,"\\'")}')"
             style="background:#fff;color:#cc0000;border:1.5px solid #cc0000;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">🗑️ Supprimer définitivement</button>
         </div>
       </div>
     </div>`).join('')}`;
+}
+
+// Badge « Hôte fondateur » : attribué ou retiré par l'admin, sur l'annonce de
+// son choix et à tout moment. 0 % de commission pendant 1 an à partir de
+// l'attribution (la base refuse cette modification à un non-admin).
+async function toggleFounderBadge(annonceId, give){
+  const msg = give
+    ? "Attribuer le badge « Hôte fondateur » à cette annonce ?\n\nElle ne paiera aucune commission pendant 1 an à partir d'aujourd'hui, puis 8 %."
+    : "Retirer le badge « Hôte fondateur » de cette annonce ?\n\nLes prochaines réservations confirmées paieront 8 % de commission.";
+  if(!confirm(msg)) return;
+  const nowIso = new Date().toISOString();
+  const { error } = await _sb.from('annonces').update({ founder_since: give ? nowIso : null }).eq('id', annonceId);
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast(give ? '⭐ Badge Hôte fondateur attribué' : 'Badge retiré','var(--green)');
+  const h = hotels.find(x=>x.annonceId===annonceId);
+  if(h){ h.founder = !!give; h.founderSince = give ? nowIso : null; }
+  render();
 }
 
 // Seul l'admin voit et peut appeler cette fonction (bouton présent uniquement
@@ -13045,7 +13043,7 @@ function buildAboutPage(){
     },
     { title:'Notre histoire',
       content:'Née d\'un constat simple — les grandes plateformes prélèvent des commissions excessives qui pénalisent à la fois les hôtes et les voyageurs — MyTunigo a été fondée avec une vision claire : créer une marketplace équitable, transparente et humaine.<br><br>'
-        +'MyTunigo démarre en Tunisie avec un modèle simple : <strong>le voyageur paie le prix affiché, sans frais de service</strong>. Les 100 premiers hôtes qui publient deviennent <strong>hôtes fondateurs</strong> et ne paient aucune commission pendant 2 ans ; ensuite, la commission est de 10 % (8 % pour les hôtes les mieux notés), parmi les plus basses du marché.'
+        +'MyTunigo démarre en Tunisie avec un modèle simple : <strong>un prix tout compris pour le voyageur</strong>, sans frais cachés, et une commission hôte de 8 %, parmi les plus basses du marché. Les <strong>hôtes fondateurs</strong> ne paient aucune commission pendant leur première année.'
     },
     { title:'Nos valeurs',
       content:'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px;margin-top:16px;">'
@@ -13289,7 +13287,7 @@ function buildCGUPage(){
     {num:'4',title:'Services proposés',body:'Mise en relation Hôtes/Voyageurs pour location saisonnière. Services : publication d\'annonces, réservation, messagerie, calendrier, fidélité.<br><br>Conformément à l\'article L.324-1 du Code du tourisme, les locations courte durée peuvent nécessiter une déclaration en mairie. L\'Hôte en est seul responsable.'},
     {num:'5',title:'Obligations des Hôtes',body:'L\'Hôte s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Être propriétaire ou disposer des droits nécessaires</li><li>Respecter la législation (déclaration mairie, taxe de séjour, fiscalité)</li><li>Fournir des informations exactes et des photos représentatives</li><li>Souscrire une assurance couvrant les risques locatifs</li><li>Respecter le RGPD pour les données des Voyageurs</li></ul>'},
     {num:'6',title:'Obligations des Voyageurs',body:'Le Voyageur s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Utiliser le logement conformément à sa destination</li><li>Respecter le nombre maximum d\'occupants</li><li>Restituer le logement dans son état initial</li><li>Informer l\'Hôte en cas de dommages</li><li>Ne pas sous-louer sans accord écrit de l\'Hôte</li></ul>'},
-    {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix affiché est le prix payé ; MyTunigo ne facture aucun frais de service au Voyageur.<br><br><b>Hôte :</b> MyTunigo prélève une commission sur le montant de chaque réservation confirmée, déduite du montant reversé à l\'Hôte :<br>• <b>Hôte fondateur</b> (100 premiers hôtes ayant publié une annonce) : 0 % pendant 2 ans à compter de la première publication ;<br>• <b>Hôte standard</b> : 10 % ;<br>• <b>Hôte performant</b> (note et taux d\'acceptation élevés, revu chaque trimestre) : 8 %.<br><br><b>Excursions :</b> commission de 12 % par défaut, pouvant être négociée avec le prestataire (minimum 8 %).<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
+    {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix affiché est le prix payé. Il comprend des frais de service MyTunigo de 8 % ajoutés au prix fixé par l\'Hôte ; aucun autre frais n\'est ajouté au paiement.<br><br><b>Hôte :</b> MyTunigo prélève une commission de <b>8 %</b> sur le prix fixé par l\'Hôte pour chaque réservation confirmée, déduite du montant reversé à l\'Hôte.<br><br><b>Hôte fondateur :</b> MyTunigo peut attribuer, à sa discrétion et à tout moment, le badge « Hôte fondateur » à une annonce. Cette annonce ne paie aucune commission pendant 1 an à compter de l\'attribution du badge, puis 8 %.<br><br><b>Excursions :</b> commission de 12 % par défaut, pouvant être négociée avec le prestataire (minimum 8 %).<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
     {num:'8',title:'Annulations',body:'<b>Flexible</b> : remboursement intégral jusqu\'à 24h avant.<br><b>Modérée</b> : 50% si annulation moins de 7 jours avant.<br><b>Stricte</b> : non remboursable sauf force majeure.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
     {num:'9',title:'Responsabilité',body:'MyTunigo est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de MyTunigo est limitée aux sommes effectivement perçues.'},
     {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à MyTunigo une licence non-exclusive et gratuite d\'utilisation.'},
@@ -13571,7 +13569,6 @@ async function loadPublishedAnnonces(){
   try{
     const { data, error } = await _sb.from('annonces').select('*').eq('status','publiée').order('created_at',{ascending:false});
     if(error){ console.warn('Erreur chargement annonces publiées:', error.message); return; }
-    const founderSet = await loadFounderHosts();
 
     // Vraie moyenne + nombre d'avis par annonce (au lieu de 0 codé en dur)
     const annIds = (data||[]).map(a=>a.id);
@@ -13605,7 +13602,8 @@ async function loadPublishedAnnonces(){
         annonceId: a.id,
         annonceRef: a.ref,
         userId: a.user_id || null,
-        founder: !!(a.user_id && founderSet.has(a.user_id)),
+        founder: !!a.founder_since,
+        founderSince: a.founder_since || null,
         contactFirstname: a.contact_firstname || '',
         contactLastname: a.contact_lastname || '',
         contactEmail: a.contact_email || '',
@@ -13627,7 +13625,8 @@ async function loadPublishedAnnonces(){
         rating: avgRating,
         ratingLabel: ratingLabelFor(avgRating),
         reviews: rs ? rs.count : 0,
-        price: a.price_night || 0,
+        price: guestPrice(a.price_night || 0),   // prix voyageur tout compris
+        hostPrice: a.price_night || 0,           // prix fixé par l'hôte (jamais affiché au voyageur)
         emoji: a.emoji || '🏠',
         features: (a.amenities||[]).map(id=>{
           // Les vraies annonces stockent des identifiants internes (wifi, pool…)
