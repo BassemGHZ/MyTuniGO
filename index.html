@@ -11495,6 +11495,8 @@ async function initBlockedDatesPicker(hId){
 }
 
 function renderBookingMonth(year, month, unavailable, today, basePricePerNight){
+  // Logement affiché (pour le prix réel de chaque jour, promos comprises)
+  const h = hotels.find(x=>x.id===appState._bkHotelId) || { price: basePricePerNight };
   const monthNames=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
