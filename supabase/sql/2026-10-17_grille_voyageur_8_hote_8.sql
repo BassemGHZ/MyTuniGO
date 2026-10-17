@@ -3,9 +3,9 @@
 -- Projet : fxbetakueqkzipsqvtck
 --
 -- Règle (décision de Bassem du 17/10) :
---   * Voyageur : paie le prix fixé par l'hôte + 8 % de frais de service,
---     affiché tout compris (il ne voit jamais le prix de l'hôte).
---     Remplace les anciens « taxes et frais » de 10 %.
+--   * Voyageur : voit le prix fixé par l'hôte, plus une ligne « Taxes et
+--     frais » de 8 % ajoutée au total (remplace les anciens 10 %). Il ne voit
+--     jamais ce que l'hôte reçoit.
 --   * Hôte : reçoit son prix − 8 % de commission (il ne voit jamais ce que
 --     le voyageur a payé).
 --   * Badge « Hôte fondateur » : attribué par l'admin, à tout moment, sur
@@ -75,13 +75,14 @@ DROP FUNCTION IF EXISTS public.fn_commission_quote(uuid, text, numeric);
 -- ---------------------------------------------------------------------
 -- Même calcul que le site (datePriceNight) : prix fixe du jour s'il existe,
 -- sinon pourcentage du jour, sinon promo globale de l'annonce, sinon prix
--- de base. Le prix voyageur de chaque nuit = arrondi(prix hôte × 1,08).
+-- de base. Total voyageur = prix hôte du séjour + arrondi(8 % de ce prix),
+-- comme la ligne « Taxes et frais » du site.
 CREATE OR REPLACE FUNCTION public.fn_logement_pricing(p_annonce uuid, p_check_in date, p_check_out date, p_rooms int)
 RETURNS TABLE(host_subtotal numeric, guest_total numeric)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_base numeric; v_disc numeric; d date; v_night numeric; v_row record;
-  v_host numeric := 0; v_guest numeric := 0; v_rooms int := greatest(coalesce(p_rooms,1),1);
+  v_host numeric := 0; v_rooms int := greatest(coalesce(p_rooms,1),1);
 BEGIN
   SELECT price_night, coalesce(discount_percent,0) INTO v_base, v_disc FROM public.annonces WHERE id = p_annonce;
   IF v_base IS NULL OR p_check_in IS NULL OR p_check_out IS NULL OR p_check_out <= p_check_in THEN
@@ -99,11 +100,11 @@ BEGIN
     ELSE
       v_night := CASE WHEN v_disc <> 0 THEN round(v_base * (1 - v_disc / 100.0)) ELSE v_base END;
     END IF;
-    v_host  := v_host + v_night;
-    v_guest := v_guest + round(v_night * (1 + public.fn_tarif('frais_voyageur')));
+    v_host := v_host + v_night;
     d := d + 1;
   END LOOP;
-  RETURN QUERY SELECT v_host * v_rooms, v_guest * v_rooms;
+  v_host := v_host * v_rooms;
+  RETURN QUERY SELECT v_host, v_host + round(v_host * public.fn_tarif('frais_voyageur'));
 END $$;
 REVOKE ALL ON FUNCTION public.fn_logement_pricing(uuid, date, date, int) FROM PUBLIC, anon, authenticated;
 

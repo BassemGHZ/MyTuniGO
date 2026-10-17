@@ -600,8 +600,8 @@
 <!-- ========== BANDEAU LANCEMENT ========== -->
 <div id="launch-banner" style="background:#1E2D4E;color:#fff;padding:9px 20px;text-align:center;position:relative;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
   <span style="font-size:13px;font-weight:500;">Réservez et publiez vos annonces</span>
-  <span style="background:#E84B10;color:#fff;font-size:12px;font-weight:800;padding:4px 14px;border-radius:20px;">Prix tout compris</span>
-  <span style="font-size:13px;font-weight:500;">Le prix affiché est le prix payé · Hôtes fondateurs : 0 % de commission la première année</span>
+  <span style="background:#E84B10;color:#fff;font-size:12px;font-weight:800;padding:4px 14px;border-radius:20px;">Hôtes fondateurs</span>
+  <span style="font-size:13px;font-weight:500;">0 % de commission la première année · Aucun frais caché</span>
   <button onclick="document.getElementById('launch-banner').style.display='none'" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:13px;">✕</button>
 </div>
 
@@ -811,8 +811,8 @@ setTimeout(showDeviceBanner, 500);
 const COMMISSION_RATE = 0.07; // démo admin uniquement — 7% prélevée par MyTunigo sur chaque réservation
 
 /* ===================== GRILLE TARIFAIRE DES LOGEMENTS (17/10/2026) =====================
-   Voyageur : prix de l'hôte + 8 % de frais de service, affiché TOUT COMPRIS
-   (le voyageur ne voit jamais le prix de l'hôte).
+   Voyageur : voit le prix fixé par l'hôte, plus une ligne « Taxes et frais »
+   de 8 % ajoutée au total (il ne voit jamais ce que l'hôte reçoit).
    Hôte : reçoit son prix − 8 % (il ne voit jamais ce que le voyageur paie).
    Annonce badgée « Hôte fondateur » (choix de l'admin) : 0 % pendant 1 an à
    partir de l'attribution, puis 8 %.
@@ -825,12 +825,11 @@ const EXCURSION_COMMISSION_RATE = 0.12;
 const FOUNDER_FREE_MONTHS = 12;
 const _hostComm = { excRate:null, excUid:null };
 
-// Prix voyageur d'une nuit à partir du prix de l'hôte (arrondi à l'euro, comme en base)
-function guestPrice(p){ return Math.round((+p||0)*(1+GUEST_FEE_RATE)); }
-// Prix voyageur d'une nuit, promos comprises : même calcul que fn_logement_pricing
+// « Taxes et frais » voyageur sur un sous-total (arrondi à l'euro, comme fn_logement_pricing)
+function guestFee(sub){ return Math.round((+sub||0)*GUEST_FEE_RATE); }
+// Prix d'une nuit, promos comprises (prix de l'hôte, celui que voit le voyageur)
 function guestNight(h, pct, override){
-  if(h && h.hostPrice!=null) return guestPrice(datePriceNight(h.hostPrice, pct, override));
-  return datePriceNight(h ? h.price : 0, pct, override);
+  return datePriceNight(h ? (h.hostPrice!=null ? h.hostPrice : h.price) : 0, pct, override);
 }
 function hostNetAmount(gross, rate){
   const g = Math.max(0, +gross||0);
@@ -3633,15 +3632,16 @@ function calcBkHTML(h){
   if(n<=0)return `<div style="font-size:13px;color:var(--gray-500);text-align:center;padding:8px 0;">Sélectionnez vos dates pour voir le total</div>`;
   const sub = computeNightlyTotal(h, ci, co, rooms);
   const avgUnit = Math.round(sub/(n*rooms));
-  const total=sub; // frais de service voyageur déjà inclus dans le prix de chaque nuit
+  const taxes=guestFee(sub), total=sub+taxes; // « Taxes et frais » : 8 % (calcul identique en base)
   // Prix plein tarif (sans aucune promo) pour la même période, afin d'afficher
   // l'ancien total barré en rouge quand une réduction (globale ou par date) s'applique.
   const origSub = h.price*n*rooms;
-  const origTotal = origSub;
+  const origTotal = origSub + guestFee(origSub);
   const hasDiscount = origTotal > total;
   const lineLabel = multiRoom ? `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.` : `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''}`;
   return `<div class="bk-row"><span>${lineLabel}</span><span>${sub}€</span></div>
-    <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''}) <small style="font-weight:400;opacity:.8;">frais de service inclus</small></span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
+    <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
+    <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
 }
 
 function updateBk(){
@@ -3812,7 +3812,7 @@ function buildConfirm(){
   const nights=calcNights();
   const nights_calc=calcNights();
   const sub = computeNightlyTotal(h, appState.checkIn, appState.checkOut, appState.rooms||1);
-  const total = sub>0 ? sub : effectivePrice(h);
+  const total = sub>0 ? sub+guestFee(sub) : effectivePrice(h);
   const canPayLater=h.payLater;
 
   const d=document.createElement('div');
@@ -8853,17 +8853,20 @@ function buildPayment(){
   if(pb.type==='hotel'){
     const h=hotels.find(x=>x.id===pb.hotelId)||{name:'Hébergement',city:'—',country:'—',emoji:'🏨'};
     itemName=h.name; itemLocation=h.city+', '+h.country; itemEmoji=h.emoji;
+    const sub=Math.round(pb.total/(1+GUEST_FEE_RATE)), taxes=pb.total-sub;
     // Idem que sur la fiche du bien : prix plein tarif sur la même période pour
     // afficher l'ancien total barré en rouge si une promo est appliquée.
     const origSubPay = h.price*pb.nights*(pb.rooms||1);
-    const origTotalPay = origSubPay;
+    const origTotalPay = origSubPay + guestFee(origSubPay);
     const hasDiscPay = origTotalPay > pb.total;
     summaryHTML=`<div class="sum-row"><span>Hébergement</span><span style="font-weight:600;">${h.name}</span></div>
       <div class="sum-row"><span>📍 Lieu</span><span>${h.city}, ${h.country}</span></div>
       <div class="sum-row"><span>📅 Arrivée</span><span>${pb.checkIn||'—'}</span></div>
       <div class="sum-row"><span>📅 Départ</span><span>${pb.checkOut||'—'}</span></div>
       <div class="sum-row"><span>🌙 Durée</span><span>${isMultiRoomType(h)?pb.rooms+' ch. · ':''}${pb.nights} nuit${pb.nights>1?'s':''}</span></div>
-      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total <small style="font-weight:400;color:var(--gray-500);">frais de service inclus</small></span><span>${hasDiscPay?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotalPay}€</span>`:''}<span style="color:var(--blue)">${pb.total}€</span></span></div>`;
+      <div class="sum-row"><span>Sous-total</span><span>${sub}€</span></div>
+      <div class="sum-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
+      <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span>${hasDiscPay?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotalPay}€</span>`:''}<span style="color:var(--blue)">${pb.total}€</span></span></div>`;
   } else {
     itemName=pb.title; itemLocation=pb.city+', '+pb.country; itemEmoji=pb.emoji||'✈️';
     const origTotalExc = pb.oldUnitPrice ? pb.oldUnitPrice*pb.pax : 0;
@@ -13043,7 +13046,7 @@ function buildAboutPage(){
     },
     { title:'Notre histoire',
       content:'Née d\'un constat simple — les grandes plateformes prélèvent des commissions excessives qui pénalisent à la fois les hôtes et les voyageurs — MyTunigo a été fondée avec une vision claire : créer une marketplace équitable, transparente et humaine.<br><br>'
-        +'MyTunigo démarre en Tunisie avec un modèle simple : <strong>un prix tout compris pour le voyageur</strong>, sans frais cachés, et une commission hôte de 8 %, parmi les plus basses du marché. Les <strong>hôtes fondateurs</strong> ne paient aucune commission pendant leur première année.'
+        +'MyTunigo démarre en Tunisie avec un modèle simple : <strong>des prix clairs pour le voyageur</strong>, sans frais cachés, et une commission hôte de 8 %, parmi les plus basses du marché. Les <strong>hôtes fondateurs</strong> ne paient aucune commission pendant leur première année.'
     },
     { title:'Nos valeurs',
       content:'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px;margin-top:16px;">'
@@ -13287,7 +13290,7 @@ function buildCGUPage(){
     {num:'4',title:'Services proposés',body:'Mise en relation Hôtes/Voyageurs pour location saisonnière. Services : publication d\'annonces, réservation, messagerie, calendrier, fidélité.<br><br>Conformément à l\'article L.324-1 du Code du tourisme, les locations courte durée peuvent nécessiter une déclaration en mairie. L\'Hôte en est seul responsable.'},
     {num:'5',title:'Obligations des Hôtes',body:'L\'Hôte s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Être propriétaire ou disposer des droits nécessaires</li><li>Respecter la législation (déclaration mairie, taxe de séjour, fiscalité)</li><li>Fournir des informations exactes et des photos représentatives</li><li>Souscrire une assurance couvrant les risques locatifs</li><li>Respecter le RGPD pour les données des Voyageurs</li></ul>'},
     {num:'6',title:'Obligations des Voyageurs',body:'Le Voyageur s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Utiliser le logement conformément à sa destination</li><li>Respecter le nombre maximum d\'occupants</li><li>Restituer le logement dans son état initial</li><li>Informer l\'Hôte en cas de dommages</li><li>Ne pas sous-louer sans accord écrit de l\'Hôte</li></ul>'},
-    {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix affiché est le prix payé. Il comprend des frais de service MyTunigo de 8 % ajoutés au prix fixé par l\'Hôte ; aucun autre frais n\'est ajouté au paiement.<br><br><b>Hôte :</b> MyTunigo prélève une commission de <b>8 %</b> sur le prix fixé par l\'Hôte pour chaque réservation confirmée, déduite du montant reversé à l\'Hôte.<br><br><b>Hôte fondateur :</b> MyTunigo peut attribuer, à sa discrétion et à tout moment, le badge « Hôte fondateur » à une annonce. Cette annonce ne paie aucune commission pendant 1 an à compter de l\'attribution du badge, puis 8 %.<br><br><b>Excursions :</b> commission de 12 % par défaut, pouvant être négociée avec le prestataire (minimum 8 %).<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
+    {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix par nuit affiché est celui fixé par l\'Hôte. Des taxes et frais de service MyTunigo de 8 % s\'y ajoutent ; ils sont indiqués avant la réservation, et aucun autre frais n\'est ajouté au paiement.<br><br><b>Hôte :</b> MyTunigo prélève une commission de <b>8 %</b> sur le prix fixé par l\'Hôte pour chaque réservation confirmée, déduite du montant reversé à l\'Hôte.<br><br><b>Hôte fondateur :</b> MyTunigo peut attribuer, à sa discrétion et à tout moment, le badge « Hôte fondateur » à une annonce. Cette annonce ne paie aucune commission pendant 1 an à compter de l\'attribution du badge, puis 8 %.<br><br><b>Excursions :</b> commission de 12 % par défaut, pouvant être négociée avec le prestataire (minimum 8 %).<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
     {num:'8',title:'Annulations',body:'<b>Flexible</b> : remboursement intégral jusqu\'à 24h avant.<br><b>Modérée</b> : 50% si annulation moins de 7 jours avant.<br><b>Stricte</b> : non remboursable sauf force majeure.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
     {num:'9',title:'Responsabilité',body:'MyTunigo est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de MyTunigo est limitée aux sommes effectivement perçues.'},
     {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à MyTunigo une licence non-exclusive et gratuite d\'utilisation.'},
@@ -13625,8 +13628,8 @@ async function loadPublishedAnnonces(){
         rating: avgRating,
         ratingLabel: ratingLabelFor(avgRating),
         reviews: rs ? rs.count : 0,
-        price: guestPrice(a.price_night || 0),   // prix voyageur tout compris
-        hostPrice: a.price_night || 0,           // prix fixé par l'hôte (jamais affiché au voyageur)
+        price: a.price_night || 0,       // prix par nuit fixé par l'hôte (affiché au voyageur)
+        hostPrice: a.price_night || 0,
         emoji: a.emoji || '🏠',
         features: (a.amenities||[]).map(id=>{
           // Les vraies annonces stockent des identifiants internes (wifi, pool…)
