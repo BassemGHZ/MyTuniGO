@@ -127,16 +127,15 @@ function fmtAmount(n: number) {
 }
 
 // Montant reçu par l'hôte : reversement figé à la confirmation s'il existe,
-// sinon devis selon son niveau (fondateur 0 %, standard 10 %, performant 8 %).
-// null si la grille n'est pas disponible : on n'affiche alors aucun montant.
+// sinon devis calculé en base (prix hôte − 8 %, 0 % la 1re année pour une
+// annonce « Hôte fondateur »). null si indisponible : aucun montant affiché.
 // deno-lint-ignore no-explicit-any
-async function hostNetFor(r: any, ownerId: string | null): Promise<number | null> {
+async function hostNetFor(r: any, _ownerId: string | null): Promise<number | null> {
   const { data: pay } = await admin.from("booking_payouts").select("payout")
     .eq("kind", "logement").eq("booking_id", r.id).maybeSingle();
   if (pay && pay.payout != null) return Number(pay.payout);
-  if (!ownerId) return null;
   const { data: q, error } = await admin.rpc("fn_commission_quote", {
-    p_owner: ownerId, p_kind: "logement", p_gross: Number(r.total ?? 0),
+    p_kind: "logement", p_booking: r.id,
   });
   if (error) { mailErrors.push(`devis commission : ${error.message}`); return null; }
   const row = Array.isArray(q) ? q[0] : q;

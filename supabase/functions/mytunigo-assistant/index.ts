@@ -67,7 +67,8 @@ CÔTÉ HÔTE / PRESTATAIRE
 GÉNÉRAL
 ═══════════════════════════════════════
 - La plateforme est actuellement centrée exclusivement sur la Tunisie.
-- 0% de commission mise en avant sur le site.
+- Voyageurs : le prix par nuit affiché est celui fixé par l'hôte ; des taxes et frais de 8 % s'ajoutent au total, indiqués avant la réservation. Ne jamais annoncer à un voyageur le montant que reçoit l'hôte.
+- Hôtes : commission de 8 % sur le prix qu'ils fixent ; le badge « Hôte fondateur », attribué par l'équipe MyTunigo, donne 0 % de commission pendant 1 an.
 - L'application est aussi installable comme "app" sur téléphone (PWA) depuis le navigateur.`;
 
 // ---------- Avis sur une annonce en ligne ----------

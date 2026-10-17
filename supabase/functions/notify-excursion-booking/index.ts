@@ -105,7 +105,7 @@ async function hostNetFor(b: any, ownerId: string | null | undefined): Promise<n
   if (pay && pay.payout != null) return Number(pay.payout);
   if (!ownerId) return null;
   const { data: q, error } = await admin.rpc("fn_commission_quote", {
-    p_owner: ownerId, p_kind: "excursion", p_gross: Number(b.total ?? 0),
+    p_kind: "excursion", p_booking: b.id,
   });
   if (error) { console.warn("devis commission :", error.message); return null; }
   const row = Array.isArray(q) ? q[0] : q;
