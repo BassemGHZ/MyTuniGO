@@ -11556,7 +11556,14 @@ function bkSelectDate(ds){
   const ci = ciEl.value;
   const co = coEl.value;
 
-  if(!ci || (ci && co)){
+  // Re-clic sur une date déjà sélectionnée : on la désélectionne.
+  // Départ -> on retire le départ ; arrivée -> on retire toute la sélection.
+  if(co && ds===co){
+    coEl.value = ''; appState.checkOut = '';
+  } else if(ci && ds===ci){
+    ciEl.value = ''; coEl.value = '';
+    appState.checkIn = ''; appState.checkOut = '';
+  } else if(!ci || (ci && co)){
     // Démarre une nouvelle sélection
     ciEl.value = ds; coEl.value = '';
     appState.checkIn = ds; appState.checkOut = '';
