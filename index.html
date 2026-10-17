@@ -12026,7 +12026,8 @@ async function toggleFounderBadge(annonceId, give){
   const nowIso = new Date().toISOString();
   const { error } = await _sb.from('annonces').update({ founder_since: give ? nowIso : null }).eq('id', annonceId);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-  showToast(give ? '⭐ Badge Hôte fondateur attribué' : 'Badge retiré','var(--green)');
+  showToast(give ? '⭐ Badge Hôte fondateur attribué — e-mail envoyé à l\'hôte' : 'Badge retiré','var(--green)');
+  if(give) callNotifyAdmin('founder_granted', 'annonce', annonceId);
   const h = hotels.find(x=>x.annonceId===annonceId);
   if(h){ h.founder = !!give; h.founderSince = give ? nowIso : null; }
   render();
