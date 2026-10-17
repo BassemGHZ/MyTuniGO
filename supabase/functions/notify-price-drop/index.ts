@@ -61,6 +61,11 @@ async function sendMail(to: string | null | undefined, subject: string, html: st
   return true;
 }
 
+// Prix affiché au voyageur : prix de l'hôte + 8 % de frais de service,
+// arrondi à l'euro (même calcul que le site et fn_logement_pricing).
+const GUEST_FEE_RATE = 0.08;
+const guestPrice = (p: number) => Math.round(p * (1 + GUEST_FEE_RATE));
+
 function priceDropHtml(firstName: string, propName: string, oldPrice: number, newPrice: number) {
   const pct = oldPrice > 0 ? Math.round(((oldPrice - newPrice) / oldPrice) * 100) : 0;
   return `<!doctype html><html><body style="margin:0;background:#f3f6fa;font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#212529;">
@@ -119,7 +124,7 @@ async function checkAlerts() {
     const prof = profMap[al.user_id];
     if (await sendMail(prof?.email,
       `💰 Baisse de prix sur ${ann.name ?? "un de vos favoris"} !`.slice(0, 150),
-      priceDropHtml(prof?.first_name ?? "", ann.name ?? "", oldPrice, newPrice))) sent++;
+      priceDropHtml(prof?.first_name ?? "", ann.name ?? "", guestPrice(oldPrice), guestPrice(newPrice)))) sent++;
   }
   return json({ ok: true, sent });
 }
