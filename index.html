@@ -4801,7 +4801,7 @@ function annStep3(ad){
   <p style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">Hébergements similaires dans votre zone : entre <strong>65€</strong> et <strong>145€</strong> / nuit.</p>
   <div class="ann-sec">Politique d'annulation</div>
   <div class="cancel-grid">
-    ${[['flexible','Flexible','Remboursement intégral jusqu\'à 24h avant'],['moderate','Modérée','Remboursement 50% jusqu\'à 5 jours avant'],['strict','Stricte','Non remboursable après réservation']].map(([v,t,desc])=>`
+    ${[['flexible','Flexible','Remboursement intégral si annulation au moins 72 h avant l\'arrivée'],['moderate','Modérée','Remboursement de 50 % si annulation au moins 5 jours avant'],['strict','Stricte','Non remboursable après réservation']].map(([v,t,desc])=>`
       <div class="cancel-btn ${ad.cancellation===v?'sel':''}" onclick="annSet('cancellation','${v}');annRefresh()">
         <strong>${t}</strong><span>${desc}</span>
       </div>`).join('')}
@@ -5379,7 +5379,7 @@ async function loadReservations(container){
 
   const logementIds = [...new Set((data||[]).map(r=>r.logement_id).filter(Boolean))];
   const { data: anns } = logementIds.length
-    ? await _sb.from('annonces').select('id,name,city,country,emoji,photos').in('id', logementIds)
+    ? await _sb.from('annonces').select('id,name,city,country,emoji,photos,checkin,cancellation').in('id', logementIds)
     : { data: [] };
   const annMap = Object.fromEntries((anns||[]).map(a=>[a.id,a]));
 
@@ -5423,6 +5423,10 @@ async function loadReservations(container){
       _propCountry: ann.country || (h?h.country:'—'),
       _propEmoji: ann.emoji || (h?h.emoji:'🏨'),
       _propPhoto: firstPhotoUrl(ann.photos) || firstPhotoUrl(h?.photos),
+      _checkinTime: ann.checkin || (h?h.checkin:'') || '15:00',
+      _policy: ann.cancellation || 'flexible',
+      cancelReason: r.cancel_reason || null,
+      refundAmount: r.refund_amount,
     };
   });
 
@@ -5438,7 +5442,7 @@ async function loadReservations(container){
   } else {
     const excIds2 = [...new Set((excBk||[]).map(b=>b.excursion_id).filter(Boolean))];
     const { data: excs2 } = excIds2.length
-      ? await _sb.from('excursions').select('id,title,city,country,photos').in('id', excIds2)
+      ? await _sb.from('excursions').select('id,title,city,country,photos,meeting_time,free_cancellation').in('id', excIds2)
       : { data: [] };
     const excMap2 = Object.fromEntries((excs2||[]).map(e=>[e.id,e]));
     const { data: myExcReviews } = excIds2.length
@@ -5453,7 +5457,11 @@ async function loadReservations(container){
         photo: firstPhotoUrl(ex.photos),
         date: b.date, participants: b.participants||1, total: b.total||0,
         status: b.status||'en attente', paymentMethod: b.payment_method||'en ligne', createdAt: b.created_at,
-        bookingCode: b.booking_code||null
+        bookingCode: b.booking_code||null,
+        meetingTime: ex.meeting_time || '',
+        _policy: ex.free_cancellation ? 'flexible' : 'strict',
+        cancelReason: b.cancel_reason || null,
+        refundAmount: b.refund_amount,
       };
     });
   }
@@ -5580,7 +5588,7 @@ function buildReservations(){
               <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
                 ${r.status==='confirmée'?`
                   ${r.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${r.hotelId}})" style="background:var(--blue-l);color:#fff;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Voir l'hôtel</button>`:''}
-                  <button onclick="cancelReservation('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>
+                  ${guestCancelActionHTML('logement', r)}
                 `:''}
                 ${r.status==='terminée'&&r.annonceId?`
                   ${reviewActionHTML({
@@ -5595,10 +5603,11 @@ function buildReservations(){
                   <button onclick="navigate('reservation-payment',{selectedResaId:'${r._dbId}'})" style="background:#0071c2;color:#fff;padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:800;border:none;cursor:pointer;">💳 Finaliser le paiement</button>
                 `:''}
                 ${r.status==='en attente'||r.status==='acceptée'?`
-                  <button onclick="cancelReservation('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler la demande</button>
+                  <button onclick="openCancelModal('logement','${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler la demande</button>
                 `:''}
                 ${r.status==='annulée'?`
                   <span style="font-size:12px;color:var(--gray-400);">Annulée</span>
+                  ${r.cancelReason?`<span style="font-size:11px;color:var(--gray-400);max-width:180px;text-align:right;">Motif : ${escHTML(r.cancelReason)}</span>`:''}
                 `:''}
               </div>
             </div>
@@ -5618,26 +5627,149 @@ function buildReservations(){
   return d;
 }
 
-async function cancelReservation(dbId){
-  if(!confirm('Êtes-vous sûr de vouloir annuler cette réservation ?')) return;
-
-  const { data: resa, error: fetchErr } = await _sb.from('reservations').select('*').eq('id', dbId).maybeSingle();
-  if(fetchErr || !resa){ showToast('Réservation introuvable','var(--red)'); return; }
-
-  const { error } = await _sb.from('reservations').update({status:'annulée'}).eq('id', dbId);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-  showToast('Réservation annulée','var(--red)');
-
-  // Informe l'hôte ET le voyageur par e-mail — les dates se libèrent
-  // automatiquement (statut 'annulée' exclu des disponibilités). La fonction
-  // lit destinataires et contenu en base : on n'envoie que l'identifiant.
-  try{
-    const r = await callNotifyBooking({ type:'cancelled', reservation_id: dbId });
-    if(!r.ok) console.error('notify-booking cancelled:', r.status, r.body);
-  } catch(efErr){
-    console.error('notify-booking cancellation error:', efErr.message);
+/* ===================== ANNULATION PAR LE VOYAGEUR (18/10/2026) =====================
+   Demande non engagée (en attente / acceptée non payée) : annulable à tout moment.
+   Réservation confirmée : annulable en ligne jusqu'à 72 h avant le début
+   (heure d'arrivée de l'annonce ou heure de rendez-vous de l'excursion,
+   heure de Tunis) ; ensuite il faut contacter l'hôte ou l'organisateur.
+   Motif obligatoire. La base applique la même règle (fn_guest_cancel_policy)
+   et calcule le montant remboursable selon la politique. */
+const CANCEL_NOTICE_HOURS = 72;
+const CANCEL_REASONS = ['Changement de programme','Météo','Problème de santé','Erreur de réservation','Autre'];
+const POLICY_LABELS = {
+  logement: {
+    flexible: 'Flexible : remboursement intégral en cas d\'annulation au moins 72 h avant l\'arrivée.',
+    moderate: 'Modérée : remboursement de 50 % en cas d\'annulation au moins 5 jours avant l\'arrivée, aucun remboursement ensuite.',
+    strict:   'Stricte : non remboursable après la réservation.',
+  },
+  excursion: {
+    flexible: 'Flexible : remboursement intégral en cas d\'annulation au moins 72 h avant le départ.',
+    strict:   'Stricte : non remboursable après la réservation.',
+  },
+};
+// Début (Date) à l'heure de Tunis (UTC+1, sans heure d'été)
+function bookingStart(dateISO, hhmm, def){
+  if(!dateISO) return null;
+  const t = /^\s*([01]?\d|2[0-3]):([0-5]\d)\s*$/.test(hhmm||'') ? hhmm.trim().padStart(5,'0') : def;
+  return new Date(`${String(dateISO).slice(0,10)}T${t}:00+01:00`);
+}
+function bookingStartOf(kind, r){
+  return kind==='logement' ? bookingStart(r.checkIn, r._checkinTime, '15:00') : bookingStart(r.date, r.meetingTime, '00:00');
+}
+function cancelDeadline(kind, r){
+  const st = bookingStartOf(kind, r); return st ? new Date(st.getTime() - CANCEL_NOTICE_HOURS*3600000) : null;
+}
+function guestCanCancel(kind, r){
+  if(r.status==='en attente' || (kind==='logement' && r.status==='acceptée')) return true;
+  if(r.status!=='confirmée') return false;
+  const dl = cancelDeadline(kind, r); return !dl || Date.now() < dl.getTime();
+}
+function onSitePayment(kind, r){ return kind==='excursion' && /sur place/i.test(r.paymentMethod||''); }
+// Montant remboursable affiché (le montant réel est calculé en base)
+function estimateRefund(kind, r){
+  if(r.status!=='confirmée') return 0;
+  if(onSitePayment(kind, r)) return 0;
+  if(r._policy==='flexible') return r.total||0;
+  if(kind==='logement' && r._policy==='moderate'){
+    const st = bookingStartOf(kind, r);
+    return st && Date.now() <= st.getTime()-5*86400000 ? Math.round((r.total||0)*50)/100 : 0;
   }
+  return 0;
+}
+function fmtDeadline(d){ return d.toLocaleString('fr-FR',{timeZone:'Africa/Tunis',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
 
+// Bouton d'une réservation confirmée : « Annuler » avant le délai, sinon « Contacter »
+function guestCancelActionHTML(kind, r){
+  const dl = cancelDeadline(kind, r);
+  if(guestCanCancel(kind, r)){
+    const hint = r.status==='confirmée' && dl
+      ? `<div style="font-size:11px;color:var(--gray-500);text-align:right;max-width:190px;">Annulation en ligne possible jusqu'au ${fmtDeadline(dl)}</div>` : '';
+    return `<button onclick="openCancelModal('${kind}','${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">${r.status==='confirmée'?'Annuler':'Annuler la demande'}</button>${hint}`;
+  }
+  const who = kind==='logement' ? "l'hôte" : "l'organisateur";
+  const action = kind==='logement'
+    ? (r.hotelId ? `openMessageHost(${r.hotelId})` : 'openSupportForm()')
+    : (r.excursionId ? `openMessageExcursionHost('${r.excursionId}')` : 'openSupportForm()');
+  return `<button onclick="${action}" style="background:#fff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--blue-l);cursor:pointer;">💬 Contacter ${who}</button>
+    <div style="font-size:11px;color:var(--gray-500);text-align:right;max-width:200px;">Moins de 72 h avant le début : l'annulation en ligne n'est plus possible. Contactez ${who}.</div>`;
+}
+
+function openCancelModal(kind, dbId){
+  const list = kind==='logement' ? (appState.reservations||[]) : (appState.myExcursionBookings||[]);
+  const r = list.find(x=>x._dbId===dbId);
+  if(!r){ showToast('Réservation introuvable','var(--red)'); return; }
+  if(!guestCanCancel(kind, r)){ showToast("Moins de 72 h avant le début : contactez "+(kind==='logement'?"l'hôte":"l'organisateur")+'.','var(--red)'); return; }
+  const title = kind==='logement' ? r._propName : r.title;
+  const confirmed = r.status==='confirmée';
+  const refund = estimateRefund(kind, r);
+  const policyTxt = (POLICY_LABELS[kind]||{})[r._policy] || '';
+  let consequence;
+  if(!confirmed) consequence = 'Aucun paiement n\'a été effectué : rien ne vous sera prélevé.';
+  else if(onSitePayment(kind, r)) consequence = 'Paiement prévu sur place : rien ne vous sera prélevé.';
+  else if(refund >= (r.total||0) && refund>0) consequence = `Vous serez remboursé intégralement (${fmtNet(refund)}€).`;
+  else if(refund>0) consequence = `Vous serez remboursé de ${fmtNet(refund)}€ sur ${fmtNet(r.total)}€.`;
+  else consequence = `Selon la politique d'annulation, cette réservation n'est pas remboursable (${fmtNet(r.total)}€).`;
+
+  const root = document.getElementById('modal-root');
+  root.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header" style="background:#b42318;">
+        <button class="modal-close" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
+        <h2>${confirmed?'Annuler la réservation':'Annuler la demande'}</h2>
+        <p>${escHTML(title||'')}</p>
+      </div>
+      <div class="modal-body">
+        ${confirmed&&policyTxt?`<div style="background:#f8f9fa;border:1px solid var(--gray-200);border-radius:var(--r-md);padding:10px 12px;font-size:13px;color:var(--gray-700);margin-bottom:10px;line-height:1.5;">📜 ${policyTxt}</div>`:''}
+        <div style="background:${refund>0||!confirmed||onSitePayment(kind,r)?'#e8f9f0':'#fff4e5'};border:1px solid ${refund>0||!confirmed||onSitePayment(kind,r)?'#a0e8c8':'#f5c27a'};border-radius:var(--r-md);padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:16px;line-height:1.5;">${consequence}</div>
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Motif de l'annulation *</label>
+        <div id="cancel-reasons" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+          ${CANCEL_REASONS.map((m,i)=>`<label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;"><input type="radio" name="cancel-reason" value="${m}" onchange="document.getElementById('cancel-other').style.display=this.value==='Autre'?'block':'none'"> ${m}</label>`).join('')}
+        </div>
+        <textarea id="cancel-other" maxlength="250" placeholder="Précisez le motif" style="display:none;width:100%;min-height:70px;padding:10px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:12px;box-sizing:border-box;"></textarea>
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:14px;">${kind==='logement'?"L'hôte":"L'organisateur"} sera prévenu par e-mail, avec votre motif.</div>
+        <div style="display:flex;gap:10px;">
+          <button onclick="document.getElementById('modal-root').innerHTML=''" style="flex:1;background:#fff;color:var(--gray-700);padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">Garder ma réservation</button>
+          <button id="cancel-confirm-btn" onclick="confirmGuestCancel('${kind}','${dbId}')" style="flex:1;background:#b42318;color:#fff;padding:11px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">Confirmer l'annulation</button>
+        </div>
+      </div>
+    </div>`;
+  root.appendChild(overlay);
+}
+
+async function confirmGuestCancel(kind, dbId){
+  const picked = document.querySelector('input[name="cancel-reason"]:checked')?.value;
+  if(!picked){ showToast("⚠️ Choisissez un motif d'annulation",'var(--red)'); return; }
+  const other = (document.getElementById('cancel-other')?.value||'').trim();
+  if(picked==='Autre' && !other){ showToast('⚠️ Précisez le motif','var(--red)'); return; }
+  const reason = picked==='Autre' ? 'Autre : '+other : picked;
+  if(!(await ensureLiveSession('Votre session a expiré — reconnectez-vous pour annuler.'))) return;
+  const btn = document.getElementById('cancel-confirm-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Annulation…'; }
+  const table = kind==='logement' ? 'reservations' : 'excursion_bookings';
+  const { data, error } = await _sb.from(table).update({ status:'annulée', cancel_reason: reason }).eq('id', dbId).select('id');
+  if(error || !data || !data.length){
+    const m = (error && error.message) || '';
+    showToast(/CANCEL_DEADLINE_PASSED/.test(m) ? "Moins de 72 h avant le début : l'annulation en ligne n'est plus possible. Contactez "+(kind==='logement'?"l'hôte.":"l'organisateur.")
+      : /CANCEL_REASON_REQUIRED/.test(m) ? "Un motif d'annulation est obligatoire."
+      : "L'annulation n'a pas pu être enregistrée"+(m?' : '+m:'.'),'var(--red)');
+    if(btn){ btn.disabled = false; btn.textContent = "Confirmer l'annulation"; }
+    return;
+  }
+  document.getElementById('modal-root').innerHTML = '';
+  showToast('Réservation annulée','var(--red)');
+  // E-mails hôte/organisateur + voyageur (destinataires, motif et montants lus en base)
+  try{
+    if(kind==='logement'){
+      const r = await callNotifyBooking({ type:'cancelled', reservation_id: dbId });
+      if(!r.ok) console.error('notify-booking cancelled:', r.status, r.body);
+    } else {
+      await callNotifyExcursion('cancelled', dbId);
+    }
+  }catch(e){ console.error('notification annulation :', e.message); }
   navigate('reservations');
 }
 
@@ -5705,7 +5837,7 @@ function buildExcursionReservations(){
                 locked: false,
                 onclick: `openReviewModal('${r.excursionId}','excursion')`
               })}</div>`:''}
-              ${(r.status==='confirmée'||r.status==='en attente') && !excBookingReviewable(r)?`<button onclick="cancelExcursionBooking('${r._dbId}')" style="background:#fff0f0;color:var(--red);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">Annuler</button>`:''}
+              ${(r.status==='confirmée'||r.status==='en attente') && !excBookingReviewable(r)?guestCancelActionHTML('excursion', r):''}
             </div>
           </div>
         </div>
@@ -5715,21 +5847,6 @@ function buildExcursionReservations(){
   return d;
 }
 
-async function cancelExcursionBooking(dbId){
-  if(!confirm('Êtes-vous sûr de vouloir annuler cette réservation ?')) return;
-
-  const { data: bk, error: fetchErr } = await _sb.from('excursion_bookings').select('*').eq('id', dbId).maybeSingle();
-  if(fetchErr || !bk){ showToast('Réservation introuvable','var(--red)'); return; }
-
-  const { error } = await _sb.from('excursion_bookings').update({status:'annulée'}).eq('id', dbId);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
-  showToast('Réservation annulée','var(--red)');
-
-  // E-mails prestataire + voyageur (destinataires et contenu lus en base)
-  await callNotifyExcursion('cancelled', dbId);
-
-  navigate('reservations');
-}
 
 /* ===================== FAVORIS PAGE ===================== */
 async function activatePriceAlerts(){
@@ -7719,7 +7836,7 @@ function excFormStep2(fd){
 
     <div style="font-size:15px;font-weight:700;margin-bottom:14px;">Politique d'annulation</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px;">
-      ${[['true','Flexible','Remboursement intégral jusqu\'à 24h avant'],['false','Stricte','Non remboursable après réservation']].map(([v,t,desc])=>`
+      ${[['true','Flexible','Remboursement intégral si annulation au moins 72 h avant'],['false','Stricte','Non remboursable après réservation']].map(([v,t,desc])=>`
         <div onclick="excSet('freeCancellation',${v});excRefresh()" style="border:1.5px solid ${String(fd.freeCancellation)===v?'var(--blue)':'var(--gray-300)'};border-radius:var(--r-md);padding:12px 14px;cursor:pointer;background:${String(fd.freeCancellation)===v?'rgba(0,53,128,.05)':'#fff'};">
           <div style="font-size:13px;font-weight:700;color:var(--gray-900);margin-bottom:3px;">${t}</div>
           <div style="font-size:12px;color:var(--gray-500);">${desc}</div>
@@ -13300,7 +13417,7 @@ function buildCGUPage(){
     {num:'5',title:'Obligations des Hôtes',body:'L\'Hôte s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Être propriétaire ou disposer des droits nécessaires</li><li>Respecter la législation (déclaration mairie, taxe de séjour, fiscalité)</li><li>Fournir des informations exactes et des photos représentatives</li><li>Souscrire une assurance couvrant les risques locatifs</li><li>Respecter le RGPD pour les données des Voyageurs</li></ul>'},
     {num:'6',title:'Obligations des Voyageurs',body:'Le Voyageur s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Utiliser le logement conformément à sa destination</li><li>Respecter le nombre maximum d\'occupants</li><li>Restituer le logement dans son état initial</li><li>Informer l\'Hôte en cas de dommages</li><li>Ne pas sous-louer sans accord écrit de l\'Hôte</li></ul>'},
     {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix par nuit affiché est celui fixé par l\'Hôte. Des taxes et frais de service MyTunigo de 8 % s\'y ajoutent ; ils sont indiqués avant la réservation, et aucun autre frais n\'est ajouté au paiement.<br><br><b>Hôte :</b> MyTunigo prélève une commission de <b>8 %</b> sur le prix fixé par l\'Hôte pour chaque réservation confirmée, déduite du montant reversé à l\'Hôte.<br><br><b>Hôte fondateur :</b> MyTunigo peut attribuer, à sa discrétion et à tout moment, le badge « Hôte fondateur » à une annonce. Cette annonce ne paie aucune commission pendant 1 an à compter de l\'attribution du badge, puis 8 %.<br><br><b>Excursions :</b> commission de 12 % par défaut, pouvant être négociée avec le prestataire (minimum 8 %).<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
-    {num:'8',title:'Annulations',body:'<b>Flexible</b> : remboursement intégral jusqu\'à 24h avant.<br><b>Modérée</b> : 50% si annulation moins de 7 jours avant.<br><b>Stricte</b> : non remboursable sauf force majeure.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
+    {num:'8',title:'Annulations',body:'Le Voyageur peut annuler en ligne une demande non encore confirmée à tout moment, et une réservation confirmée jusqu\'à <b>72 heures</b> avant le début du séjour ou de l\'excursion (heure d\'arrivée ou de rendez-vous, heure de Tunis). Passé ce délai, il doit contacter l\'Hôte ou l\'organisateur. Un motif d\'annulation est demandé.<br><br>Remboursement selon la politique de l\'annonce :<br><b>Flexible</b> : remboursement intégral.<br><b>Modérée</b> : 50 % si l\'annulation intervient au moins 5 jours avant l\'arrivée, aucun remboursement ensuite.<br><b>Stricte</b> : non remboursable sauf force majeure.<br>Une excursion payée sur place n\'entraîne aucun prélèvement.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
     {num:'9',title:'Responsabilité',body:'MyTunigo est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de MyTunigo est limitée aux sommes effectivement perçues.'},
     {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à MyTunigo une licence non-exclusive et gratuite d\'utilisation.'},
     {num:'11',title:'Protection des données (RGPD)',body:'Conformément au RGPD (UE) 2016/679 et à la loi Informatique et Libertés :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Responsable</b> : MyTunigo SAS — contact@mytunigo.com</li><li><b>Données</b> : nom, prénom, email, téléphone, navigation</li><li><b>Durée</b> : 3 ans après la dernière activité</li><li><b>Droits</b> : accès, rectification, suppression, portabilité — contact@mytunigo.com</li><li><b>Réclamation</b> : CNIL — cnil.fr</li></ul>'},
