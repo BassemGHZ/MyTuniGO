@@ -250,14 +250,25 @@ Deno.serve(async (req) => {
     } else if (type === "cancelled") {
       if (b.guest_id !== uid) return json({ error: "not_guest" }, 403);
       if (b.status !== "annulée") return json({ error: "invalid_state" }, 409);
+      // Motif et montant remboursable : lus en base (fn_guest_cancel_policy)
+      const reason = b.cancel_reason
+        ? `<div style="margin-top:14px;padding:10px 14px;border-left:3px solid #b42318;background:#fff5f5;"><strong>Motif :</strong> ${esc(b.cancel_reason)}</div>`
+        : "";
+      const onSite = /sur place/i.test(String(b.payment_method ?? ""));
+      const refund = Number(b.refund_amount ?? 0);
+      const money = onSite
+        ? "Le paiement était prévu sur place : rien ne vous sera prélevé."
+        : refund > 0
+          ? `Vous serez remboursé de ${esc(Number(refund).toLocaleString("fr-FR", { maximumFractionDigits: 2 }))}€.`
+          : "Selon la politique d'annulation de cette excursion, cette réservation n'est pas remboursable.";
       await Promise.all([
         sendMail(exc?.contact_email, `❌ Réservation annulée — ${title}`,
           layout("Réservation annulée",
-            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Le voyageur")}</strong> a annulé sa réservation pour <strong>${esc(title)}</strong>. Les places sont de nouveau disponibles.`,
-            recapOwner)),
+            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Le voyageur")}</strong> a annulé sa réservation pour <strong>${esc(title)}</strong>. Les places sont de nouveau disponibles.${reason}`,
+            recapBlock(b, title, null))),
         sendMail(guest?.email, `Votre annulation est confirmée — ${title}`,
           layout("Annulation confirmée",
-            `Bonjour ${esc(guestName)},<br><br>Nous confirmons l'annulation de votre réservation pour <strong>${esc(title)}</strong>.`,
+            `Bonjour ${esc(guestName)},<br><br>Nous confirmons l'annulation de votre réservation pour <strong>${esc(title)}</strong>. ${money}${reason}`,
             recap, { label: "🔍 Voir d'autres excursions", url: SITE })),
       ]);
     } else {
