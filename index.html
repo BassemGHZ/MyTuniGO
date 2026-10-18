@@ -5823,6 +5823,12 @@ function bookingStart(dateISO, hhmm, def){
   const t = /^\s*([01]?\d|2[0-3]):([0-5]\d)\s*$/.test(hhmm||'') ? hhmm.trim().padStart(5,'0') : def;
   return new Date(`${String(dateISO).slice(0,10)}T${t}:00+01:00`);
 }
+// Une excursion est « commencée » à son heure de rendez-vous (heure de Tunis) ;
+// sans heure renseignée, dès minuit le jour même (même règle qu'en base).
+function excStarted(dateISO, hhmm){
+  const st = bookingStart(dateISO, hhmm, '00:00');
+  return !!st && st.getTime() <= Date.now();
+}
 function bookingStartOf(kind, r){
   return kind==='logement' ? bookingStart(r.checkIn, r._checkinTime, '15:00') : bookingStart(r.date, r.meetingTime, '00:00');
 }
@@ -7470,7 +7476,7 @@ function buildExcBookingCalendar(e){
   for(let d=1;d<=daysInMonth;d++){
     const ds=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     const isAvail=avail.includes(ds);
-    const isPast=ds<todayStr;
+    const isPast=ds<todayStr || (ds===todayStr && excStarted(ds, e.meetingTime));
     const isSel=ds===selectedDate;
     // Date connue comme complète (toutes les places prises) : affichée
     // barrée, en rouge, distincte des dates simplement passées ou
@@ -7521,6 +7527,7 @@ function excSelectDate(ds){
   // sélectionnables — sans ce contrôle, n'importe quelle date du mois
   // pouvait être choisie, même en dehors des disponibilités prévues.
   if(e && e.availability && e.availability.length>0 && !e.availability.includes(ds)) return;
+  if(e && excStarted(ds, e.meetingTime)){ showToast("⛔ Cette excursion a déjà commencé aujourd'hui — choisissez une autre date",'var(--red)'); return; }
   appState.excBookingDate=ds;
   // Update hidden input and display
   const inp=document.getElementById('exc-date');
@@ -7655,6 +7662,12 @@ async function bookExcursion(excId){
   const allExc = [...excursions, ...(appState.myExcursions||[])];
   const exc = allExc.find(x=>x.id===excId);
   if(!exc){showToast('Excursion introuvable','var(--red)');return;}
+  if(excStarted(date, exc.meetingTime)){
+    showToast("⛔ Cette excursion a déjà commencé à cette date — choisissez une autre date",'var(--red)');
+    appState.excBookingDate = null;
+    navigate('excursion-detail',{selectedExcursionId:excId});
+    return;
+  }
 
   const total = (exc.price||0) * pax;
   const ref = 'EXC-'+Math.random().toString(36).substr(2,8).toUpperCase();
@@ -9426,8 +9439,11 @@ async function finalizeRealExcursionBooking(pb, ref){
 
   if(error){
     const capacityIssue = /CAPACITY_EXCEEDED/.test(error.message||'');
+    const startedIssue = /EXCURSION_STARTED/.test(error.message||'');
     showToast(capacityIssue
       ? '⛔ Plus assez de places disponibles pour cette date. Choisissez une autre date ou réduisez le nombre de participants.'
+      : startedIssue
+      ? "⛔ Cette excursion a déjà commencé à cette date — choisissez une autre date."
       : "La réservation n'a pas pu être enregistrée : "+error.message, 'var(--red)');
     appState.pendingBooking=null;
     navigate('excursion-detail',{selectedExcursionId:pb.excId});
@@ -10397,7 +10413,7 @@ async function loadExcursionBookingRequests(container){
 
   try{ await _sb.rpc('fn_auto_complete_excursion_bookings'); }catch(e){ console.warn('fn_auto_complete_excursion_bookings:', e.message); }
 
-  const { data: myExcs, error: excErr } = await _sb.from('excursions').select('id,title').eq('owner_id', uid);
+  const { data: myExcs, error: excErr } = await _sb.from('excursions').select('id,title,meeting_time').eq('owner_id', uid);
   if(excErr){ if(container){container.innerHTML='<div style="padding:24px;color:red;">Erreur : '+excErr.message+'</div>';} return; }
   const excIds = (myExcs||[]).map(e=>e.id);
   const excMap = Object.fromEntries((myExcs||[]).map(e=>[e.id,e]));
@@ -10424,6 +10440,7 @@ async function loadExcursionBookingRequests(container){
       excursionTitle: excMap[r.excursion_id]?.title || 'Excursion',
       guestName, guestAvatar: guestName.slice(0,2).toUpperCase(),
       date: r.date, participants: r.participants||1,
+      meetingTime: excMap[r.excursion_id]?.meeting_time || '',
       total: r.total||0, status: r.status, paymentMethod: r.payment_method||'en ligne',
       bookingCode: r.booking_code||null
     };
@@ -10461,7 +10478,7 @@ async function loadExcursionBookingRequests(container){
     </div>`
     :list.map(req=>{
       const dt=req.date?fmtDMY(req.date):'—';
-      const isExpiring = req.status==='en attente' && req.date && new Date(req.date) < new Date(new Date().toDateString());
+      const isExpiring = req.status==='en attente' && req.date && excStarted(req.date, req.meetingTime);
       return `<div style="background:#fff;border:1px solid ${req.status==='en attente'?'#ffe0a0':'var(--gray-200)'};border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='none'">
         ${req.status==='en attente'?'<div style="background:linear-gradient(90deg,#FFB400,#FFD666);height:4px;"></div>':''}
         <div style="padding:20px;">
@@ -10471,7 +10488,7 @@ async function loadExcursionBookingRequests(container){
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
                 <span style="font-size:16px;font-weight:700;">${req.guestName}</span>
                 <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[req.status]};color:${statusColor[req.status]};">${(statusLabel[req.status]||req.status).toUpperCase()}</span>
-                ${isExpiring?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#fff0f0;color:var(--red);">⚠️ Date dépassée — sera refusée automatiquement</span>':''}
+                ${isExpiring?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#fff0f0;color:var(--red);">⚠️ Excursion commencée — demande close automatiquement</span>':''}
               </div>
               <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">✈️ ${req.excursionTitle}</div>
               ${req.status==='confirmée'?bookingCodeHTML(req.bookingCode,'host-excursion'):''}
@@ -10483,7 +10500,7 @@ async function loadExcursionBookingRequests(container){
               </div>
             </div>
             ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
-              <button onclick="decideExcursionRequest('${req.id}','acceptée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">✅ Accepter</button>
+              ${isExpiring?'':`<button onclick="decideExcursionRequest('${req.id}','acceptée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">✅ Accepter</button>`}
               <button onclick="decideExcursionRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
             </div>`:''}
           </div>
