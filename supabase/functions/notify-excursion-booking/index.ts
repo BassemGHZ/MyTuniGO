@@ -5,9 +5,10 @@
 // Processus (18/10/2026, même principe que les logements) :
 //   demande -> l'organisateur accepte -> le voyageur paie en ligne sous 24 h
 //   -> réservation confirmée. Réservation instantanée : 30 min pour payer.
-//   Excursion « paiement sur place » : acompte en ligne de 10 % (MyTunigo),
-//   le reste se règle sur place. Sinon : prix + 8 % de taxes et frais en ligne.
-//   Montants calculés en base (fn_excursion_booking_guard).
+//   Plus de paiement sur place : le voyageur paie en ligne le prix + 8 % de
+//   taxes et frais, l'organisateur reçoit le prix − 8 %. Montants calculés en
+//   base (fn_excursion_booking_guard). Les anciennes réservations « paiement
+//   sur place » (pay_on_site) gardent leur affichage d'origine.
 //
 // Appel (POST JSON, avec le JWT de l'utilisateur connecté) :
 //   { type: "created",   booking_id }                 (VOYAGEUR)
@@ -98,31 +99,27 @@ const table = (rows: string) =>
   `<table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8f9fa;border-radius:8px;">
     <tbody style="display:block;padding:12px 14px;">${rows}</tbody></table>`;
 
-// Récapitulatif voyageur : total, payé / à payer en ligne, reste sur place
+// Récapitulatif voyageur : total payé ou à payer en ligne
+// (ancienne réservation « paiement sur place » : total à régler sur place)
 // deno-lint-ignore no-explicit-any
 function recapGuest(b: any, title: string) {
-  const onSite = !!b.pay_on_site;
+  const legacyOnSite = !!b.pay_on_site;
   const paid = !!b.paid_at;
   return table(
     row("Excursion", esc(title)) + row("Date", fmtDate(b.date)) +
     row("Participants", String(b.participants ?? 1)) + row("Référence", esc(b.reference ?? "—")) +
-    (onSite
-      ? row("Prix", money(b.total)) +
-        row(paid ? "Acompte payé en ligne" : "Acompte à payer en ligne (10 %)", `<span style="color:#003580;">${money(b.online_amount)}</span>`) +
-        row("Reste à payer sur place", `<span style="font-size:16px;color:#003580;">${money(b.on_site_amount)}</span>`)
-      : row(paid ? "Total payé" : "Total à payer en ligne", `<span style="font-size:16px;color:#003580;">${money(b.total)}</span>`)),
+    row(legacyOnSite ? "À payer sur place" : paid ? "Total payé" : "Total à payer en ligne",
+        `<span style="font-size:16px;color:#003580;">${money(b.total)}</span>`),
   );
 }
 
-// Récapitulatif prestataire : ce qu'il reçoit (et encaisse sur place), sans les frais voyageur
+// Récapitulatif prestataire : ce qu'il reçoit, jamais les frais payés par le voyageur
 // deno-lint-ignore no-explicit-any
 function recapOwner(b: any, title: string, net: number | null, showMoney = true) {
-  const onSite = !!b.pay_on_site;
   return table(
     row("Excursion", esc(title)) + row("Date", fmtDate(b.date)) +
     row("Participants", String(b.participants ?? 1)) + row("Référence", esc(b.reference ?? "—")) +
-    (showMoney && onSite ? row("À encaisser sur place", `<span style="font-size:16px;color:#0a8f5c;">${money(b.on_site_amount)}</span>`) : "") +
-    (showMoney && !onSite && net != null ? row("Vous recevez", `<span style="font-size:16px;color:#0a8f5c;">${money(net)}</span>`) : ""),
+    (showMoney && net != null ? row("Vous recevez", `<span style="font-size:16px;color:#0a8f5c;">${money(net)}</span>`) : ""),
   );
 }
 
@@ -253,7 +250,7 @@ Deno.serve(async (req) => {
       // le webhook du prestataire de paiement). Mode test : aucun débit.
       const method = String(body.method ?? "card").replace(/[^a-z]/gi, "").slice(0, 12) || "card";
       const { data: upd, error: updErr } = await admin.from("excursion_bookings")
-        .update({ status: "confirmée", paid_at: nowIso, payment_method: `${b.pay_on_site ? "Acompte en ligne + paiement sur place" : "en ligne"} (${method}, test)` })
+        .update({ status: "confirmée", paid_at: nowIso, payment_method: `en ligne (${method}, test)` })
         .eq("id", b.id).eq("status", "acceptée").gt("payment_deadline", nowIso)
         .select("*");
       if (updErr) return json({ error: updErr.message }, 500);
@@ -279,7 +276,7 @@ Deno.serve(async (req) => {
         sendMail(guest?.email, `📨 Demande envoyée — ${title}`,
           layout("Demande envoyée !",
             `Bonjour ${esc(guestName)},<br><br>Votre demande de réservation pour <strong>${esc(title)}</strong> a bien été transmise au prestataire.
-             <br><br><strong>Aucun paiement n'est demandé pour l'instant.</strong> Dès que le prestataire acceptera, vous recevrez un e-mail avec un lien de paiement : vous aurez alors <strong>24 h pour payer en ligne</strong>${b.pay_on_site ? " l'acompte de 10 % (le reste se règle sur place)" : ""} et confirmer votre place.`,
+             <br><br><strong>Aucun paiement n'est demandé pour l'instant.</strong> Dès que le prestataire acceptera, vous recevrez un e-mail avec un lien de paiement : vous aurez alors <strong>24 h pour payer en ligne</strong> et confirmer votre place.`,
             recapGuest(b, title), { label: "🧳 Suivre ma demande", url: SITE },
             "Pensez à vérifier vos spams si vous ne recevez pas nos e-mails.")),
         sendMail(exc?.contact_email, `📨 Nouvelle demande de réservation — ${title}`,
@@ -298,7 +295,7 @@ Deno.serve(async (req) => {
         layout(ok ? "Demande acceptée !" : "Demande non retenue",
           `Bonjour ${esc(guestName)},<br><br>` + (ok
             ? `Bonne nouvelle : le prestataire a accepté votre demande pour <strong>${esc(title)}</strong>.
-               <br><br>Pour confirmer votre place, <strong>payez ${b.pay_on_site ? `l'acompte de ${money(b.online_amount)}` : money(b.total)} en ligne avant le ${fmtDateTime(b.payment_deadline)}</strong>. Passé ce délai, la demande sera annulée et les places remises en vente.`
+               <br><br>Pour confirmer votre place, <strong>payez ${money(b.total)} en ligne avant le ${fmtDateTime(b.payment_deadline)}</strong>. Passé ce délai, la demande sera annulée et les places remises en vente.`
             : `Le prestataire n'a pas pu accepter votre demande pour <strong>${esc(title)}</strong>. Aucun paiement n'a été effectué.`) + hostNote(msg),
           recapGuest(b, title),
           ok ? { label: "💳 Payer et confirmer", url: payUrl(b.id) } : { label: "🔍 Voir d'autres excursions", url: SITE },
@@ -308,14 +305,12 @@ Deno.serve(async (req) => {
       await Promise.all([
         sendMail(guest?.email, `🎉 Réservation confirmée — ${title}`,
           layout("Votre réservation est confirmée !",
-            `Bonjour ${esc(guestName)},<br><br>Votre paiement a bien été enregistré. Votre place pour <strong>${esc(title)}</strong> est confirmée.` +
-            (b.pay_on_site ? `<br><br>Le reste, <strong>${money(b.on_site_amount)}</strong>, est à régler sur place auprès de l'organisateur.` : ""),
+            `Bonjour ${esc(guestName)},<br><br>Votre paiement a bien été enregistré. Votre place pour <strong>${esc(title)}</strong> est confirmée.`,
             recapGuest(b, title) + codeBlock(b.booking_code, "guest", "excursion"),
             { label: "🧳 Voir mes voyages", url: SITE })),
         sendMail(exc?.contact_email, `🎉 Nouvelle réservation confirmée — ${title}`,
           layout("Une réservation est confirmée",
-            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Un voyageur")}</strong> a payé en ligne : sa réservation pour <strong>${esc(title)}</strong> est confirmée.` +
-            (b.pay_on_site ? `<br><br>Le voyageur vous réglera <strong>${money(b.on_site_amount)}</strong> sur place.` : ""),
+            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Un voyageur")}</strong> a payé en ligne : sa réservation pour <strong>${esc(title)}</strong> est confirmée.`,
             recapOwner(b, title, net) + codeBlock(b.booking_code, "host", "excursion"),
             { label: "Voir la réservation", url: SITE })),
       ]);
@@ -331,7 +326,7 @@ Deno.serve(async (req) => {
         ? "Aucun paiement n'avait été effectué : rien ne vous sera prélevé."
         : refund > 0
           ? `Vous serez remboursé de ${money(refund)}.`
-          : "Selon la politique d'annulation de cette excursion, le montant payé en ligne n'est pas remboursable.";
+          : "Selon la politique d'annulation de cette excursion, cette réservation n'est pas remboursable.";
       await Promise.all([
         sendMail(exc?.contact_email, `❌ Réservation annulée — ${title}`,
           layout("Réservation annulée",

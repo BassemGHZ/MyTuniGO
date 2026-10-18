@@ -2,19 +2,18 @@
 -- MyTunigo — Excursions : paiement en ligne obligatoire (18/10/2026)
 -- Projet : fxbetakueqkzipsqvtck
 --
--- Règle (décision de Bassem du 18/10) :
---   * Même processus que les logements : demande -> l'organisateur accepte
---     -> le voyageur a 24 h pour payer en ligne -> réservation confirmée.
---     Réservation instantanée : place bloquée 30 min, le temps de payer.
---     Non payée à temps -> « expirée », les places sont libérées.
---   * Excursion payée en ligne : même grille que les logements. Le voyageur
---     paie le prix + 8 % de taxes et frais ; l'organisateur reçoit le prix
---     − 8 %.
---   * Excursion « paiement sur place » : le voyageur paie en ligne un
---     acompte de 10 % du prix (gardé par MyTunigo) et règle les 90 % restants
---     sur place à l'organisateur.
---   * Annulation au moins 72 h avant : ce qui a été payé en ligne est
---     remboursé si la politique est Flexible, gardé si elle est Stricte.
+-- Règle (décision de Bassem du 18/10) : même principe que les logements.
+--   * Plus de paiement sur place : tout se paie en ligne.
+--   * Demande -> l'organisateur accepte -> le voyageur a 24 h pour payer en
+--     ligne -> réservation confirmée. Réservation instantanée : place
+--     bloquée 30 min, le temps de payer. Non payée à temps -> « expirée »,
+--     les places sont libérées.
+--   * Même grille que les logements : le voyageur paie le prix + 8 % de
+--     taxes et frais ; l'organisateur reçoit le prix − 8 %.
+--   * Annulation au moins 72 h avant : remboursement si la politique est
+--     Flexible, aucun si elle est Stricte.
+--   * Les anciennes réservations « paiement sur place » restent telles quelles
+--     (pay_on_site = true) ; les excursions perdent l'option.
 --
 -- Contenu :
 --   1. Statuts « acceptée » et « expirée », colonnes de paiement.
@@ -35,8 +34,7 @@ RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
   SELECT CASE p_key
     WHEN 'frais_voyageur'       THEN 0.08   -- ajouté au prix de l'hôte / de l'organisateur
     WHEN 'commission_hote'      THEN 0.08   -- retiré du prix de l'hôte
-    WHEN 'commission_excursion' THEN 0.08   -- excursions payées en ligne (même grille)
-    WHEN 'acompte_sur_place'    THEN 0.10   -- excursions payées sur place : acompte en ligne
+    WHEN 'commission_excursion' THEN 0.08   -- excursions (même grille que les logements)
   END;
 $$;
 
@@ -54,6 +52,9 @@ ALTER TABLE public.excursion_bookings ADD COLUMN IF NOT EXISTS accepted_at      
 ALTER TABLE public.excursion_bookings ADD COLUMN IF NOT EXISTS payment_deadline timestamptz;
 ALTER TABLE public.excursion_bookings ADD COLUMN IF NOT EXISTS paid_at          timestamptz;
 ALTER TABLE public.excursion_bookings ADD COLUMN IF NOT EXISTS expired_reason   text;
+
+-- Plus d'option « paiement sur place » sur les excursions
+UPDATE public.excursions SET pay_on_site = false WHERE pay_on_site IS DISTINCT FROM false;
 
 -- Réservations existantes (toutes « paiement sur place », rien payé en ligne)
 UPDATE public.excursion_bookings
@@ -80,14 +81,13 @@ DECLARE
   privileged boolean := current_user IN ('postgres', 'service_role', 'supabase_admin');
   v_price    numeric;
   v_instant  boolean;
-  v_on_site  boolean;
   v_owner    uuid;
   v_sub      numeric;
   v_start    timestamptz;
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    SELECT price, COALESCE(instant_book, false), COALESCE(pay_on_site, false)
-      INTO v_price, v_instant, v_on_site
+    SELECT price, COALESCE(instant_book, false)
+      INTO v_price, v_instant
       FROM public.excursions WHERE id = NEW.excursion_id;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'EXCURSION_NOT_FOUND';
@@ -96,21 +96,13 @@ BEGIN
       RAISE EXCEPTION 'INVALID_PARTICIPANTS';
     END IF;
     v_sub := COALESCE(v_price, 0) * NEW.participants;
-    NEW.unit_price  := COALESCE(v_price, 0);
-    NEW.pay_on_site := v_on_site;
-    IF v_on_site THEN
-      -- Acompte en ligne (MyTunigo) + reste sur place (organisateur)
-      NEW.total          := v_sub;
-      NEW.online_amount  := round(v_sub * public.fn_tarif('acompte_sur_place'), 2);
-      NEW.on_site_amount := v_sub - NEW.online_amount;
-      NEW.payment_method := 'Acompte en ligne + paiement sur place';
-    ELSE
-      -- Paiement complet en ligne : prix + taxes et frais
-      NEW.total          := v_sub + round(v_sub * public.fn_tarif('frais_voyageur'));
-      NEW.online_amount  := NEW.total;
-      NEW.on_site_amount := 0;
-      NEW.payment_method := 'en ligne';
-    END IF;
+    NEW.unit_price     := COALESCE(v_price, 0);
+    -- Paiement en ligne : prix + taxes et frais (comme les logements)
+    NEW.pay_on_site    := false;
+    NEW.total          := v_sub + round(v_sub * public.fn_tarif('frais_voyageur'));
+    NEW.online_amount  := NEW.total;
+    NEW.on_site_amount := 0;
+    NEW.payment_method := 'en ligne';
     NEW.paid_at := NULL;
     IF privileged THEN
       RETURN NEW;
@@ -253,9 +245,9 @@ BEGIN
      WHERE b.id = p_booking;
     IF NOT FOUND THEN RETURN; END IF;
     IF v_on_site THEN
-      -- Acompte en ligne gardé par MyTunigo ; l'organisateur encaisse le reste sur place
+      -- Ancienne réservation « paiement sur place » : rien n'a transité par MyTunigo
       RETURN QUERY SELECT v_owner, v_gross, v_gross, 0::numeric, 'excursion_sur_place'::text,
-                          public.fn_tarif('acompte_sur_place'), v_online, v_gross - v_online;
+                          0::numeric, 0::numeric, v_gross;
     ELSE
       v_rate := public.fn_tarif('commission_excursion');
       RETURN QUERY SELECT v_owner, v_gross, v_sub, v_gross - v_sub, 'excursion'::text, v_rate,
