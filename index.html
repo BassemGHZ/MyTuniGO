@@ -816,12 +816,13 @@ const COMMISSION_RATE = 0.07; // démo admin uniquement — 7% prélevée par My
    Hôte : reçoit son prix − 8 % (il ne voit jamais ce que le voyageur paie).
    Annonce badgée « Hôte fondateur » (choix de l'admin) : 0 % pendant 1 an à
    partir de l'attribution, puis 8 %.
-   Excursions : inchangées (12 % prestataire, pas de frais voyageur).
+   Excursions (18/10) : même principe — paiement en ligne obligatoire, prix + 8 %
+   de taxes et frais pour le voyageur, prix − 8 % pour l'organisateur.
    Le total réel et le reversement sont calculés en base (fn_logement_pricing,
    fn_commission_quote) ; ces fonctions ne servent qu'à l'affichage. */
 const GUEST_FEE_RATE = 0.08;
 const HOST_COMMISSION_RATE = 0.08;
-const EXCURSION_COMMISSION_RATE = 0.12;
+const EXCURSION_COMMISSION_RATE = 0.08; // excursions : même grille que les logements (18/10)
 const FOUNDER_FREE_MONTHS = 12;
 const _hostComm = { excRate:null, excUid:null };
 
@@ -849,14 +850,7 @@ function logementRate(founderSince){ return founderActive(founderSince) ? 0 : HO
 
 // Taux négocié des excursions du prestataire connecté (12 % par défaut)
 async function loadMyExcursionRate(){
-  const uid = auth.currentUser?.id; if(!uid) return EXCURSION_COMMISSION_RATE;
-  if(_hostComm.excUid===uid && _hostComm.excRate!=null) return _hostComm.excRate;
-  let rate = EXCURSION_COMMISSION_RATE;
-  try{
-    const { data } = await _sb.from('host_plans').select('excursion_rate').eq('user_id', uid).maybeSingle();
-    if(data && data.excursion_rate!=null) rate = +data.excursion_rate;
-  }catch(e){}
-  _hostComm.excRate = rate; _hostComm.excUid = uid; return rate;
+  _hostComm.excRate = EXCURSION_COMMISSION_RATE; return EXCURSION_COMMISSION_RATE;
 }
 
 // Montant reçu par l'hôte pour chaque réservation (calculé en base :
@@ -875,7 +869,7 @@ async function fetchHostNets(kind, rows){
   rows.forEach(r=>{
     if(r.id in out) return;
     out[r.id] = kind==='excursion'
-      ? hostNetAmount(r.total||0, excRate)
+      ? hostNetAmount(Math.round((r.total||0)/(1+GUEST_FEE_RATE)*100)/100, excRate)
       : hostNetAmount(Math.round((r.total||0)/(1+GUEST_FEE_RATE)*100)/100, HOST_COMMISSION_RATE);
   });
   return out;
@@ -1201,6 +1195,12 @@ function render() {
     loadAnnonceEditOwner(_aeoc);
   }
   else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
+  else if(pg==='excursion-payment'){
+    const _epc = document.createElement('div');
+    _epc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de votre réservation…</div>';
+    app.appendChild(_epc);
+    loadExcursionPayment(_epc);
+  }
   else if(pg==='reservation-payment'){
     const _rpc = document.createElement('div');
     _rpc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de votre réservation…</div>';
@@ -1251,7 +1251,7 @@ document.addEventListener('click', function(e){
   }
 });
 
-const NAV_ID_KEYS = ['selectedHotelId','selectedAnnonceId','selectedConvId','selectedExcursionId','selectedHostId','selectedResaId'];
+const NAV_ID_KEYS = ['selectedHotelId','selectedAnnonceId','selectedConvId','selectedExcursionId','selectedHostId','selectedResaId','selectedExcBookingId'];
 
 // Adresse web propre à chaque annonce / excursion (lien partageable et
 // rechargement fiable) :
@@ -4259,6 +4259,152 @@ function submitBooking(hId,total){
   navigate('confirm');
 }
 
+/* ===================== PAGE DE PAIEMENT D'UNE EXCURSION (18/10/2026) =====================
+   Même principe que les logements : après l'accord de l'organisateur (24 h)
+   ou tout de suite en réservation instantanée (30 min). MODE TEST : aucun
+   débit. La confirmation passe par notify-excursion-booking (confirm_payment),
+   qui vérifie côté serveur le voyageur, le statut et le délai. */
+let _excPayTimer = null;
+async function callExcursionPayment(bookingId){
+  const { data: { session } } = await _sb.auth.getSession();
+  const res = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/notify-excursion-booking', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(session?.access_token||SB_ANON_KEY) },
+    body: JSON.stringify({ type:'confirm_payment', booking_id: bookingId, method:'card' })
+  });
+  let body = {}; try{ body = await res.json(); }catch(e){}
+  return { ok: res.ok && body.ok !== false, body };
+}
+
+async function loadExcursionPayment(container){
+  if(_excPayTimer){ clearInterval(_excPayTimer); _excPayTimer=null; }
+  const box = html => { container.innerHTML = '<div class="confirm-wrap"><div class="confirm-card"><div class="confirm-body" style="text-align:center;padding:40px 28px;">'+html+'</div></div></div>'; };
+  const backBtn = '<button onclick="appState.resaTypeTab=\'excursions\';navigate(\'reservations\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">🧳 Mes voyages</button>';
+
+  if(!auth.currentUser){
+    appState._pendingPage = 'excursion-payment';
+    box('<div style="font-size:44px;margin-bottom:12px;">🔐</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Connectez-vous pour finaliser votre réservation</h2><p style="color:var(--gray-500);margin-bottom:18px;">Utilisez le compte avec lequel vous avez réservé.</p><button onclick="openModal(\'login\')" style="background:var(--blue);color:#fff;padding:11px 24px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Se connecter</button>');
+    openModal('login');
+    return;
+  }
+  const id = appState.selectedExcBookingId;
+  if(!id){ navigate('reservations'); return; }
+  const { data: b, error } = await _sb.from('excursion_bookings').select('*').eq('id', id).maybeSingle();
+  if(error || !b || b.guest_id !== auth.currentUser.id){
+    box('<div style="font-size:44px;margin-bottom:12px;">🔍</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Réservation introuvable</h2><p style="color:var(--gray-500);margin-bottom:18px;">Ce lien ne correspond à aucune réservation de votre compte. Vérifiez que vous êtes connecté avec le bon compte.</p>'+backBtn);
+    return;
+  }
+  const { data: ex } = await _sb.from('excursions').select('title,city,country,photos,meeting_time').eq('id', b.excursion_id).maybeSingle();
+  const title = ex?.title || 'Excursion';
+  if(b.status==='confirmée' || b.status==='terminée'){
+    box('<div style="font-size:44px;margin-bottom:12px;">✅</div><h2 style="font-size:20px;font-weight:800;color:var(--green);margin-bottom:8px;">Réservation déjà confirmée</h2><p style="color:var(--gray-500);margin-bottom:18px;">Votre place pour <strong>'+escHTML(title)+'</strong> est confirmée.</p>'+backBtn);
+    return;
+  }
+  if(b.status==='en attente'){
+    box('<div style="font-size:44px;margin-bottom:12px;">⏳</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">En attente de l\'accord de l\'organisateur</h2><p style="color:var(--gray-500);margin-bottom:18px;">Le paiement sera possible dès que l\'organisateur aura accepté votre demande. Vous recevrez un e-mail.</p>'+backBtn);
+    return;
+  }
+  if(b.status!=='acceptée' || !timeLeftLabel(b.payment_deadline)){
+    const why = b.status==='refusée' ? "L'organisateur a refusé cette demande."
+      : b.status==='annulée' ? 'Cette réservation a été annulée.'
+      : "Le délai pour payer est dépassé : la réservation a été annulée et les places libérées.";
+    box('<div style="font-size:44px;margin-bottom:12px;">⌛</div><h2 style="font-size:20px;font-weight:800;margin-bottom:8px;">Paiement impossible</h2><p style="color:var(--gray-500);margin-bottom:18px;">'+why+'</p>'+backBtn);
+    return;
+  }
+  const sub = (Number(b.unit_price)||0) * (b.participants||1);
+  const fee = (Number(b.total)||0) - sub;
+  const photo = firstPhotoUrl(ex?.photos);
+  container.innerHTML = `
+  <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span onclick="appState.resaTypeTab='excursions';navigate('reservations')">Mes voyages</span><span class="bc-sep">›</span><span>Paiement</span></div>
+  <div style="max-width:1000px;margin:0 auto;padding:24px 20px 60px;">
+    <h1 style="font-size:24px;font-weight:800;margin-bottom:6px;">💳 Finalisez votre réservation</h1>
+    <p style="font-size:15px;color:var(--gray-500);margin-bottom:18px;">Payez maintenant pour confirmer votre place.</p>
+    <div style="background:#e8f4ff;border:1.5px solid #0071c2;border-radius:var(--r-lg);padding:14px 18px;margin-bottom:22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:26px;">⏳</span>
+      <div style="flex:1;min-width:200px;font-size:14px;color:var(--gray-800);">Temps restant pour payer : <strong id="ep-countdown" style="color:#0071c2;font-size:16px;">${timeLeftLabel(b.payment_deadline)}</strong><br><span style="font-size:12.5px;color:var(--gray-500);">Échéance le ${fmtDateTimeFR(b.payment_deadline)}. Passé ce délai, la réservation est annulée et les places libérées.</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:${window.innerWidth<=768?'1fr':'1fr 340px'};gap:24px;align-items:start;">
+      <div>
+        <div style="background:#fff8e0;border:1.5px dashed #e6a800;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:13px;color:#7a5600;">🧪 <strong>Mode test</strong> — le paiement en ligne n'est pas encore branché : aucun montant ne sera débité. Cliquer sur « Payer » confirme simplement la réservation.</div>
+        <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;">
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Numéro de carte</label>
+            <input type="text" id="ep-card" placeholder="1234  5678  9012  3456" maxlength="22" oninput="formatCardNumber(this)" style="width:100%;padding:11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:16px;letter-spacing:2px;font-family:monospace;">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Nom sur la carte</label>
+            <input type="text" id="ep-name" placeholder="JEAN DUPONT" oninput="this.value=this.value.toUpperCase()" style="width:100%;padding:11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Expiration</label>
+              <input type="text" id="ep-exp" placeholder="MM / AA" maxlength="7" oninput="formatExpiry(this)" style="width:100%;padding:11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-family:monospace;"></div>
+            <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">CVV</label>
+              <input type="password" id="ep-cvv" placeholder="•••" maxlength="4" style="width:100%;padding:11px 14px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-family:monospace;"></div>
+          </div>
+          <button id="ep-pay-btn" onclick="submitExcursionPayment('${b.id}')" style="width:100%;background:var(--blue);color:#fff;padding:14px;border-radius:var(--r-md);font-size:17px;font-weight:800;border:none;cursor:pointer;">🔒 Payer ${fmtNet(b.total)}€ et confirmer</button>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);overflow:hidden;">
+        <div style="height:140px;background:${photo?`url('${escHTML(photo)}') center/cover no-repeat`:'linear-gradient(135deg,#e8f4ff,#b3d4f0)'};display:flex;align-items:center;justify-content:center;font-size:56px;">${photo?'':'🧭'}</div>
+        <div style="padding:18px;">
+          <div style="font-size:16px;font-weight:800;margin-bottom:2px;">${escHTML(title)}</div>
+          <div style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">📍 ${escHTML(ex?.city||'—')}, ${escHTML(ex?.country||'—')}</div>
+          <div class="sum-row"><span>Date</span><span>${fmtDMY(b.date)}${ex?.meeting_time?' · '+escHTML(ex.meeting_time):''}</span></div>
+          <div class="sum-row"><span>Participants</span><span>${b.participants||1}</span></div>
+          <div class="sum-row"><span>Référence</span><span><code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${escHTML(b.reference||'—')}</code></span></div>
+          <div class="sum-row"><span>${fmtNet(b.unit_price)}€ × ${b.participants||1}</span><span>${fmtNet(sub)}€</span></div>
+          <div class="sum-row"><span>Taxes et frais</span><span>${fmtNet(fee)}€</span></div>
+          <div class="sum-row" style="font-weight:800;font-size:16px;border-top:2px solid var(--gray-200);margin-top:8px;padding-top:10px;"><span>Total</span><span style="color:var(--blue);">${fmtNet(b.total)}€</span></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  _excPayTimer = setInterval(()=>{
+    const el = document.getElementById('ep-countdown');
+    if(!el){ clearInterval(_excPayTimer); _excPayTimer=null; return; }
+    const left = timeLeftLabel(b.payment_deadline);
+    if(!left){ clearInterval(_excPayTimer); _excPayTimer=null; navigate('excursion-payment'); return; }
+    el.textContent = left;
+  }, 30000);
+}
+
+async function submitExcursionPayment(bookingId){
+  const card = (document.getElementById('ep-card')?.value||'').replace(/\s/g,'');
+  const name = (document.getElementById('ep-name')?.value||'').trim();
+  const exp  = document.getElementById('ep-exp')?.value||'';
+  const cvv  = document.getElementById('ep-cvv')?.value||'';
+  if(card.length<16){ showToast('⚠️ Numéro de carte invalide','var(--red)'); return; }
+  if(!name){ showToast('⚠️ Nom sur la carte requis','var(--red)'); return; }
+  if(exp.length<7){ showToast("⚠️ Date d'expiration invalide",'var(--red)'); return; }
+  if(cvv.length<3){ showToast('⚠️ CVV invalide','var(--red)'); return; }
+  const btn = document.getElementById('ep-pay-btn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-sm" style="border-top-color:#fff;"></span> Paiement en cours…'; }
+  let res;
+  try{ res = await callExcursionPayment(bookingId); }catch(e){ res = { ok:false, body:{ error:e.message } }; }
+  if(!res.ok){
+    const code = res.body?.error || '';
+    showToast(code==='expired' ? '⌛ Le délai pour payer est dépassé : la réservation a été annulée.'
+      : code==='not_acceptée' ? "Cette réservation n'est plus en attente de paiement."
+      : "Le paiement n'a pas pu être enregistré. Réessayez dans un instant.",'var(--red)');
+    if(btn){ btn.disabled=false; btn.innerHTML='🔒 Payer et confirmer'; }
+    if(code==='expired' || code==='not_acceptée') navigate('excursion-payment');
+    return;
+  }
+  if(_excPayTimer){ clearInterval(_excPayTimer); _excPayTimer=null; }
+  window.scrollTo(0,0);
+  const app = document.getElementById('app');
+  const target = (app && app.children[1]) || app;
+  if(target) target.innerHTML = `<div class="confirm-wrap"><div class="confirm-card">
+      <div class="confirm-hdr" style="background:var(--green);"><div class="confirm-icon">🎉</div><h2>Réservation confirmée !</h2><p>Votre paiement a bien été enregistré</p></div>
+      <div class="confirm-body">
+        <p style="font-size:15px;color:var(--gray-700);margin-bottom:18px;line-height:1.7;">Merci ! Votre place est confirmée. Un e-mail de confirmation avec votre code de réservation vous a été envoyé, et l'organisateur a été prévenu.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button onclick="appState.resaTypeTab='excursions';navigate('reservations')" style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;border:none;">🧳 Mes voyages</button>
+          <button onclick="navigate('excursions')" style="flex:1;padding:12px;background:var(--gray-100);color:var(--gray-800);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:15px;font-weight:700;cursor:pointer;">🧭 Autres excursions</button>
+        </div>
+      </div></div></div>`;
+}
+
 /* ===================== PAGE DE PAIEMENT (après accord de l'hôte) =====================
    Le paiement réel n'est pas encore branché (Konnect / Flouci / Stripe…) :
    cette page affiche l'interface définitive mais en MODE TEST — aucun débit.
@@ -5458,6 +5604,9 @@ async function loadReservations(container){
         date: b.date, participants: b.participants||1, total: b.total||0,
         status: b.status||'en attente', paymentMethod: b.payment_method||'en ligne', createdAt: b.created_at,
         bookingCode: b.booking_code||null,
+        paymentDeadline: b.payment_deadline||null,
+        paidAt: b.paid_at||null,
+        payOnSite: !!b.pay_on_site,
         meetingTime: ex.meeting_time || '',
         _policy: ex.free_cancellation ? 'flexible' : 'strict',
         cancelReason: b.cancel_reason || null,
@@ -5660,15 +5809,17 @@ function cancelDeadline(kind, r){
   const st = bookingStartOf(kind, r); return st ? new Date(st.getTime() - CANCEL_NOTICE_HOURS*3600000) : null;
 }
 function guestCanCancel(kind, r){
-  if(r.status==='en attente' || (kind==='logement' && r.status==='acceptée')) return true;
+  if(r.status==='en attente' || r.status==='acceptée') return true;
   if(r.status!=='confirmée') return false;
   const dl = cancelDeadline(kind, r); return !dl || Date.now() < dl.getTime();
 }
-function onSitePayment(kind, r){ return kind==='excursion' && /sur place/i.test(r.paymentMethod||''); }
+// Ancienne réservation d'excursion « paiement sur place » (avant le 18/10)
+function onSitePayment(kind, r){ return kind==='excursion' && !!r.payOnSite; }
 // Montant remboursable affiché (le montant réel est calculé en base)
 function estimateRefund(kind, r){
   if(r.status!=='confirmée') return 0;
   if(onSitePayment(kind, r)) return 0;
+  if(kind==='excursion' && !r.paidAt) return 0;
   if(r._policy==='flexible') return r.total||0;
   if(kind==='logement' && r._policy==='moderate'){
     const st = bookingStartOf(kind, r);
@@ -5774,11 +5925,11 @@ async function confirmGuestCancel(kind, dbId){
 }
 
 function buildExcursionReservations(){
-  const tabs=['toutes','confirmée','en attente','terminée','refusée','annulée'];
+  const tabs=['toutes','confirmée','en attente','acceptée','terminée','refusée','annulée','expirée'];
   const filt=appState.resaFilter||'toutes';
   const list=(appState.myExcursionBookings||[]).filter(r=>filt==='toutes'||r.status===filt);
-  const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000'};
-  const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0'};
+  const statusColor={confirmée:'#0d9e6e',terminée:'#6c757d',annulée:'#cc0000','en attente':'#e6a800',refusée:'#cc0000',acceptée:'#0071c2',expirée:'#6c757d'};
+  const statusBg={confirmée:'#e8f9f0',terminée:'#f1f3f5',annulée:'#fff0f0','en attente':'#fff8e0',refusée:'#fff0f0',acceptée:'#e8f4ff',expirée:'#f1f3f5'};
 
   const d=document.createElement('div');
   d.innerHTML=`
@@ -5823,9 +5974,13 @@ function buildExcursionReservations(){
                 <span>📅 ${dt}</span>
                 <span>👥 ${r.participants} participant${r.participants>1?'s':''}</span>
                 <span>🔖 Réf: <code style="background:var(--gray-100);padding:1px 6px;border-radius:3px;">${r.id}</code></span>
-                ${r.paymentMethod==='Paiement sur place'?`<span style="color:#e6a800;font-weight:600;">💵 À payer sur place</span>`:''}
+                ${r.payOnSite?`<span style="color:#e6a800;font-weight:600;">💵 À payer sur place</span>`:(r.paidAt?`<span style="color:var(--green);font-weight:600;">💳 Payé en ligne</span>`:'')}
               </div>
               ${r.status==='confirmée'?bookingCodeHTML(r.bookingCode,'guest-excursion'):''}
+              ${r.status==='acceptée'?(timeLeftLabel(r.paymentDeadline)
+                ?`<div style="margin-top:8px;font-size:12.5px;color:#0071c2;font-weight:700;">✅ Acceptée — payez avant le ${fmtDateTimeFR(r.paymentDeadline)} (il reste ${timeLeftLabel(r.paymentDeadline)})</div>`
+                :`<div style="margin-top:8px;font-size:12px;color:var(--red);font-weight:600;">⌛ Délai de paiement dépassé — la réservation va être annulée</div>`):''}
+              ${r.status==='expirée'?`<div style="margin-top:8px;font-size:12px;color:var(--gray-500);">Paiement non effectué dans le délai : la réservation est close, aucun montant n'a été débité.</div>`:''}
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:120px;">
               <div style="text-align:right;">
@@ -5837,7 +5992,8 @@ function buildExcursionReservations(){
                 locked: false,
                 onclick: `openReviewModal('${r.excursionId}','excursion')`
               })}</div>`:''}
-              ${(r.status==='confirmée'||r.status==='en attente') && !excBookingReviewable(r)?guestCancelActionHTML('excursion', r):''}
+              ${r.status==='acceptée'&&timeLeftLabel(r.paymentDeadline)?`<button onclick="navigate('excursion-payment',{selectedExcBookingId:'${r._dbId}'})" style="background:#0071c2;color:#fff;padding:8px 16px;border-radius:var(--r-md);font-size:13px;font-weight:800;border:none;cursor:pointer;margin-bottom:6px;">💳 Payer ${fmtNet(r.total)}€</button>`:''}
+              ${(r.status==='confirmée'||r.status==='en attente'||r.status==='acceptée') && !excBookingReviewable(r)?guestCancelActionHTML('excursion', r):''}
             </div>
           </div>
         </div>
@@ -7240,19 +7396,20 @@ function buildExcursionDetail(){
           <hr style="border:none;border-top:1px solid var(--gray-200);margin:14px 0;">
           <div id="exc-total-block">
             <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>${e.price}€ × 1 personne</span><span>${e.price}€</span></div>
-            <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${(e.oldPrice&&e.oldPrice>e.price)?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${e.oldPrice}€</span>`:''}<span>${e.price}€</span></span></div>
+            <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>Taxes et frais</span><span>${guestFee(e.price)}€</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${(e.oldPrice&&e.oldPrice>e.price)?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${e.oldPrice+guestFee(e.oldPrice)}€</span>`:''}<span>${e.price+guestFee(e.price)}€</span></span></div>
           </div>
           <button id="exc-book-btn" onclick="bookExcursion('${e.id}')"
             ${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate]) ? 'disabled' : ''}
             style="width:100%;background:${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate])?'var(--gray-400)':'var(--blue)'};color:#fff;padding:14px;border-radius:var(--r-md);font-size:16px;font-weight:800;border:none;cursor:${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate])?'not-allowed':'pointer'};margin-top:14px;transition:background .2s;"
             onmouseover="this.style.background='#002570'" onmouseout="this.style.background='var(--blue)'">
-            ${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate]) ? '⛔ Complet pour cette date' : '✅ Réserver — 💵 Paiement sur place'}
+            ${(appState.excBookingDate && appState.excFullDates && appState.excFullDates[e.id+'|'+appState.excBookingDate]) ? '⛔ Complet pour cette date' : excBookLabel(e)}
           </button>
           <button onclick="openMessageExcursionHost('${e.id}')" style="width:100%;background:#fff;color:var(--gray-700);padding:10px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1.5px solid var(--gray-300);cursor:pointer;margin-top:8px;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='#fff'">💬 Contacter le prestataire</button>
           <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;">
             ${e.freeCancellation?'<div style="font-size:13px;color:var(--green);font-weight:600;">✅ Annulation gratuite</div>':''}
             ${e.instantBook?'<div style="font-size:13px;color:var(--blue-l);font-weight:600;">⚡ Confirmation instantanée</div>':''}
-            <div style="font-size:13px;color:var(--green);font-weight:600;">💵 Aucun paiement en ligne — vous réglez sur place</div>
+            <div style="font-size:13px;color:var(--gray-600);font-weight:600;">${e.instantBook?'💳 Paiement en ligne sécurisé pour confirmer votre place':"💳 Aucun paiement maintenant : vous paierez en ligne après l'accord de l'organisateur"}</div>
           </div>
         </div>
       </div>
@@ -7263,13 +7420,16 @@ function buildExcursionDetail(){
 
 function updateExcTotal(price, oldPrice){
   const pax = parseInt(document.getElementById('exc-pax')?.value||1);
-  const total = price * pax;
-  const origTotal = (oldPrice && oldPrice>price) ? oldPrice*pax : 0;
+  const sub = price * pax, fee = guestFee(sub), total = sub + fee;
+  const origSub = (oldPrice && oldPrice>price) ? oldPrice*pax : 0;
+  const origTotal = origSub ? origSub + guestFee(origSub) : 0;
   const el = document.getElementById('exc-total-block');
   if(el) el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>${price}€ × ${pax} personne${pax>1?'s':''}</span><span>${total}€</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${origTotal?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
+    <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>${price}€ × ${pax} personne${pax>1?'s':''}</span><span>${sub}€</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:14px;padding:3px 0;"><span>Taxes et frais</span><span>${fee}€</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:2px solid var(--gray-200);margin-top:6px;"><span>Total</span><span>${origTotal?`<span style="text-decoration:line-through;color:var(--red);font-size:13px;font-weight:600;margin-right:6px;">${origTotal}€</span>`:''}${total}€</span></div>`;
 }
+function excBookLabel(e){ return e && e.instantBook ? '⚡ Réserver et payer' : '📨 Envoyer ma demande'; }
 
 function buildExcBookingCalendar(e){
   const today=new Date();
@@ -7406,7 +7566,7 @@ async function updateExcSpotsLeft(excId, ds){
       bookBtn.style.background = isFull ? 'var(--gray-400)' : 'var(--blue)';
       bookBtn.onmouseover = isFull ? null : function(){this.style.background='#002570';};
       bookBtn.onmouseout = isFull ? null : function(){this.style.background='var(--blue)';};
-      bookBtn.innerHTML = isFull ? '⛔ Complet pour cette date' : '✅ Réserver — 💵 Paiement sur place';
+      bookBtn.innerHTML = isFull ? '⛔ Complet pour cette date' : excBookLabel([...excursions, ...(appState.myExcursions||[])].find(x=>x.id===excId)||{});
     }
 
     // Re-rendu du calendrier pour appliquer le style "complet" sur la
@@ -7478,8 +7638,9 @@ async function bookExcursion(excId){
   const total = (exc.price||0) * pax;
   const ref = 'EXC-'+Math.random().toString(36).substr(2,8).toUpperCase();
 
-  // Même mode que les hébergements : paiement sur place uniquement, aucune
-  // page de choix carte/PayPal — réservation immédiate depuis la fiche.
+  // Même principe que les hébergements (18/10) : demande sans paiement, puis
+  // paiement en ligne sous 24 h après l'accord de l'organisateur ; en
+  // réservation instantanée, paiement tout de suite (place bloquée 30 min).
   if(!exc.excursionId){
     // Excursion de démonstration (mock) — pas de vraie table correspondante
     appState.excursionBookings.push({id:ref,excId,title:exc.title||'Excursion',date,pax,total,status:'confirmée',paymentMethod:'Paiement sur place',createdAt:localISODate(new Date())});
@@ -7501,8 +7662,8 @@ async function bookExcursion(excId){
     emoji: exc.emoji||'✈️',
     city: exc.city||'', country: exc.country||''
   };
-  await finalizeRealExcursionBooking(pb, ref, 'Paiement sur place');
-  if(btn){btn.disabled=false;btn.innerHTML='✅ Réserver — 💵 Paiement sur place';}
+  await finalizeRealExcursionBooking(pb, ref);
+  if(btn){btn.disabled=false;btn.innerHTML=excBookLabel(exc);}
 }
 
 async function excToggleStatus(id){
@@ -7852,14 +8013,7 @@ function excFormStep2(fd){
       </div>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--gray-50);border-radius:var(--r-md);border:1px solid var(--gray-200);margin-bottom:20px;">
-      <div><div style="font-size:14px;font-weight:700;">💵 Paiement sur place accepté</div>
-        <div style="font-size:12px;color:var(--gray-500);">Le voyageur pourra choisir de payer directement le jour de l'excursion, sans payer en ligne</div></div>
-      <div onclick="excSet('payOnSite',!appState.excursionFormData.payOnSite);excRefresh()"
-        style="width:44px;height:24px;border-radius:12px;background:${fd.payOnSite?'var(--blue)':'var(--gray-300)'};cursor:pointer;position:relative;transition:background .2s;">
-        <div style="position:absolute;top:2px;${fd.payOnSite?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;transition:all .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
-      </div>
-    </div>
+    <div style="padding:12px 16px;background:#e8f4ff;border-radius:var(--r-md);border:1px solid #b3d4f0;margin-bottom:20px;font-size:13px;color:var(--gray-700);line-height:1.5;">💳 <strong>Paiement en ligne</strong> : le voyageur paie sa réservation en ligne pour confirmer sa place (plus de paiement sur place).</div>
 
     <!-- Calendrier des dates disponibles -->
     <div style="font-size:15px;font-weight:700;margin-bottom:6px;margin-top:4px;">📅 Dates disponibles</div>
@@ -8178,7 +8332,7 @@ async function excFormPublish(){
     status: 'en attente',
     instant_book: !!fd.instantBook,
     free_cancellation: !!fd.freeCancellation,
-    pay_on_site: !!fd.payOnSite,
+    pay_on_site: false, // paiement en ligne obligatoire (18/10)
     contact_firstname: fd.firstname||'',
     contact_lastname: fd.lastname||'',
     contact_email: fd.email||'',
@@ -9239,19 +9393,15 @@ async function finalizeBooking(pb,method){
   }
 }
 
-async function finalizeRealExcursionBooking(pb, ref, methodLabel){
-  const status = pb.instantBookExc ? 'confirmée' : 'en attente';
+async function finalizeRealExcursionBooking(pb, ref){
+  // Statut, prix et montants sont fixés par la base (fn_excursion_booking_guard)
   const { data: insertedBk, error } = await _sb.from('excursion_bookings').insert([{
     excursion_id: pb.excursionRealId,
     guest_id: auth.currentUser.id,
     date: pb.date,
     participants: pb.pax,
-    unit_price: pb.unitPrice||0,
-    total: pb.total,
-    status,
-    reference: ref,
-    payment_method: methodLabel||'en ligne'
-  }]).select('id').single();
+    reference: ref
+  }]).select('id,status,total').single();
 
   if(error){
     const capacityIssue = /CAPACITY_EXCEEDED/.test(error.message||'');
@@ -9262,12 +9412,14 @@ async function finalizeRealExcursionBooking(pb, ref, methodLabel){
     navigate('excursion-detail',{selectedExcursionId:pb.excId});
     return;
   }
-
-  // E-mails : confirmation/demande au voyageur + alerte au prestataire
-  if(insertedBk?.id) await callNotifyExcursion('created', insertedBk.id);
-
   appState.pendingBooking=null;
-  showPaymentSuccess(ref, pb.title, pb.total, methodLabel, status==='en attente');
+  if(insertedBk.status==='acceptée'){
+    // Réservation instantanée : paiement immédiat
+    navigate('excursion-payment',{selectedExcBookingId: insertedBk.id});
+    return;
+  }
+  await callNotifyExcursion('created', insertedBk.id);
+  showPaymentSuccess(ref, pb.title, insertedBk.total, 'Paiement en ligne après accord', true);
 }
 
 function showPaymentSuccess(ref,title,total,method,pending){
@@ -9277,7 +9429,7 @@ function showPaymentSuccess(ref,title,total,method,pending){
     <div style="width:72px;height:72px;border-radius:50%;background:${pending?'#fff8e0':'#e8f9f0'};border:3px solid ${pending?'#e6a800':'var(--green)'};display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 18px;">${pending?'⏳':'✅'}</div>
     <h2 style="font-size:22px;font-weight:800;color:${pending?'#e6a800':'var(--green)'};margin-bottom:8px;">${pending?'Demande envoyée !':'Paiement réussi !'}</h2>
     <p style="font-size:15px;color:var(--gray-600);margin-bottom:20px;line-height:1.7;">${pending
-      ? `Votre demande pour <strong>${title}</strong> a été transmise au prestataire. Vous recevrez un email dès sa décision.`
+      ? `Votre demande pour <strong>${title}</strong> a été transmise au prestataire. Aucun paiement n'est demandé pour l'instant : dès son accord, vous recevrez un e-mail et aurez 24 h pour payer en ligne.`
       : `Excursion <strong>${title}</strong> confirmée.`}</p>
     <div style="background:var(--gray-50);border-radius:var(--r-md);padding:14px;margin-bottom:20px;font-size:14px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:var(--gray-500);">Référence</span><span style="font-family:monospace;font-weight:700;">${ref}</span></div>
@@ -10220,7 +10372,7 @@ async function loadExcursionBookingRequests(container){
   if(!auth.currentUser){navigate('home');return;}
   const uid = auth.currentUser.id;
   const filter = appState.excRequestsFilter||'all';
-  const statusMap = {pending:'en attente', accepted:'confirmée', declined:'refusée', completed:'terminée', cancelled:'annulée'};
+  const statusMap = {pending:'en attente', awaiting:'acceptée', accepted:'confirmée', declined:'refusée', completed:'terminée', cancelled:'annulée', expired:'expirée'};
 
   try{ await _sb.rpc('fn_auto_complete_excursion_bookings'); }catch(e){ console.warn('fn_auto_complete_excursion_bookings:', e.message); }
 
@@ -10261,9 +10413,9 @@ async function loadExcursionBookingRequests(container){
   const pendingCount = all.filter(r=>r.status==='en attente').length;
   const list = all.filter(r=>filter==='all' || r.status===statusMap[filter]);
 
-  const statusColor={'en attente':'#e6a800',confirmée:'var(--green)',refusée:'var(--red)',terminée:'#6c757d',annulée:'#cc0000'};
-  const statusBg={'en attente':'#fff8e0',confirmée:'#e8f9f0',refusée:'#fff0f0',terminée:'#f1f3f5',annulée:'#fff0f0'};
-  const statusLabel={'en attente':'En attente',confirmée:'Acceptée',refusée:'Refusée',terminée:'Terminée',annulée:'Annulée'};
+  const statusColor={'en attente':'#e6a800',acceptée:'#0071c2',confirmée:'var(--green)',refusée:'var(--red)',terminée:'#6c757d',annulée:'#cc0000',expirée:'#6c757d'};
+  const statusBg={'en attente':'#fff8e0',acceptée:'#e8f4ff',confirmée:'#e8f9f0',refusée:'#fff0f0',terminée:'#f1f3f5',annulée:'#fff0f0',expirée:'#f1f3f5'};
+  const statusLabel={'en attente':'En attente',acceptée:'Attente paiement',confirmée:'Confirmée',refusée:'Refusée',terminée:'Terminée',annulée:'Annulée',expirée:'Non payée'};
 
   container.innerHTML=`
   <div class="breadcrumb"><span onclick="navigate('home')">Accueil</span><span class="bc-sep">›</span><span>Demandes d'excursions</span></div>
@@ -10277,7 +10429,7 @@ async function loadExcursionBookingRequests(container){
     </div>
 
     <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--gray-200);flex-wrap:wrap;">
-      ${[['all','Toutes'],['pending','En attente'],['accepted','Acceptées'],['completed','Terminées'],['declined','Refusées'],['cancelled','Annulées']].map(([v,l])=>`
+      ${[['all','Toutes'],['pending','En attente'],['awaiting','Attente paiement'],['accepted','Confirmées'],['completed','Terminées'],['declined','Refusées'],['cancelled','Annulées'],['expired','Non payées']].map(([v,l])=>`
         <button onclick="appState.excRequestsFilter='${v}';navigate('excursion-requests')"
           style="padding:9px 18px;border:none;background:none;font-size:14px;font-weight:600;cursor:pointer;border-bottom:${filter===v?'2px solid var(--orange)':'2px solid transparent'};color:${filter===v?'var(--orange)':'var(--gray-500)'};margin-bottom:-2px;">${l}</button>`).join('')}
     </div>
@@ -10310,7 +10462,7 @@ async function loadExcursionBookingRequests(container){
               </div>
             </div>
             ${req.status==='en attente'?`<div style="display:flex;flex-direction:column;gap:8px;min-width:130px;">
-              <button onclick="decideExcursionRequest('${req.id}','confirmée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">✅ Accepter</button>
+              <button onclick="decideExcursionRequest('${req.id}','acceptée')" style="background:var(--green);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">✅ Accepter</button>
               <button onclick="decideExcursionRequest('${req.id}','refusée')" style="background:#fff0f0;color:var(--red);padding:10px 16px;border-radius:var(--r-md);font-size:14px;font-weight:600;border:1px solid #ffcccc;cursor:pointer;">✕ Refuser</button>
             </div>`:''}
           </div>
@@ -10331,9 +10483,9 @@ async function handleExcursionBookingRequest(reqId, decision, hostMessage){
   if(fetchErr || !bk){ showToast('Demande introuvable','var(--red)'); return; }
 
   const { error } = await _sb.from('excursion_bookings').update({status: decision}).eq('id', reqId);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  if(error){ showToast(/EXCURSION_STARTED/.test(error.message||'') ? "L'excursion a déjà commencé : la demande ne peut plus être acceptée." : 'Erreur : '+error.message,'var(--red)'); return; }
 
-  showToast(decision==='confirmée' ? '✅ Demande acceptée ! Réservation confirmée.' : 'Demande refusée.', decision==='confirmée'?'var(--green)':'var(--gray-700)');
+  showToast(decision==='acceptée' ? '✅ Demande acceptée : le voyageur a 24 h pour payer en ligne.' : 'Demande refusée.', decision==='acceptée'?'var(--green)':'var(--gray-700)');
 
   // E-mail au voyageur : demande acceptée ou refusée
   await callNotifyExcursion('decision', reqId, { host_message: hostMessage||'' });
@@ -10622,12 +10774,6 @@ function buildExcursionEditFormInner(){
           <div style="position:absolute;top:2px;${ed.freeCancellation?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
-        <div><div style="font-size:14px;font-weight:600;">💵 Paiement sur place accepté</div><div style="font-size:12px;color:var(--gray-500);">Le voyageur peut choisir de payer le jour de l'excursion</div></div>
-        <div onclick="edSet('payOnSite', !appState.excEditData.payOnSite); edRefresh();" style="width:44px;height:24px;border-radius:12px;background:${ed.payOnSite?'var(--blue)':'var(--gray-300)'};cursor:pointer;position:relative;flex-shrink:0;">
-          <div style="position:absolute;top:2px;${ed.payOnSite?'right:2px':'left:2px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div>
-        </div>
-      </div>
     </div>
 
     <!-- Contact -->
@@ -10669,7 +10815,7 @@ async function saveExcursionEdit(){
     not_included: ed.notIncluded||'', what_to_bring: ed.whatToBring||'', schedule: ed.schedule||'',
     meeting_point: ed.meetingPoint||'', meeting_time: ed.meetingTime||'', meeting_time_end: ed.meetingTimeEnd||'',
     availability: ed.availability||[],
-    instant_book: !!ed.instantBook, free_cancellation: !!ed.freeCancellation, pay_on_site: !!ed.payOnSite,
+    instant_book: !!ed.instantBook, free_cancellation: !!ed.freeCancellation, pay_on_site: false,
     contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
     contact_email: ed.email||'', contact_phone: ed.phone||'',
     // Toute modification remet l'excursion en attente de re-validation admin
@@ -13416,8 +13562,8 @@ function buildCGUPage(){
     {num:'4',title:'Services proposés',body:'Mise en relation Hôtes/Voyageurs pour location saisonnière. Services : publication d\'annonces, réservation, messagerie, calendrier, fidélité.<br><br>Conformément à l\'article L.324-1 du Code du tourisme, les locations courte durée peuvent nécessiter une déclaration en mairie. L\'Hôte en est seul responsable.'},
     {num:'5',title:'Obligations des Hôtes',body:'L\'Hôte s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Être propriétaire ou disposer des droits nécessaires</li><li>Respecter la législation (déclaration mairie, taxe de séjour, fiscalité)</li><li>Fournir des informations exactes et des photos représentatives</li><li>Souscrire une assurance couvrant les risques locatifs</li><li>Respecter le RGPD pour les données des Voyageurs</li></ul>'},
     {num:'6',title:'Obligations des Voyageurs',body:'Le Voyageur s\'engage à :<ul style="margin:8px 0 0 20px;line-height:2;"><li>Utiliser le logement conformément à sa destination</li><li>Respecter le nombre maximum d\'occupants</li><li>Restituer le logement dans son état initial</li><li>Informer l\'Hôte en cas de dommages</li><li>Ne pas sous-louer sans accord écrit de l\'Hôte</li></ul>'},
-    {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix par nuit affiché est celui fixé par l\'Hôte. Des taxes et frais de service MyTunigo de 8 % s\'y ajoutent ; ils sont indiqués avant la réservation, et aucun autre frais n\'est ajouté au paiement.<br><br><b>Hôte :</b> MyTunigo prélève une commission de <b>8 %</b> sur le prix fixé par l\'Hôte pour chaque réservation confirmée, déduite du montant reversé à l\'Hôte.<br><br><b>Hôte fondateur :</b> MyTunigo peut attribuer, à sa discrétion et à tout moment, le badge « Hôte fondateur » à une annonce. Cette annonce ne paie aucune commission pendant 1 an à compter de l\'attribution du badge, puis 8 %.<br><br><b>Excursions :</b> commission de 12 % par défaut, pouvant être négociée avec le prestataire (minimum 8 %).<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
-    {num:'8',title:'Annulations',body:'Le Voyageur peut annuler en ligne une demande non encore confirmée à tout moment, et une réservation confirmée jusqu\'à <b>72 heures</b> avant le début du séjour ou de l\'excursion (heure d\'arrivée ou de rendez-vous, heure de Tunis). Passé ce délai, il doit contacter l\'Hôte ou l\'organisateur. Un motif d\'annulation est demandé.<br><br>Remboursement selon la politique de l\'annonce :<br><b>Flexible</b> : remboursement intégral.<br><b>Modérée</b> : 50 % si l\'annulation intervient au moins 5 jours avant l\'arrivée, aucun remboursement ensuite.<br><b>Stricte</b> : non remboursable sauf force majeure.<br>Une excursion payée sur place n\'entraîne aucun prélèvement.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
+    {num:'7',title:'Paiement et commission',body:'<b>Voyageur :</b> le prix par nuit affiché est celui fixé par l\'Hôte. Des taxes et frais de service MyTunigo de 8 % s\'y ajoutent ; ils sont indiqués avant la réservation, et aucun autre frais n\'est ajouté au paiement.<br><br><b>Hôte :</b> MyTunigo prélève une commission de <b>8 %</b> sur le prix fixé par l\'Hôte pour chaque réservation confirmée, déduite du montant reversé à l\'Hôte.<br><br><b>Hôte fondateur :</b> MyTunigo peut attribuer, à sa discrétion et à tout moment, le badge « Hôte fondateur » à une annonce. Cette annonce ne paie aucune commission pendant 1 an à compter de l\'attribution du badge, puis 8 %.<br><br><b>Excursions :</b> même règle que les logements. Le Voyageur paie en ligne le prix fixé par l\'organisateur, plus 8 % de taxes et frais ; l\'organisateur reçoit ce prix moins 8 % de commission. Une réservation d\'excursion n\'est confirmée qu\'après le paiement en ligne.<br><br>Le taux applicable est celui en vigueur à la confirmation de la réservation. Toute évolution de la grille est annoncée avec un préavis de <b>30 jours</b> par e-mail.'},
+    {num:'8',title:'Annulations',body:'Le Voyageur peut annuler en ligne une demande non encore confirmée à tout moment, et une réservation confirmée jusqu\'à <b>72 heures</b> avant le début du séjour ou de l\'excursion (heure d\'arrivée ou de rendez-vous, heure de Tunis). Passé ce délai, il doit contacter l\'Hôte ou l\'organisateur. Un motif d\'annulation est demandé.<br><br>Remboursement selon la politique de l\'annonce :<br><b>Flexible</b> : remboursement intégral.<br><b>Modérée</b> : 50 % si l\'annulation intervient au moins 5 jours avant l\'arrivée, aucun remboursement ensuite.<br><b>Stricte</b> : non remboursable sauf force majeure.<br><br>Annulation par l\'Hôte : remboursement intégral du Voyageur.'},
     {num:'9',title:'Responsabilité',body:'MyTunigo est hébergeur au sens de la LCEN. Sa responsabilité ne peut être engagée qu\'en cas de contenu manifestement illicite dont il aurait eu connaissance sans agir promptement. La responsabilité de MyTunigo est limitée aux sommes effectivement perçues.'},
     {num:'10',title:'Propriété intellectuelle',body:'La Plateforme, son code, son design et ses marques sont protégés par le Code de la propriété intellectuelle (L.111-1 et suivants). En publiant du contenu, l\'Utilisateur accorde à MyTunigo une licence non-exclusive et gratuite d\'utilisation.'},
     {num:'11',title:'Protection des données (RGPD)',body:'Conformément au RGPD (UE) 2016/679 et à la loi Informatique et Libertés :<ul style="margin:8px 0 0 20px;line-height:2;"><li><b>Responsable</b> : MyTunigo SAS — contact@mytunigo.com</li><li><b>Données</b> : nom, prénom, email, téléphone, navigation</li><li><b>Durée</b> : 3 ans après la dernière activité</li><li><b>Droits</b> : accès, rectification, suppression, portabilité — contact@mytunigo.com</li><li><b>Réclamation</b> : CNIL — cnil.fr</li></ul>'},
@@ -13553,7 +13699,7 @@ _sb.auth.onAuthStateChange((event, session) => {
 const RESTORABLE_PAGES = new Set(['home','results','detail','excursions','excursion-detail',
   'mesannonces','reservations','favoris','messages','profil','booking-requests',
   'excursion-requests','manage-excursions','annonce-edit-owner','excursion-edit',
-  'about','cgu','privacy','admin','reservation-payment']);
+  'about','cgu','privacy','admin','reservation-payment','excursion-payment']);
 
 // Lien de paiement envoyé par e-mail après l'accord de l'hôte :
 // https://mytunigo.com/?pay=<id de la réservation>
@@ -13564,6 +13710,16 @@ try{
     history.replaceState(
       { page:'reservation-payment', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
       '', window.location.pathname+'#reservation-payment'
+    );
+  }
+  // Lien de paiement d'une excursion (e-mail d'accord de l'organisateur) :
+  // https://mytunigo.com/?payexc=<id de la réservation d'excursion>
+  const _payExcParam = new URLSearchParams(window.location.search).get('payexc');
+  if(_payExcParam && /^[0-9a-f-]{36}$/i.test(_payExcParam)){
+    appState.selectedExcBookingId = _payExcParam;
+    history.replaceState(
+      { page:'excursion-payment', ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
+      '', window.location.pathname+'#excursion-payment'
     );
   }
   // Lien vers un logement : https://mytunigo.com/?logement=<id annonce>
