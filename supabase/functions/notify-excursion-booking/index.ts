@@ -26,7 +26,7 @@
 // (toutes les 10 min) :
 //   { type: "expire_pending" }
 //       -> acceptées non payées dans le délai : 'expirée' + e-mail voyageur ;
-//          demandes restées 'en attente' après la date : 'refusée' + e-mail.
+//          demandes restées 'en attente' au début de l'excursion : 'refusée' + e-mail.
 //          Idempotent, sans paramètre ni destinataire fourni par l'appel.
 //
 // Sécurité : destinataires, montants et contenu lus en base ; l'appelant doit
@@ -175,6 +175,14 @@ async function sendMail(to: string | null | undefined, subject: string, html: st
 const payUrl = (id: string) => `${SITE}/?payexc=${encodeURIComponent(id)}`;
 
 // ---------- expirations (tâche planifiée) ----------
+// Début d'une excursion : date + heure de rendez-vous, heure de Tunis (UTC+1,
+// sans heure d'été) ; heure absente ou invalide : minuit (comme fn_safe_time).
+function excursionStart(dateISO: string, hhmm: unknown): Date {
+  const m = /^\s*([01]?\d|2[0-3]):([0-5]\d)\s*$/.exec(String(hhmm ?? ""));
+  const t = m ? `${m[1].padStart(2, "0")}:${m[2]}` : "00:00";
+  return new Date(`${dateISO.slice(0, 10)}T${t}:00+01:00`);
+}
+
 async function expirePending() {
   const nowIso = new Date().toISOString();
   const todayTn = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Tunis" }); // YYYY-MM-DD
@@ -187,15 +195,32 @@ async function expirePending() {
     .select("*");
   if (unpaidErr) return json({ error: unpaidErr.message }, 500);
 
-  // 2. Demandes restées 'en attente' après la date -> 'refusée'
+  // 2. Demandes restées 'en attente' alors que l'excursion a commencé
+  //    (heure de rendez-vous, heure de Tunis ; sans heure : minuit) -> 'refusée'.
   //    La mise à jour sert de « réservation » : seules les lignes réellement
   //    changées par cet appel reçoivent un e-mail.
-  const { data: stale, error } = await admin.from("excursion_bookings")
-    .update({ status: "refusée" })
-    .eq("status", "en attente")
-    .lt("date", todayTn)
-    .select("*");
-  if (error) return json({ error: error.message }, 500);
+  const { data: cands, error: candErr } = await admin.from("excursion_bookings")
+    .select("id,date,excursion_id").eq("status", "en attente").lte("date", todayTn);
+  if (candErr) return json({ error: candErr.message }, 500);
+  const excIds = [...new Set((cands ?? []).map((c) => c.excursion_id))];
+  const { data: excTimes } = excIds.length
+    ? await admin.from("excursions").select("id,meeting_time").in("id", excIds)
+    : { data: [] };
+  const timeOf = Object.fromEntries((excTimes ?? []).map((e) => [e.id, e.meeting_time]));
+  const startedIds = (cands ?? []).filter((c) => {
+    const st = excursionStart(String(c.date), timeOf[c.excursion_id]);
+    return st.getTime() <= Date.now();
+  }).map((c) => c.id);
+  let stale: typeof unpaid = [];
+  if (startedIds.length) {
+    const { data, error } = await admin.from("excursion_bookings")
+      .update({ status: "refusée" })
+      .eq("status", "en attente")
+      .in("id", startedIds)
+      .select("*");
+    if (error) return json({ error: error.message }, 500);
+    stale = data ?? [];
+  }
 
   for (const b of [...(unpaid ?? []), ...(stale ?? [])]) {
     const [{ data: exc }, { data: guest }] = await Promise.all([
@@ -209,7 +234,7 @@ async function expirePending() {
       layout(isUnpaid ? "Délai de paiement dépassé" : "Demande expirée",
         `Bonjour ${esc(guest?.first_name ?? "")},<br><br>` + (isUnpaid
           ? `Le paiement de votre réservation pour <strong>${esc(title)}</strong> n'a pas été effectué dans le délai prévu. La réservation est annulée et les places ont été libérées. Aucun montant n'a été débité.`
-          : `Le prestataire de <strong>${esc(title)}</strong> n'a pas répondu à votre demande avant la date de l'excursion. La demande est donc close.`),
+          : `Le prestataire de <strong>${esc(title)}</strong> n'a pas répondu à votre demande avant le début de l'excursion. La demande est donc close.`),
         recapGuest(b, title), { label: "🔍 Voir d'autres excursions", url: SITE }));
   }
   return json({ ok: true, expired_unpaid: (unpaid ?? []).length, expired_pending: (stale ?? []).length });
