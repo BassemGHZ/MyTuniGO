@@ -751,16 +751,35 @@ async function computePendingBookingRequestsCount(){
   return count||0;
 }
 
+// Demandes d'excursions "en attente" de MA réponse (côté organisateur),
+// pour la pastille du menu "Gérer les excursions".
+async function computePendingExcursionRequestsCount(){
+  const uid = auth.currentUser?.id;
+  if(!uid) return 0;
+  const { data: myExcs, error: excErr } = await _sb.from('excursions').select('id').eq('owner_id', uid);
+  if(excErr || !myExcs || !myExcs.length) return 0;
+  const { count, error } = await _sb.from('excursion_bookings')
+    .select('id', {count:'exact', head:true})
+    .in('excursion_id', myExcs.map(e=>e.id))
+    .eq('status','en attente');
+  if(error){ console.warn('computePendingExcursionRequestsCount:', error.message); return 0; }
+  return count||0;
+}
+
 async function refreshPendingBookingBadge(){
-  if(!auth.currentUser){ appState._pendingReqCount = 0; updatePendingReqBadgeDOM(); return; }
-  try{ appState._pendingReqCount = await computePendingBookingRequestsCount(); }
+  if(!auth.currentUser){ appState._pendingReqCount = 0; appState._pendingExcReqCount = 0; updatePendingReqBadgeDOM(); return; }
+  try{
+    const [n1, n2] = await Promise.all([computePendingBookingRequestsCount(), computePendingExcursionRequestsCount()]);
+    appState._pendingReqCount = n1; appState._pendingExcReqCount = n2;
+  }
   catch(e){ console.warn('refreshPendingBookingBadge:', e.message); }
   updatePendingReqBadgeDOM();
 }
 
 function updatePendingReqBadgeDOM(){
-  const n = appState._pendingReqCount||0;
+  const n = appState._pendingReqCount||0, m = appState._pendingExcReqCount||0;
   document.querySelectorAll('.pending-req-dot').forEach(el=>{ el.style.display = n>0 ? 'inline-block' : 'none'; });
+  document.querySelectorAll('.pending-exc-dot').forEach(el=>{ el.style.display = m>0 ? 'inline-block' : 'none'; });
 }
 /* ===================== DATA ===================== */
 /* ===================== DEVICE DETECTION ===================== */
@@ -1418,7 +1437,7 @@ function toggleDropdown(){
     <div class="ud-item" onclick="navigate('messages');closeDropdown()">💬 Messages${(appState._unreadMsgCount||0)>0?' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:middle;"></span>':''}</div>
     <div style="padding:4px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);border-top:1px solid var(--gray-100);margin-top:4px;padding-top:10px;">Espace hôte</div>
     <div class="ud-item" onclick="navigate('booking-requests');closeDropdown()">📨 Gérer les réservations${(appState._pendingReqCount||0)>0?' <span class="pending-req-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:middle;"></span>':''}</div>
-    <div class="ud-item" onclick="navigate('manage-excursions');closeDropdown()">🗂️ Gérer les excursions</div>
+    <div class="ud-item" onclick="navigate('manage-excursions');closeDropdown()">🗂️ Gérer les excursions<span class="pending-exc-dot" style="display:${(appState._pendingExcReqCount||0)>0?'inline-block':'none'};width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:middle;"></span></div>
     <div class="ud-item" onclick="navigate('mesannonces');closeDropdown()">🏘️ Mes annonces</div>
     <div class="ud-item" onclick="checkAuthAndGo('annonce');closeDropdown()">📋 Déposer une annonce</div>
     <div class="ud-item" onclick="checkAuthAndGo('excursion-form');closeDropdown()">🗺️ Déposer une excursion</div>
@@ -1488,6 +1507,8 @@ function openMobileDrawer(){
         dot = ' <span class="msg-unread-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;"></span>';
       } else if(item.page==='booking-requests' && (appState._pendingReqCount||0)>0){
         dot = ' <span class="pending-req-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;"></span>';
+      } else if((item.page==='manage-excursions' || item.page==='excursion-requests') && (appState._pendingExcReqCount||0)>0){
+        dot = ' <span class="pending-exc-dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;"></span>';
       }
       return '<div class="drawer-nav-item" data-page="'+item.page+'" data-auth="'+(item.auth?'1':'0')+'"><span class="di-icon">'+item.icon+'</span><span>'+item.label+dot+'</span></div>';
     }).join('') : '')
@@ -10489,6 +10510,7 @@ async function handleExcursionBookingRequest(reqId, decision, hostMessage){
 
   // E-mail au voyageur : demande acceptée ou refusée
   await callNotifyExcursion('decision', reqId, { host_message: hostMessage||'' });
+  refreshPendingBookingBadge();
 
   navigate('excursion-requests');
 }
