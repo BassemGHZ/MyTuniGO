@@ -10426,6 +10426,8 @@ function escHTML(v){
 // L'hôte peut évaluer le voyageur une fois le séjour fini : réservation
 // terminée, ou confirmée dont le jour de départ est arrivé (même règle qu'en base).
 function guestReviewable(req){
+  // Réservation faite sur sa propre annonce : pas d'avis sur soi-même (refusé en base)
+  if(auth.currentUser && req.guestId===auth.currentUser.id) return false;
   return req.status==='terminée' || (req.status==='confirmée' && req.checkOut && req.checkOut <= localISODate(new Date()));
 }
 // (le bouton n'apparaît en plus que pendant la fenêtre de 14 jours : reviewWindow)
