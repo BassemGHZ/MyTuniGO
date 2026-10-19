@@ -3438,7 +3438,7 @@ function updateRatingF(v){appState.filters.minRating=v;appState.resultsPage=1;re
 function toggleTypeF(t,c){if(c){if(!appState.filters.types.includes(t))appState.filters.types.push(t);}else{appState.filters.types=appState.filters.types.filter(x=>x!==t);}appState.resultsPage=1;refreshResults();}
 
 function renderTypesFilterHTML(){
-  const allTypes = ['Hôtel','Appartement','Maison','Studio','Chalet'];
+  const allTypes = ['Hôtel','Maison','Appartement','Chalet','Studio'];
   const visibleCount = appState.filterExpanded?.types ? allTypes.length : 3;
   const shown = allTypes.slice(0, visibleCount);
   return shown.map(t=>'<div class="f-opt">'
@@ -3449,7 +3449,7 @@ function renderTypesFilterHTML(){
 }
 
 function renderAmenitiesFilterHTML(){
-  const allAmen = ['Wi-Fi gratuit','Parking','Climatisation','Cuisine équipée','Terrasse','Vue mer','Piscine','Spa','Animaux acceptés','Salle de sport','Petit-déjeuner','Restauration','Navette aéroport','Accès PMR','Non-fumeur'];
+  const allAmen = ['Parking','Climatisation','Piscine','Wi-Fi gratuit','Cuisine équipée','Terrasse','Vue mer','Spa','Animaux acceptés','Salle de sport','Petit-déjeuner','Restauration','Navette aéroport','Accès PMR','Non-fumeur'];
   const visibleCount = appState.filterExpanded?.amenities ? allAmen.length : 3;
   return allAmen.slice(0, visibleCount).map(a=>'<div class="f-opt">'
     +'<input type="checkbox" '+(appState.filters.amenities.includes(a)?'checked':'')+' onchange="toggleAmenF(\''+a+'\',this.checked)">'
