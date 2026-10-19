@@ -3003,7 +3003,7 @@ function effectivePrice(h){
 // précise (date_discounts) prévaut sur la promo globale de l'annonce pour
 // cette nuit-là ; les autres nuits utilisent la promo globale si active,
 // sinon le plein tarif.
-function computeNightlyTotal(h, checkIn, checkOut, rooms){
+function computeNightlyTotal(h, checkIn, checkOut, rooms, skipLong){
   rooms = rooms||1;
   if(!h || !checkIn || !checkOut) return 0;
   const promos = appState._bkDatePromos || {};
@@ -3021,7 +3021,14 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms){
     nightsN++;
     d.setDate(d.getDate()+1);
   }
-  return longStayTotal(h, nightsN, total)*rooms;
+  return (skipLong ? total : longStayTotal(h, nightsN, total))*rooms;
+}
+// Détail pour l'affichage : total avant / après la réduction longs séjours.
+function longStayBreakdown(h, checkIn, checkOut, rooms){
+  const before = computeNightlyTotal(h, checkIn, checkOut, rooms, true);
+  const after  = computeNightlyTotal(h, checkIn, checkOut, rooms);
+  const nights = Math.max(0, Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
+  return { before, after, saving: Math.max(0, before-after), pct: longStayPct(h, nights) };
 }
 
 function galleryHtml(h){
@@ -3671,8 +3678,9 @@ function calcBkHTML(h){
   const multiRoom = isMultiRoomType(h);
   const rooms= multiRoom ? parseInt(document.getElementById('bk-rooms')?.value||appState.rooms||1) : 1;
   if(n<=0)return `<div style="font-size:13px;color:var(--gray-500);text-align:center;padding:8px 0;">Sélectionnez vos dates pour voir le total</div>`;
-  const sub = computeNightlyTotal(h, ci, co, rooms);
-  const avgUnit = Math.round(sub/(n*rooms));
+  const ls = longStayBreakdown(h, ci, co, rooms);
+  const sub = ls.after;
+  const avgUnit = Math.round(ls.before/(n*rooms)); // prix moyen par nuit AVANT réduction longs séjours
   const taxes=guestFee(sub), total=sub+taxes; // « Taxes et frais » : 8 % (calcul identique en base)
   // Prix plein tarif (sans aucune promo) pour la même période, afin d'afficher
   // l'ancien total barré en rouge quand une réduction (globale ou par date) s'applique.
@@ -3680,7 +3688,11 @@ function calcBkHTML(h){
   const origTotal = origSub + guestFee(origSub);
   const hasDiscount = origTotal > total;
   const lineLabel = multiRoom ? `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.` : `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''}`;
-  return `<div class="bk-row"><span>${lineLabel}</span><span>${sub}€</span></div>
+  const savingRow = ls.saving>0
+    ? `<div class="bk-row" style="color:var(--green);font-weight:700;"><span>🏷️ Réduction séjour de ${n} nuits (−${ls.pct} %)</span><span>−${ls.saving}€</span></div>`
+    : '';
+  return `<div class="bk-row"><span>${lineLabel}</span><span>${ls.before}€</span></div>
+    ${savingRow}
     <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
     <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
 }
@@ -3852,7 +3864,8 @@ function buildConfirm(){
   }
   const nights=calcNights();
   const nights_calc=calcNights();
-  const sub = computeNightlyTotal(h, appState.checkIn, appState.checkOut, appState.rooms||1);
+  const lsC = longStayBreakdown(h, appState.checkIn, appState.checkOut, appState.rooms||1);
+  const sub = lsC.after;
   const total = sub>0 ? sub+guestFee(sub) : effectivePrice(h);
   const canPayLater=h.payLater;
 
@@ -3875,6 +3888,7 @@ function buildConfirm(){
           <div class="sum-row"><span>Départ</span><span>${appState.checkOut||'—'}</span></div>
           ${isMultiRoomType(h)?`<div class="sum-row"><span>Chambres</span><span>${appState.rooms||1}</span></div>`:''}
           ${nights>0?`<div class="sum-row"><span>Durée</span><span>${nights} nuit${nights>1?'s':''}</span></div>`:''}
+          ${lsC.saving>0?`<div class="sum-row" style="color:var(--green);"><span style="color:var(--green);font-weight:700;">🏷️ Réduction séjour de ${nights} nuits (−${lsC.pct} %)</span><span style="color:var(--green);">−${lsC.saving}€</span></div>`:''}
           <div class="sum-row" style="font-weight:800;font-size:15px;border-top:1px solid var(--gray-300);margin-top:8px;padding-top:8px;">
             <span>Total estimé</span><span style="color:var(--blue)">${total}€</span>
           </div>
