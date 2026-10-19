@@ -2424,6 +2424,7 @@ function hotelCardHTML(h){
       ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;">🏷️ Sur certaines dates</div>`:''}
       <div class="hc-price" style="${hasDiscount?'color:#d40000;':''}">${finalPrice}€<span style="font-size:13px;color:var(--gray-500);font-weight:400">/nuit</span></div>
       ${h.freeCancellation?'<div class="hc-free">✓ Annulation gratuite</div>':''}
+      ${longStayOffers(h).length?`<div class="hc-free">🏷️ ${longStayOfferText(h)}</div>`:''}
     </div>
   </div>`;
 }
@@ -2847,6 +2848,18 @@ function longStayPct(h, nights){
 function longStayTotal(h, nights, normalTotal){
   const pct = longStayPct(h, nights);
   return pct>0 ? Math.round(normalTotal*(100-pct)/100) : normalTotal;
+}
+// Offres affichées au voyageur : [{nights, pct}] (la réduction mensuelle
+// n'est citée que si elle dépasse la réduction semaine).
+function longStayOffers(h){
+  const w = Math.min(Math.max(+(h && h.weeklyDiscount)||0,0),90), m = Math.min(Math.max(+(h && h.monthlyDiscount)||0,0),90);
+  const out = [];
+  if(w>0) out.push({nights:LONG_STAY_WEEK_NIGHTS, pct:w});
+  if(m>w) out.push({nights:LONG_STAY_MONTH_NIGHTS, pct:m});
+  return out;
+}
+function longStayOfferText(h){
+  return longStayOffers(h).map(o=>`−${o.pct}&nbsp;% dès ${o.nights}&nbsp;nuits`).join(' · ');
 }
 function datePriceRowPct(row, base){
   if(row.price_override!=null && base>0) return Math.round((1-row.price_override/base)*100);
@@ -3302,6 +3315,7 @@ function resultCardHTML(h){
         <div class="rc-badges">
           ${h.freeCancellation?'<span class="badge-green">✓ Annulation gratuite</span>':''}
           <span class="badge-green">✓ Paiement après accord de l'hôte</span>
+          ${longStayOffers(h).length?`<span class="badge-green" style="color:#198754;">🏷️ ${longStayOfferText(h)}</span>`:''}
         </div>
         <div>
           ${hasDatePromo?`<div style="font-size:12px;color:#ea580c;font-weight:700;margin-bottom:1px;">🏷️ Promo sur certaines dates</div>`:''}
@@ -3593,6 +3607,7 @@ function buildDetail(){
         <div class="bk-box" id="bk-box">
           <div class="bk-price">${h.discount>0?`<span style="font-size:16px;color:var(--gray-400);text-decoration:line-through;font-weight:400;">${h.price}€</span> <span style="color:#d40000;">${effectivePrice(h)}€</span>`:h.price+'€'} <span>/ nuit</span>${h.discount>0?` <span style="background:#d40000;color:#fff;font-size:12px;font-weight:800;padding:2px 8px;border-radius:10px;vertical-align:middle;">-${h.discount}%</span>`:''}</div>
           <div id="bk-date-promo-banner"></div>
+          ${longStayOffers(h).length?`<div style="background:#e8f9f0;border:1px solid #6bcf9e;border-radius:var(--r-md);padding:8px 12px;margin-bottom:12px;font-size:13px;font-weight:700;color:var(--green);line-height:1.4;">🏷️ Séjour long : ${longStayOfferText(h)}</div>`:''}
           <!-- Custom date picker with blocked dates -->
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:4px;">📅 Arrivée</label>
@@ -3695,8 +3710,35 @@ function calcBkHTML(h){
     : '';
   return `<div class="bk-row"><span>${lineLabel}</span><span>${ls.before}€</span></div>
     ${savingRow}
+    ${longStayNudgeHTML(h, ci, co, rooms, n)}
     <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
     <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
+}
+
+// Incitation : séjour à 1 ou 2 nuits d'un seuil de réduction -> montre le
+// tarif réduit du séjour prolongé (comparé au tarif normal de la même durée).
+function longStayNudgeHTML(h, ci, co, rooms, n){
+  if(!ci || !co || n<1) return '';
+  const cur = longStayPct(h, n);
+  const offer = longStayOffers(h).find(o=>n<o.nights && o.nights-n<=2 && o.pct>cur);
+  if(!offer) return '';
+  const newCo = addDaysISO(ci, offer.nights);
+  const maxN = h.maxNights || 365;
+  if(offer.nights>maxN) return '';
+  if(!isDateRangeAvailable(h.id, ci, newCo)) return '';
+  const ls = longStayBreakdown(h, ci, newCo, rooms);
+  if(ls.saving<=0) return '';
+  return `<div style="background:#fff8e0;border:1px solid #f0d080;border-radius:var(--r-md);padding:9px 12px;margin:8px 0;font-size:13px;color:#7a5a00;line-height:1.45;">
+    💡 <strong>Passez à ${offer.nights}&nbsp;nuits et profitez de −${offer.pct}&nbsp;%</strong> : ${ls.after}&nbsp;€ au lieu de ${ls.before}&nbsp;€ pour ce séjour.
+    <button type="button" onclick="bkExtendStay('${newCo}')" style="display:block;margin-top:6px;background:#fff;color:#7a5a00;border:1.5px solid #e6a800;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">Prolonger jusqu'au ${newCo.split('-').reverse().join('/')}</button>
+  </div>`;
+}
+function bkExtendStay(ds){
+  const coEl = document.getElementById('bk-co');
+  if(!coEl) return;
+  coEl.value = ds; appState.checkOut = ds;
+  updateBk();
+  if(appState._bkRefreshCal) appState._bkRefreshCal();
 }
 
 function updateBk(){
