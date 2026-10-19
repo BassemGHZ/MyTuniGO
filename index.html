@@ -7249,6 +7249,10 @@ function buildProfil(){
           </div>
         </div>
 
+        <!-- Coordonnées bancaires (hôtes et organisateurs) -->
+        <div id="profil-bank" style="display:none;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;"></div>
+        ${(setTimeout(renderBankCard,0),'')}
+
         <!-- Suppression du compte (sur demande, validée par l'admin) -->
         <div id="profil-deletion" style="background:#fff;border:1px solid #ffcccc;border-radius:var(--r-lg);padding:22px;">${accountDeletionCardHTML()}</div>
       </div>
@@ -7305,6 +7309,148 @@ async function saveProfile(){
   showToast('✅ Profil mis à jour !','var(--green)');
   navigate('profil');
   renderAuthArea();
+}
+
+/* ===================== COORDONNÉES BANCAIRES (RIB) ===================== */
+// Hôtes et organisateurs uniquement. Table payout_accounts sans accès direct :
+// fn_my_payout_account (IBAN masqué), fn_set_payout_account (contrôle IBAN /
+// clé RIB en base), fn_delete_payout_account. L'admin voit l'IBAN complet
+// dans l'onglet « 🗑️ Comptes ».
+let _bank = { uid:null, loading:false, data:null, editing:false };
+
+const BANK_ERRORS = {
+  IBAN_INVALID:   "IBAN invalide : vérifiez le numéro (pays, longueur et clé).",
+  RIB_KEY_INVALID:"RIB invalide : la clé (2 derniers chiffres) ne correspond pas au numéro.",
+  BIC_INVALID:    "BIC invalide : 8 ou 11 caractères (ex. STBKTNTT).",
+  HOLDER_INVALID: "Indiquez le nom du titulaire du compte.",
+  NOT_HOST:       "Les coordonnées bancaires sont réservées aux hôtes et organisateurs."
+};
+function bankErrorMsg(msg){
+  const k = Object.keys(BANK_ERRORS).find(k=>(msg||'').includes(k));
+  return k ? BANK_ERRORS[k] : 'Erreur : '+msg;
+}
+
+// Contrôle immédiat côté navigateur (la base refait le contrôle)
+function ibanLocalCheck(raw){
+  let v = String(raw||'').toUpperCase().replace(/[\s.-]/g,'');
+  const mod97 = d => { let r=0; for(const c of d) r=(r*10+(+c))%97; return r; };
+  const digits = t => t.replace(/[A-Z]/g, c=>String(c.charCodeAt(0)-55));
+  if(/^\d{20}$/.test(v)){
+    if(97 - mod97(v.slice(0,18)+'00') !== +v.slice(18)) return { ok:false, err:'RIB_KEY_INVALID' };
+    v = 'TN' + String(98 - mod97(v+digits('TN')+'00')).padStart(2,'0') + v;
+  }
+  if(!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(v) || mod97(digits(v.slice(4)+v.slice(0,4)))!==1) return { ok:false, err:'IBAN_INVALID' };
+  if(v.startsWith('TN') && (v.length!==24 || 97 - mod97(v.slice(4,22)+'00') !== +v.slice(22))) return { ok:false, err:'RIB_KEY_INVALID' };
+  return { ok:true, iban:v };
+}
+function ibanGroup(v){ return String(v||'').replace(/\s/g,'').toUpperCase().replace(/(.{4})/g,'$1 ').trim(); }
+
+function bankCardHTML(){
+  const d = _bank.data;
+  const title = '<div style="font-size:16px;font-weight:700;margin-bottom:6px;">🏦 Coordonnées bancaires</div>'
+    + '<div style="font-size:12px;color:var(--gray-500);margin-bottom:14px;line-height:1.5;">Pour recevoir vos reversements (hébergements et excursions). Visibles uniquement par l\'équipe MyTunigo.</div>';
+  const a = d?.account;
+  if(_bank.editing){
+    const u = auth.currentUser||{};
+    const holder = a?.holder_name || [u.firstName,u.lastName].filter(Boolean).join(' ');
+    const inp = 'width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;';
+    const lab = 'font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;';
+    return title + `<div style="display:flex;flex-direction:column;gap:10px;">
+      <div><label style="${lab}">Titulaire du compte</label><input id="bk-holder" maxlength="100" value="${escHtml(holder)}" style="${inp}"></div>
+      <div><label style="${lab}">IBAN ou RIB tunisien (20 chiffres)</label>
+        <input id="bk-iban" inputmode="text" autocomplete="off" spellcheck="false" placeholder="TN59 1000 6035 1835 9847 8831" oninput="bankIbanInput(this)" style="${inp}font-family:monospace;letter-spacing:.5px;">
+        <div id="bk-iban-hint" style="font-size:12px;margin-top:4px;color:var(--gray-500);">${a?'Saisissez à nouveau le numéro complet pour le modifier.':'RIB tunisien : converti automatiquement en IBAN TN.'}</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div><label style="${lab}">Banque (facultatif)</label><input id="bk-bank" maxlength="80" value="${escHtml(a?.bank_name||'')}" style="${inp}"></div>
+        <div><label style="${lab}">BIC (facultatif)</label><input id="bk-bic" maxlength="11" value="${escHtml(a?.bic||'')}" style="${inp}text-transform:uppercase;"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button onclick="_bank.editing=false;renderBankCard()" style="flex:1;padding:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;cursor:pointer;">Annuler</button>
+        <button id="bk-save" onclick="saveBankAccount()" style="flex:1;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;">💾 Enregistrer</button>
+      </div></div>`;
+  }
+  if(!a){
+    return title + '<div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 12px;font-size:13px;color:#7a5a00;margin-bottom:12px;">Aucun RIB enregistré : ajoutez-le pour recevoir vos paiements.</div>'
+      + '<button onclick="_bank.editing=true;renderBankCard()" style="width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;">➕ Ajouter mon RIB</button>';
+  }
+  const row = (k,v)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--gray-100);font-size:13px;"><span style="color:var(--gray-500);">${k}</span><span style="font-weight:600;text-align:right;">${v}</span></div>`;
+  return title
+    + row('Titulaire', escHtml(a.holder_name))
+    + row('IBAN', '<span style="font-family:monospace;">'+escHtml(a.iban_masked)+'</span>')
+    + (a.bank_name ? row('Banque', escHtml(a.bank_name)) : '')
+    + (a.bic ? row('BIC', escHtml(a.bic)) : '')
+    + `<div style="font-size:11.5px;color:var(--gray-400);margin:8px 0 12px;">Mis à jour le ${acctDelFmtDate(a.updated_at)}</div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="_bank.editing=true;renderBankCard()" style="flex:1;padding:9px;background:#fff;color:var(--blue-l);border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:13px;font-weight:700;cursor:pointer;">✏️ Modifier</button>
+        <button onclick="deleteBankAccount()" style="flex:1;padding:9px;background:#fff;color:var(--red);border:1.5px solid #ffcccc;border-radius:var(--r-md);font-size:13px;font-weight:700;cursor:pointer;">Supprimer</button>
+      </div>`;
+}
+
+function renderBankCard(){
+  const el = document.getElementById('profil-bank');
+  const uid = auth.currentUser?.id;
+  if(!el || !uid) return;
+  if(_bank.uid!==uid){ if(!_bank.loading) loadBankAccount(); return; }
+  const show = !!_bank.data?.is_host;
+  el.style.display = show ? '' : 'none';
+  if(show) el.innerHTML = bankCardHTML();
+}
+
+async function loadBankAccount(){
+  const uid = auth.currentUser?.id;
+  if(!uid) return;
+  _bank.loading = true;
+  const { data, error } = await _sb.rpc('fn_my_payout_account');
+  if(error) console.warn('fn_my_payout_account:', error.message);
+  _bank = { uid, loading:false, data: error ? null : data, editing:false };
+  renderBankCard();
+}
+
+function bankIbanInput(el){
+  const pos = el.selectionStart, before = el.value.length;
+  el.value = ibanGroup(el.value);
+  try{ el.setSelectionRange(pos + (el.value.length-before), pos + (el.value.length-before)); }catch(e){}
+  const hint = document.getElementById('bk-iban-hint');
+  const raw = el.value.replace(/\s/g,'');
+  if(!hint) return;
+  if(raw.length < 15){ hint.style.color='var(--gray-500)'; hint.textContent = 'RIB tunisien : converti automatiquement en IBAN TN.'; return; }
+  const c = ibanLocalCheck(raw);
+  hint.style.color = c.ok ? 'var(--green)' : 'var(--red)';
+  hint.textContent = c.ok ? '✓ Numéro valide'+(/^\d{20}$/.test(raw)?' : '+ibanGroup(c.iban):'') : BANK_ERRORS[c.err];
+}
+
+async function saveBankAccount(){
+  const holder = document.getElementById('bk-holder')?.value?.trim()||'';
+  const iban   = document.getElementById('bk-iban')?.value||'';
+  const bank   = document.getElementById('bk-bank')?.value?.trim()||'';
+  const bic    = document.getElementById('bk-bic')?.value?.trim()||'';
+  if(holder.length<2){ showToast('⚠️ '+BANK_ERRORS.HOLDER_INVALID,'var(--red)'); return; }
+  const c = ibanLocalCheck(iban);
+  if(!c.ok){ showToast('⚠️ '+BANK_ERRORS[c.err],'var(--red)'); return; }
+  const btn = document.getElementById('bk-save');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Enregistrement…'; }
+  const { data, error } = await _sb.rpc('fn_set_payout_account', { p_holder:holder, p_iban:c.iban, p_bic:bic||null, p_bank:bank||null });
+  if(error){
+    if(btn){ btn.disabled=false; btn.textContent='💾 Enregistrer'; }
+    showToast('⚠️ '+bankErrorMsg(error.message),'var(--red)'); return;
+  }
+  _bank = { uid:auth.currentUser.id, loading:false, data, editing:false };
+  renderBankCard();
+  showToast('✅ Coordonnées bancaires enregistrées','var(--green)');
+}
+
+async function deleteBankAccount(){
+  if(!confirm('Supprimer vos coordonnées bancaires ?\n\nSans RIB, MyTunigo ne pourra pas vous verser vos paiements.')) return;
+  const { error } = await _sb.rpc('fn_delete_payout_account');
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast('Coordonnées bancaires supprimées','var(--gray-700)');
+  _bank.uid = null; loadBankAccount();
+}
+
+function openBankFormFromDeletion(){
+  document.getElementById('acctdel-ov')?.remove();
+  _bank.editing = true; renderBankCard();
+  document.getElementById('profil-bank')?.scrollIntoView({behavior:'smooth', block:'center'});
 }
 
 /* ===================== SUPPRESSION DU COMPTE ===================== */
@@ -7397,6 +7543,8 @@ function openAccountDeletionDialog(){
       <li>L'équipe MyTunigo supprime le compte une fois tout terminé : profil, photo et coordonnées effacés, annonces retirées. Les réservations passées, avis et messages restent visibles pour l'autre personne, au nom « Utilisateur supprimé ».</li>
       <li>Vous pouvez annuler la demande tant qu'elle n'est pas traitée.</li>
     </ul>
+    ${(_bank.data?.is_host && !_bank.data?.account) ? `<div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 12px;font-size:13px;color:#7a5a00;line-height:1.55;margin-bottom:14px;">🏦 <strong>Aucun RIB enregistré.</strong> Ajoutez-le pour recevoir vos derniers reversements avant la suppression.
+      <div style="margin-top:8px;"><button onclick="openBankFormFromDeletion()" style="background:#fff;color:#7a5a00;border:1px solid #e0c060;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;">➕ Ajouter mon RIB</button></div></div>` : ''}
     <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Motif (facultatif)</label>
     <select id="acctdel-reason" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:12px;">
       <option value="">— Choisir —</option>${ACCT_DEL_REASONS.map(r=>`<option>${escHtml(r)}</option>`).join('')}
@@ -12815,6 +12963,9 @@ async function buildAdminAccountDeletions(content){
         <div style="font-size:12px;color:#6b7280;text-align:right;">${r.annonces} annonce(s) · ${r.excursions} excursion(s)<br>${r.suspended} suspendue(s) par la demande</div>
       </div>
       <div style="font-size:13px;margin:10px 0;color:#374151;"><strong>Motif :</strong> ${escHtml(r.reason||'Non précisé')}</div>
+      ${r.payout
+        ? `<div style="font-size:13px;margin:0 0 10px;color:#374151;"><strong>🏦 RIB :</strong> <span style="font-family:monospace;user-select:all;">${escHtml(ibanGroup(r.payout.iban))}</span> — ${escHtml(r.payout.holder_name)}${r.payout.bank_name?' · '+escHtml(r.payout.bank_name):''}${r.payout.bic?' · BIC '+escHtml(r.payout.bic):''}</div>`
+        : ((r.annonces||r.excursions) ? `<div style="font-size:13px;margin:0 0 10px;color:#b45309;"><strong>🏦 Aucun RIB renseigné</strong> par cet hôte.</div>` : '')}
       ${blocked
         ? `<div style="background:#fff8e0;border:1px solid #ffe080;border-radius:8px;padding:9px 12px;font-size:13px;color:#7a5a00;margin-bottom:12px;">⏳ Suppression possible après le <strong>${acctDelFmtDate(b.until)}</strong> : ${acctDelBlockersText(b, true)}.</div>`
         : `<div style="background:#e8f9f0;border:1px solid #a0e8c8;border-radius:8px;padding:9px 12px;font-size:13px;color:#0a6b47;margin-bottom:12px;">✅ Aucune réservation à venir. Vérifiez les éventuels reversements à l'hôte avant de valider.</div>`}
