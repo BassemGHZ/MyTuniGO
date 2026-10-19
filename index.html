@@ -5707,7 +5707,7 @@ async function annPublish(){
   try {
     // Insert via SDK Supabase (utilisateur authentifié, RLS autorise)
     const { data, error } = await _sb.from('annonces').insert([payload]).select().single();
-    if(error) throw new Error(error.message);
+    if(error) throw new Error(friendlyDbError(error.message));
     annData = data;
 
     // E-mails admin (à valider) + accusé de réception à l'hôte
@@ -6823,7 +6823,7 @@ async function toggleAnnonceStatus(id){
   if(!a)return;
   const newStatus = a.status==='publiée' ? 'suspendue' : 'publiée';
   const { error } = await _sb.from('annonces').update({status:newStatus}).eq('id', id);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  if(error){ showToast(friendlyDbError('Erreur : '+error.message),'var(--red)'); return; }
   showToast(newStatus==='suspendue'?'Annonce suspendue':'✅ Annonce republiée !', newStatus==='suspendue'?'var(--gray-700)':'var(--green)');
   navigate('mesannonces');
 }
@@ -7249,12 +7249,8 @@ function buildProfil(){
           </div>
         </div>
 
-        <!-- Danger zone -->
-        <div style="background:#fff;border:1px solid #ffcccc;border-radius:var(--r-lg);padding:22px;">
-          <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:var(--red);">⚠️ Zone dangereuse</div>
-          <div style="font-size:13px;color:var(--gray-600);margin-bottom:14px;line-height:1.6;">La suppression de votre compte est irréversible. Toutes vos données seront effacées.</div>
-          <button onclick="deleteAccount()" style="width:100%;background:#fff0f0;color:var(--red);padding:10px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:1.5px solid #ffcccc;cursor:pointer;">🗑️ Supprimer mon compte</button>
-        </div>
+        <!-- Suppression du compte (sur demande, validée par l'admin) -->
+        <div id="profil-deletion" style="background:#fff;border:1px solid #ffcccc;border-radius:var(--r-lg);padding:22px;">${accountDeletionCardHTML()}</div>
       </div>
     </div>
   </div>`;
@@ -7311,14 +7307,139 @@ async function saveProfile(){
   renderAuthArea();
 }
 
-function deleteAccount(){
-  if(!confirm('Êtes-vous sûr ? Cette action est irréversible.')) return;
-  auth.currentUser = null;
-  appState.reservations = [];
-  appState.favorites = [];
-  appState.myAnnonces = [];
-  showToast('Compte supprimé. À bientôt.','var(--gray-700)');
-  navigate('home');
+/* ===================== SUPPRESSION DU COMPTE ===================== */
+// Plus de suppression immédiate (l'ancien bouton ne supprimait rien) :
+// l'utilisateur DEMANDE la suppression (rpc fn_request_account_deletion).
+// Ses annonces et excursions sont aussitôt suspendues, ses réservations en
+// cours se déroulent normalement, et l'admin finalise quand plus rien n'est
+// à venir (onglet admin « 🗑️ Comptes », Edge Function delete-account).
+let _acctDel = { uid:null, loading:false, data:null };
+
+function friendlyDbError(msg){
+  if(/ACCOUNT_DELETION_PENDING/.test(msg||'')) return "Une demande de suppression de votre compte est en cours : vous ne pouvez plus publier. Annulez-la dans Mon profil pour continuer.";
+  return msg;
+}
+
+function acctDelFmtDate(d){ return d ? new Date(String(d).length===10 ? d+'T12:00:00' : d).toLocaleDateString('fr-FR') : ''; }
+
+// thirdPerson : formulation pour l'admin (« ses logements » au lieu de « vos logements »)
+function acctDelBlockersText(b, thirdPerson){
+  if(!b || !(b.total>0)) return '';
+  const poss = thirdPerson ? 'ses' : 'vos';
+  const parts = [];
+  if(b.guest_stays)      parts.push(b.guest_stays+' séjour'+(b.guest_stays>1?'s':'')+' comme voyageur');
+  if(b.host_stays)       parts.push(b.host_stays+' séjour'+(b.host_stays>1?'s':'')+' dans '+poss+' logements');
+  if(b.guest_excursions) parts.push(b.guest_excursions+' excursion'+(b.guest_excursions>1?'s':'')+' réservée'+(b.guest_excursions>1?'s':'')+' comme voyageur');
+  if(b.host_excursions)  parts.push(b.host_excursions+' réservation'+(b.host_excursions>1?'s':'')+' de '+poss+' excursions');
+  return parts.join(', ');
+}
+
+function accountDeletionCardHTML(){
+  const uid = auth.currentUser?.id;
+  if(uid && _acctDel.uid!==uid && !_acctDel.loading) setTimeout(loadAccountDeletion, 0);
+  const title = '<div style="font-size:16px;font-weight:700;margin-bottom:12px;color:var(--red);">🗑️ Suppression du compte</div>';
+  if(!uid || _acctDel.uid!==uid) return title+'<div style="font-size:13px;color:var(--gray-500);">⏳ Chargement…</div>';
+  const d = _acctDel.data;
+  const btnStyle = 'width:100%;background:#fff0f0;color:var(--red);padding:10px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:1.5px solid #ffcccc;cursor:pointer;';
+  if(d && d.status==='en attente'){
+    const b = d.blockers||{};
+    const wait = b.total>0
+      ? '<div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 12px;font-size:13px;color:#7a5a00;line-height:1.55;margin-bottom:12px;">⏳ Suppression possible après le <strong>'+acctDelFmtDate(b.until)+'</strong> : '+acctDelBlockersText(b)+' à terminer.</div>'
+      : '<div style="background:#e8f9f0;border:1px solid #a0e8c8;border-radius:var(--r-md);padding:10px 12px;font-size:13px;color:#0a6b47;line-height:1.55;margin-bottom:12px;">✅ Plus aucune réservation à venir : l\'équipe MyTunigo va finaliser la suppression.</div>';
+    return title
+      + '<div style="font-size:14px;font-weight:700;margin-bottom:6px;">Demande en cours depuis le '+acctDelFmtDate(d.created_at)+'</div>'
+      + '<div style="font-size:13px;color:var(--gray-600);line-height:1.6;margin-bottom:12px;">Votre compte reste actif : vos réservations en cours se déroulent normalement.'
+      + (d.suspended>0 ? ' Vos annonces et excursions sont suspendues et ne reçoivent plus de nouvelles réservations.' : '')
+      + ' Rien n\'est supprimé avant la validation de l\'équipe MyTunigo.</div>'
+      + wait
+      + '<button onclick="cancelAccountDeletion()" style="width:100%;background:#fff;color:var(--gray-700);padding:10px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">↩️ Annuler ma demande</button>';
+  }
+  const refused = d && d.status==='refusée'
+    ? '<div style="background:#fff0f0;border:1px solid #ffcccc;border-radius:var(--r-md);padding:10px 12px;font-size:13px;color:var(--red);line-height:1.55;margin-bottom:12px;">Votre demande du '+acctDelFmtDate(d.created_at)+' a été refusée'+(d.admin_note?' : '+escHtml(d.admin_note).replace(/[.!?]?$/,'.'):'.')+' Contactez le support pour en savoir plus.</div>'
+    : '';
+  return title + refused
+    + '<div style="font-size:13px;color:var(--gray-600);margin-bottom:14px;line-height:1.6;">Vous pouvez demander la suppression de votre compte. Vos annonces et excursions sont alors suspendues ; la suppression est faite par l\'équipe MyTunigo une fois vos réservations en cours terminées. Elle est définitive.</div>'
+    + '<button onclick="openAccountDeletionDialog()" style="'+btnStyle+'">🗑️ Demander la suppression de mon compte</button>';
+}
+
+function escHtml(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderAccountDeletionCard(){
+  const el = document.getElementById('profil-deletion');
+  if(el) el.innerHTML = accountDeletionCardHTML();
+}
+
+async function loadAccountDeletion(){
+  const uid = auth.currentUser?.id;
+  if(!uid) return;
+  _acctDel.loading = true;
+  const { data, error } = await _sb.rpc('fn_my_account_deletion');
+  _acctDel.loading = false;
+  if(error){ console.warn('fn_my_account_deletion:', error.message); }
+  _acctDel = { uid, loading:false, data: error ? null : data };
+  renderAccountDeletionCard();
+}
+
+const ACCT_DEL_REASONS = ["Je n'utilise plus MyTunigo","J'ai un autre compte","Je ne loue plus / n'organise plus d'excursions","Je ne suis pas satisfait du service","Protection de mes données","Autre"];
+
+function openAccountDeletionDialog(){
+  if(!auth.currentUser){ openModal('login'); return; }
+  document.getElementById('acctdel-ov')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'acctdel-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+  ov.innerHTML = `<div style="background:#fff;border-radius:var(--r-lg);max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+    <div style="font-size:18px;font-weight:800;margin-bottom:10px;">🗑️ Demander la suppression de mon compte</div>
+    <ul style="font-size:13px;color:var(--gray-600);line-height:1.6;margin:0 0 14px 18px;padding:0;">
+      <li>Vos annonces et excursions seront <strong>suspendues tout de suite</strong>.</li>
+      <li>Vos réservations en cours (voyageur ou hôte) se déroulent normalement.</li>
+      <li>L'équipe MyTunigo supprime le compte une fois tout terminé : profil, photo et coordonnées effacés, annonces retirées. Les réservations passées, avis et messages restent visibles pour l'autre personne, au nom « Utilisateur supprimé ».</li>
+      <li>Vous pouvez annuler la demande tant qu'elle n'est pas traitée.</li>
+    </ul>
+    <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Motif (facultatif)</label>
+    <select id="acctdel-reason" onchange="document.getElementById('acctdel-other').style.display=this.value==='Autre'?'block':'none'" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">
+      <option value="">— Choisir —</option>${ACCT_DEL_REASONS.map(r=>`<option>${escHtml(r)}</option>`).join('')}
+    </select>
+    <textarea id="acctdel-other" maxlength="400" placeholder="Précisez (facultatif)" style="display:none;width:100%;min-height:64px;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;font-family:inherit;"></textarea>
+    <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin:6px 0 4px;">Pour confirmer, tapez SUPPRIMER</label>
+    <input id="acctdel-confirm" autocomplete="off" oninput="document.getElementById('acctdel-go').disabled=this.value.trim().toUpperCase()!=='SUPPRIMER'" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;">
+      <button onclick="document.getElementById('acctdel-ov').remove()" style="flex:1;padding:11px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">Retour</button>
+      <button id="acctdel-go" disabled onclick="submitAccountDeletion()" style="flex:1;padding:11px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:800;cursor:pointer;">Envoyer la demande</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+async function submitAccountDeletion(){
+  const btn = document.getElementById('acctdel-go');
+  if(document.getElementById('acctdel-confirm')?.value.trim().toUpperCase()!=='SUPPRIMER') return;
+  let reason = document.getElementById('acctdel-reason')?.value || '';
+  const other = document.getElementById('acctdel-other')?.value?.trim() || '';
+  if(reason==='Autre') reason = other ? 'Autre : '+other : 'Autre';
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
+  const { error } = await _sb.rpc('fn_request_account_deletion', { p_reason: reason || null });
+  if(error){
+    if(btn){ btn.disabled = false; btn.textContent = 'Envoyer la demande'; }
+    showToast(/ALREADY_PENDING/.test(error.message) ? 'Une demande est déjà en cours.' : 'Erreur : '+error.message, 'var(--red)');
+    return;
+  }
+  document.getElementById('acctdel-ov')?.remove();
+  // E-mail à l'administrateur (best-effort : la demande est enregistrée en base)
+  await sendDeletionRequestEmail('compte', '', auth.currentUser.id);
+  (appState.myAnnonces||[]).forEach(a=>{ if(a.status==='publiée'||a.status==='en attente') a.status='suspendue'; });
+  (appState.myExcursions||[]).forEach(e=>{ if(e.status==='publiée'||e.status==='en attente') e.status='suspendue'; });
+  showToast('✅ Demande envoyée. Vos annonces sont suspendues.', 'var(--green)');
+  await loadAccountDeletion();
+}
+
+async function cancelAccountDeletion(){
+  if(!confirm('Annuler votre demande de suppression ?\n\nVos annonces et excursions suspendues par la demande seront remises en ligne.')) return;
+  const { error } = await _sb.rpc('fn_cancel_account_deletion');
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast('✅ Demande annulée. Vos annonces sont de nouveau en ligne.', 'var(--green)');
+  await loadAccountDeletion();
 }
 
 /* ===================== EXCURSIONS DATA ===================== */
@@ -8029,7 +8150,7 @@ async function excToggleStatus(id){
   if(!e) return;
   const newStatus = e.status==='suspendue' ? 'publiée' : 'suspendue';
   const { error } = await _sb.from('excursions').update({status:newStatus}).eq('id', id);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  if(error){ showToast(friendlyDbError('Erreur : '+error.message),'var(--red)'); return; }
   e.status = newStatus;
 
   // Répercute immédiatement le changement sur le tableau public (page "Excursions"),
@@ -8699,7 +8820,7 @@ async function excFormPublish(){
 
   try {
     const { data: excIns, error } = await _sb.from('excursions').insert([payload]).select('id').single();
-    if(error) throw new Error(error.message);
+    if(error) throw new Error(friendlyDbError(error.message));
 
     // E-mails admin (à valider) + accusé de réception au prestataire
     if(excIns?.id) await callNotifyAdmin('submitted','excursion',excIns.id);
@@ -12569,6 +12690,7 @@ function buildAdminDashboard(){
         ['tech','⚙️ Technique'],
         ['annonces','📋 Annonces'],
         ['excursions','✈️ Excursions'],
+        ['comptes','🗑️ Comptes'],
       ];
       tabs.forEach(([id,label],i)=>{
         const btn = document.createElement('button');
@@ -12666,6 +12788,84 @@ function switchAdminTab(tab){
   else if(tab==='tech') content.innerHTML = buildAdminTech(KPIS,fmt,fmtPct,trend,kpiCard,secHeader);
   else if(tab==='annonces') buildAdminAnnonces(content);
   else if(tab==='excursions') buildAdminExcursions(content);
+  else if(tab==='comptes') buildAdminAccountDeletions(content);
+}
+
+/* ---- Admin : demandes de suppression de compte ---- */
+async function buildAdminAccountDeletions(content){
+  content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">⏳ Chargement des demandes…</div>';
+  const { data, error } = await _sb.rpc('fn_admin_account_deletions');
+  if(error){ content.innerHTML = '<div style="padding:24px;color:#cc0000;">Erreur : '+escHtml(error.message)+'</div>'; return; }
+  const rows = Array.isArray(data) ? data : [];
+  const pending = rows.filter(r=>r.status==='en attente');
+  const done = rows.filter(r=>r.status!=='en attente');
+  const stLabel = {'traitée':['✅ Supprimé','#0d9e6e','#e8f9f0'],'refusée':['⛔ Refusée','#cc0000','#fff0f0'],'annulée':['↩️ Annulée par l\'utilisateur','#6b7280','#f5f5f5']};
+  const card = r => {
+    const b = r.blockers||{};
+    const blocked = b.total>0;
+    return `<div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;padding:16px 18px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#111827;">${escHtml(r.name||'—')}</div>
+          <div style="font-size:13px;color:#6b7280;">${escHtml(r.email||'—')} · demandé le ${acctDelFmtDate(r.created_at)}</div>
+        </div>
+        <div style="font-size:12px;color:#6b7280;text-align:right;">${r.annonces} annonce(s) · ${r.excursions} excursion(s)<br>${r.suspended} suspendue(s) par la demande</div>
+      </div>
+      <div style="font-size:13px;margin:10px 0;color:#374151;"><strong>Motif :</strong> ${escHtml(r.reason||'Non précisé')}</div>
+      ${blocked
+        ? `<div style="background:#fff8e0;border:1px solid #ffe080;border-radius:8px;padding:9px 12px;font-size:13px;color:#7a5a00;margin-bottom:12px;">⏳ Suppression possible après le <strong>${acctDelFmtDate(b.until)}</strong> : ${acctDelBlockersText(b, true)}.</div>`
+        : `<div style="background:#e8f9f0;border:1px solid #a0e8c8;border-radius:8px;padding:9px 12px;font-size:13px;color:#0a6b47;margin-bottom:12px;">✅ Aucune réservation à venir. Vérifiez les éventuels reversements à l'hôte avant de valider.</div>`}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button ${blocked?'disabled':''} onclick="adminFinalizeAccountDeletion('${r.id}')" style="background:${blocked?'#e5e7eb':'#cc0000'};color:${blocked?'#9ca3af':'#fff'};padding:9px 16px;border-radius:8px;border:none;font-size:13px;font-weight:800;cursor:${blocked?'not-allowed':'pointer'};">🗑️ Supprimer définitivement</button>
+        <button onclick="adminRefuseAccountDeletion('${r.id}')" style="background:#fff;color:#374151;padding:9px 16px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-weight:700;cursor:pointer;">Refuser la demande</button>
+      </div>
+    </div>`;
+  };
+  content.innerHTML = `
+    <div style="font-size:18px;font-weight:800;margin-bottom:4px;">🗑️ Demandes de suppression de compte</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">Le compte de connexion, le profil et les coordonnées sont effacés ; les annonces et excursions sont archivées. Réservations, avis et messages restent visibles pour l'autre partie, au nom « Utilisateur supprimé ».</div>
+    ${pending.length ? pending.map(card).join('') : '<div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;padding:24px;text-align:center;color:#6b7280;margin-bottom:16px;">Aucune demande en attente.</div>'}
+    ${done.length ? `<div style="font-size:14px;font-weight:800;margin:20px 0 8px;">Historique (6 derniers mois)</div>
+      <div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;overflow:hidden;">
+      ${done.map(r=>{ const l = stLabel[r.status]||[r.status,'#6b7280','#f5f5f5'];
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:13px;">
+          <div><strong>${escHtml(r.name||'—')}</strong> <span style="color:#6b7280;">· demandé le ${acctDelFmtDate(r.created_at)}${r.processed_at?' · traité le '+acctDelFmtDate(r.processed_at):''}</span>${r.admin_note?`<div style="color:#6b7280;font-size:12px;">${escHtml(r.admin_note)}</div>`:''}</div>
+          <span style="background:${l[2]};color:${l[1]};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap;">${l[0]}</span></div>`; }).join('')}
+      </div>` : ''}`;
+}
+
+async function adminFinalizeAccountDeletion(id){
+  if(!confirm('Supprimer définitivement ce compte ?\n\nLe compte de connexion, le profil et les coordonnées seront effacés, les annonces et excursions archivées. Cette action est irréversible.')) return;
+  showToast('⏳ Suppression en cours…','var(--blue)');
+  try{
+    const { data: { session } } = await _sb.auth.getSession();
+    const resp = await fetch('https://fxbetakueqkzipsqvtck.supabase.co/functions/v1/delete-account', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(session?.access_token||'') },
+      body: JSON.stringify({ request_id: id })
+    });
+    const out = await resp.json().catch(()=>({}));
+    if(!resp.ok){
+      const msg = out.error==='blocked' ? 'Réservations encore à venir : '+acctDelBlockersText(out.blockers, true)
+        : out.error==='not_pending' ? 'Cette demande a déjà été traitée.'
+        : (out.detail||out.error||('HTTP '+resp.status));
+      showToast('Erreur : '+msg,'var(--red)');
+    } else {
+      showToast('✅ Compte supprimé et anonymisé','var(--green)');
+    }
+  } catch(e){ showToast('Erreur : '+e.message,'var(--red)'); }
+  const c = document.getElementById('admin-content');
+  if(c) buildAdminAccountDeletions(c);
+}
+
+async function adminRefuseAccountDeletion(id){
+  const note = prompt("Motif du refus (affiché à l'utilisateur dans son profil) :", '');
+  if(note===null) return;
+  const { error } = await _sb.rpc('fn_admin_refuse_account_deletion', { p_request: id, p_note: note });
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast("Demande refusée : les annonces de l'utilisateur sont remises en ligne.",'var(--gray-700)');
+  const c = document.getElementById('admin-content');
+  if(c) buildAdminAccountDeletions(c);
 }
 
 let _adminAnnoncesCache = [];
@@ -12697,8 +12897,8 @@ async function buildAdminAnnonces(content){
     return;
   }
 
-  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
-  const statusBg={'en attente':'#fff8e0','publiée':'#e8f9f0','rejetée':'#fff0f0','suspendue':'#f5f5f5'};
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280','supprimée':'#9ca3af'};
+  const statusBg={'en attente':'#fff8e0','publiée':'#e8f9f0','rejetée':'#fff0f0','suspendue':'#f5f5f5','supprimée':'#f3f4f6'};
 
   content.innerHTML = `
     <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
@@ -12883,7 +13083,7 @@ function renderAdminAnnonceModal(id){
   overlay.className = 'modal-overlay';
   overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
 
-  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280','supprimée':'#9ca3af'};
   const esc = v => (v===undefined||v===null) ? '' : String(v).replace(/"/g,'&quot;');
 
   const field = (label, value) => `
@@ -13101,8 +13301,8 @@ async function buildAdminExcursions(content){
     return;
   }
 
-  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
-  const statusBg={'en attente':'#fff8e0','publiée':'#e8f9f0','rejetée':'#fff0f0','suspendue':'#f5f5f5'};
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280','supprimée':'#9ca3af'};
+  const statusBg={'en attente':'#fff8e0','publiée':'#e8f9f0','rejetée':'#fff0f0','suspendue':'#f5f5f5','supprimée':'#f3f4f6'};
 
   content.innerHTML = `
     <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
@@ -13210,7 +13410,7 @@ function renderAdminExcursionModal(id){
   overlay.className = 'modal-overlay';
   overlay.onclick = e => { if(e.target===overlay) root.innerHTML=''; };
 
-  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280'};
+  const statusColor={'en attente':'#e6a800','publiée':'#0d9e6e','rejetée':'#cc0000','suspendue':'#6b7280','supprimée':'#9ca3af'};
   const esc = v => (v===undefined||v===null) ? '' : String(v).replace(/"/g,'&quot;');
 
   const field = (label, value) => `
