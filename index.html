@@ -1949,7 +1949,7 @@ function isWeakPasswordError(error){
 async function handleRegister(){
   const first   = document.getElementById('rf-first')?.value?.trim();
   const last    = document.getElementById('rf-last')?.value?.trim();
-  const email   = document.getElementById('rf-email')?.value?.trim();
+  const email   = document.getElementById('rf-email')?.value?.trim().toLowerCase();
   const pw      = document.getElementById('rf-password')?.value;
   const confirm = document.getElementById('rf-confirm')?.value;
   const terms   = document.getElementById('rf-terms')?.checked;
@@ -7271,6 +7271,11 @@ async function saveProfile(){
   const birthdate = document.getElementById('pf-birth')?.value||null;
   const country   = document.getElementById('pf-country')?.value||null;
   const bio       = document.getElementById('pf-bio')?.value?.trim()||null;
+  // Un numéro = un seul compte (index unique profiles_phone_norm_key en base,
+  // sur la forme normalisée : +216 50 676 798 = 0021650676798 = 50 676 798).
+  if(phone && phone.replace(/\D/g,'').length < 8){
+    showToast('⚠️ Numéro de téléphone invalide (au moins 8 chiffres)','var(--red)');return;
+  }
 
   const btn = document.querySelector('button[onclick="saveProfile()"]');
   if(btn){btn.disabled=true;btn.textContent='⏳ Enregistrement…';}
@@ -7280,7 +7285,8 @@ async function saveProfile(){
   }).eq('id', u.id);
 
   if(dbErr){
-    showToast('Erreur : '+dbErr.message,'var(--red)');
+    const dupPhone = dbErr.code==='23505' && /phone/i.test(dbErr.message||'');
+    showToast(dupPhone ? '⚠️ Ce numéro de téléphone est déjà utilisé par un autre compte.' : 'Erreur : '+dbErr.message,'var(--red)');
     if(btn){btn.disabled=false;btn.textContent='💾 Enregistrer';}
     return;
   }
