@@ -4096,8 +4096,9 @@ async function pushOnAuthChange(){
   }catch(e){ console.warn('push sync', e.message); }
   renderPushUI();
 }
-function pushBannerDismissed(){ try{ return localStorage.getItem('mt_push_banner_off')==='1'; }catch(e){ return false; } }
-function dismissPushBanner(){ try{ localStorage.setItem('mt_push_banner_off','1'); }catch(e){} const b=document.getElementById('push-banner'); if(b) b.remove(); }
+// Bandeau fermé : il revient 3 jours plus tard tant que l'appareil n'est pas abonné
+function pushBannerDismissed(){ try{ const t=+localStorage.getItem('mt_push_banner_at')||0; return Date.now()-t < 3*86400000; }catch(e){ return false; } }
+function dismissPushBanner(){ try{ localStorage.setItem('mt_push_banner_at', String(Date.now())); }catch(e){} const b=document.getElementById('push-banner'); if(b) b.remove(); }
 function showPushIOSHelp(){
   const ov=document.createElement('div');
   ov.className='modal-overlay';
@@ -4116,30 +4117,36 @@ function showPushIOSHelp(){
   </div>`;
   document.body.appendChild(ov);
 }
+// Ligne « Notifications push » de la carte Préférences (état réel de l'appareil).
+// Pas de bouton « Désactiver » : tous les utilisateurs reçoivent les mêmes
+// informations (choix de communication du site).
 function pushCardHTML(){
   const st = pushState();
-  const txt = {
-    on: ['✅ Activées sur cet appareil', "Vous êtes prévenu des demandes, paiements, annulations et messages."],
-    off: ['Désactivées sur cet appareil', "Recevez une alerte dès qu'une demande, un paiement ou un message arrive, même site fermé."],
-    denied: ['⛔ Bloquées par le navigateur', "Autorisez les notifications pour mytunigo.com dans les réglages du navigateur, puis rechargez la page."],
-    'ios-install': ["📱 Installez d'abord MyTunigo", "Sur iPhone, ajoutez le site à l'écran d'accueil pour recevoir les notifications."],
-    unsupported: ['Non disponibles', "Ce navigateur ne prend pas en charge les notifications."]
+  const val = {
+    on: '✅ Activées sur cet appareil',
+    off: 'Pas encore activées sur cet appareil',
+    denied: '⛔ Bloquées par le navigateur',
+    'ios-install': "📱 Ajoutez d'abord MyTunigo à l'écran d'accueil",
+    unsupported: 'Non disponibles sur ce navigateur'
   }[st];
-  const btn = st==='on'
-    ? `<button onclick="disablePush()" style="background:var(--gray-100);color:var(--gray-700);border:1px solid var(--gray-300);border-radius:var(--r-md);padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;">Désactiver</button>`
-    : st==='off' ? `<button onclick="enablePush()" style="background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;">🔔 Activer</button>`
-    : st==='ios-install' ? `<button onclick="showPushIOSHelp()" style="background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;">Comment faire ?</button>` : '';
-  return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:18px 22px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-    <div style="font-size:26px;">🔔</div>
-    <div style="flex:1;min-width:200px;">
-      <div style="font-size:15px;font-weight:700;">Notifications · ${txt[0]}</div>
-      <div style="font-size:13px;color:var(--gray-500);margin-top:2px;">${txt[1]}</div>
+  const linkStyle = 'font-size:12px;color:var(--blue-l);background:none;border:none;cursor:pointer;font-weight:700;white-space:nowrap;';
+  const btn = st==='off' ? `<button onclick="enablePush()" style="${linkStyle}">🔔 Activer</button>`
+    : st==='ios-install' ? `<button onclick="showPushIOSHelp()" style="${linkStyle}">Comment faire ?</button>`
+    : st==='denied' ? `<button onclick="showToast('Ouvrez les réglages du navigateur (icône 🔒 à gauche de l\\'adresse) → Notifications → Autoriser, puis rechargez la page.','var(--blue)')" style="${linkStyle}">Débloquer</button>`
+    : '';
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span>📱</span>
+      <div>
+        <div style="font-size:13px;font-weight:600;">Notifications push</div>
+        <div style="font-size:12px;color:${st==='on'?'var(--green)':'var(--gray-500)'};">${val}</div>
+      </div>
     </div>${btn}</div>`;
 }
 function renderPushUI(){
   const card=document.getElementById('profil-push');
   if(card) card.innerHTML = pushCardHTML();
-  // Bandeau d'invitation (une seule fois, compte connecté, appareil non abonné)
+  // Bandeau d'invitation (compte connecté, appareil non abonné ; revient 3 jours après fermeture)
   const old=document.getElementById('push-banner');
   const st = auth.currentUser ? pushState() : null;
   const want = st && (st==='off' || (st==='ios-install' && window.innerWidth<820)) && !pushBannerDismissed();
@@ -7008,9 +7015,6 @@ function buildProfil(){
         </div>`).join('')}
     </div>
 
-    <!-- Notifications push de cet appareil -->
-    <div id="profil-push">${pushCardHTML()}</div>
-
     <!-- Avis des hôtes (rempli après chargement) -->
     <div id="profil-host-reviews"></div>
 
@@ -7090,21 +7094,17 @@ function buildProfil(){
           <div style="font-size:16px;font-weight:700;margin-bottom:16px;">⚙️ Préférences</div>
           <div style="display:flex;flex-direction:column;gap:10px;">
             ${[
-              ['🌍','Langue','Français'],
               ['💶','Devise','EUR — Euro'],
-              ['🔔','Notifications email','Activées'],
-              ['📱','Notifications push','Désactivées'],
+              ['🔔','Notifications e-mail','✅ Activées : demandes, paiements, messages, alertes de prix'],
             ].map(([icon,label,val])=>`
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--gray-100);">
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <span>${icon}</span>
-                  <div>
-                    <div style="font-size:13px;font-weight:600;">${label}</div>
-                    <div style="font-size:12px;color:var(--gray-500);">${val}</div>
-                  </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--gray-100);">
+                <span>${icon}</span>
+                <div>
+                  <div style="font-size:13px;font-weight:600;">${label}</div>
+                  <div style="font-size:12px;color:var(--gray-500);">${val}</div>
                 </div>
-                <button onclick="showToast('⚙️ Paramètres bientôt disponibles','var(--blue)')" style="font-size:12px;color:var(--blue-l);background:none;border:none;cursor:pointer;font-weight:600;">Changer</button>
               </div>`).join('')}
+            <div id="profil-push">${pushCardHTML()}</div>
           </div>
         </div>
 
