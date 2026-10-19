@@ -7398,15 +7398,17 @@ function openAccountDeletionDialog(){
       <li>Vous pouvez annuler la demande tant qu'elle n'est pas traitée.</li>
     </ul>
     <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Motif (facultatif)</label>
-    <select id="acctdel-reason" onchange="document.getElementById('acctdel-other').style.display=this.value==='Autre'?'block':'none'" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">
+    <select id="acctdel-reason" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:12px;">
       <option value="">— Choisir —</option>${ACCT_DEL_REASONS.map(r=>`<option>${escHtml(r)}</option>`).join('')}
     </select>
-    <textarea id="acctdel-other" maxlength="400" placeholder="Précisez (facultatif)" style="display:none;width:100%;min-height:64px;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;font-family:inherit;"></textarea>
+    <label for="acctdel-other" style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Commentaire (facultatif)</label>
+    <textarea id="acctdel-other" maxlength="400" placeholder="Expliquez-nous votre motif : cela nous aide à améliorer MyTunigo." oninput="document.getElementById('acctdel-count').textContent=this.value.length+' / 400'" style="width:100%;min-height:80px;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+    <div id="acctdel-count" style="font-size:11px;color:var(--gray-400);text-align:right;margin-bottom:8px;">0 / 400</div>
     <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin:6px 0 4px;">Pour confirmer, tapez SUPPRIMER</label>
-    <input id="acctdel-confirm" autocomplete="off" oninput="document.getElementById('acctdel-go').disabled=this.value.trim().toUpperCase()!=='SUPPRIMER'" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:16px;">
+    <input id="acctdel-confirm" autocomplete="off" oninput="const g=document.getElementById('acctdel-go');g.disabled=this.value.trim().toUpperCase()!=='SUPPRIMER';g.style.opacity=g.disabled?'.45':'1';g.style.cursor=g.disabled?'not-allowed':'pointer';" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:16px;">
     <div style="display:flex;gap:10px;">
       <button onclick="document.getElementById('acctdel-ov').remove()" style="flex:1;padding:11px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">Retour</button>
-      <button id="acctdel-go" disabled onclick="submitAccountDeletion()" style="flex:1;padding:11px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:800;cursor:pointer;">Envoyer la demande</button>
+      <button id="acctdel-go" disabled onclick="submitAccountDeletion()" style="flex:1;padding:11px;background:var(--red);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:800;cursor:not-allowed;opacity:.45;">Envoyer la demande</button>
     </div>
   </div>`;
   document.body.appendChild(ov);
@@ -7417,7 +7419,8 @@ async function submitAccountDeletion(){
   if(document.getElementById('acctdel-confirm')?.value.trim().toUpperCase()!=='SUPPRIMER') return;
   let reason = document.getElementById('acctdel-reason')?.value || '';
   const other = document.getElementById('acctdel-other')?.value?.trim() || '';
-  if(reason==='Autre') reason = other ? 'Autre : '+other : 'Autre';
+  // Motif choisi + commentaire libre, enregistrés ensemble (500 caractères max en base)
+  reason = [reason, other].filter(Boolean).join(' — ');
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
   const { error } = await _sb.rpc('fn_request_account_deletion', { p_reason: reason || null });
   if(error){
