@@ -1,10 +1,12 @@
 // =====================================================================
 // MyTunigo — Edge Function "notify-deletion-request"
 // Prévient l'administrateur qu'un hôte demande la suppression définitive
-// d'une annonce ou d'une excursion.
+// d'une annonce ou d'une excursion, ou qu'un utilisateur demande la
+// suppression de son compte.
 //
-// Appel (POST JSON, avec le JWT de l'hôte connecté) :
-//   { item_type: "annonce" | "excursion", item_id }
+// Appel (POST JSON, avec le JWT de l'utilisateur connecté) :
+//   { item_type: "annonce" | "excursion" | "compte", item_id }
+//   (pour "compte", item_id = identifiant de l'utilisateur lui-même)
 //
 // Sécurité : la demande doit exister dans la table deletion_requests
 // (créée par l'hôte juste avant, statut 'en attente', il y a moins de
@@ -51,18 +53,20 @@ Deno.serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     let body: any = {};
     try { body = await req.json(); } catch { /* corps vide */ }
-    const itemType = body.item_type === "excursion" ? "excursion" : body.item_type === "annonce" ? "annonce" : "";
+    const itemType = ["annonce", "excursion", "compte"].includes(body.item_type) ? String(body.item_type) : "";
     const itemId = String(body.item_id ?? "");
     if (!itemType || !itemId) return json({ error: "item_type/item_id manquant" }, 400);
 
     // 2. La demande, enregistrée par cet hôte il y a moins de 10 min
     const { data: reqRow, error: readErr } = await admin.from("deletion_requests")
-      .select("item_name,host_email,created_at")
+      .select("item_name,host_email,created_at,reason,details")
       .eq("item_type", itemType).eq("item_id", itemId).eq("host_id", user.id).eq("status", "en attente")
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (readErr) return json({ error: readErr.message }, 500);
     if (!reqRow) return json({ error: "not_found" }, 404);
     if (Date.now() - new Date(reqRow.created_at).getTime() > MAX_AGE_MS) return json({ error: "too_old" }, 409);
+
+    if (itemType === "compte") return await accountRequestMail(user, reqRow);
 
     // 3. Contexte, relu en base
     const isExc = itemType === "excursion";
@@ -95,20 +99,69 @@ Deno.serve(async (req) => {
     </div>
   </div></body></html>`;
 
-    if (!RESEND_API_KEY) return json({ error: "RESEND_API_KEY manquant dans les secrets" }, 500);
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to: [ADMIN_EMAIL], subject: `🗑️ Demande de suppression — ${itemName}`.slice(0, 150), html }),
-    });
-    if (!r.ok) {
-      const txt = await r.text();
-      console.error("Resend", r.status, txt);
-      return json({ error: "mail_failed", detail: `Resend ${r.status}: ${txt}` }, 502);
-    }
-    return json({ ok: true });
+    return await sendAdminMail(`🗑️ Demande de suppression — ${itemName}`, html);
   } catch (err) {
     console.error("notify-deletion-request:", (err as Error).message);
     return json({ error: (err as Error).message }, 500);
   }
 });
+
+async function sendAdminMail(subject: string, html: string): Promise<Response> {
+  if (!RESEND_API_KEY) return json({ error: "RESEND_API_KEY manquant dans les secrets" }, 500);
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: FROM, to: [ADMIN_EMAIL], subject: subject.slice(0, 150), html }),
+  });
+  if (!r.ok) {
+    const txt = await r.text();
+    console.error("Resend", r.status, txt);
+    return json({ error: "mail_failed", detail: `Resend ${r.status}: ${txt}` }, 502);
+  }
+  return json({ ok: true });
+}
+
+// Demande de suppression de compte : nom, motif, annonces suspendues et ce
+// qui reste à venir, relus en base.
+// deno-lint-ignore no-explicit-any
+async function accountRequestMail(user: { id: string; email?: string }, reqRow: any): Promise<Response> {
+  const [{ data: prof }, { data: blk }] = await Promise.all([
+    admin.from("profiles").select("first_name,last_name").eq("id", user.id).maybeSingle(),
+    admin.rpc("fn_account_deletion_blockers", { p_user: user.id }),
+  ]);
+  const name = [prof?.first_name, prof?.last_name].filter(Boolean).join(" ") || reqRow.item_name || "—";
+  const suspended = Array.isArray(reqRow.details?.suspended) ? reqRow.details.suspended.length : 0;
+  // deno-lint-ignore no-explicit-any
+  const b: any = blk ?? {};
+  const fmt = (d: string) => d.split("-").reverse().join("/");
+  const pending = Number(b.total ?? 0) > 0
+    ? `⏳ Suppression possible après le ${fmt(String(b.until))} : ${[
+        b.guest_stays ? `${b.guest_stays} séjour(s) comme voyageur` : "",
+        b.host_stays ? `${b.host_stays} séjour(s) comme hôte` : "",
+        b.guest_excursions ? `${b.guest_excursions} excursion(s) comme voyageur` : "",
+        b.host_excursions ? `${b.host_excursions} excursion(s) comme organisateur` : "",
+      ].filter(Boolean).join(", ")}.`
+    : "✅ Aucune réservation à venir : la suppression peut être validée.";
+  const row = (k: string, v: string) =>
+    `<tr><td style="padding:6px 0;color:#6c757d;width:130px;vertical-align:top;">${k}</td><td style="padding:6px 0;font-weight:600;">${v}</td></tr>`;
+
+  const html = `<!doctype html><html><body style="margin:0;background:#f3f6fa;font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#212529;">
+  <div style="max-width:560px;margin:0 auto;padding:24px 16px;">
+    <div style="background:#003580;color:#fff;border-radius:12px 12px 0 0;padding:20px 24px;">
+      <div style="font-size:20px;font-weight:800;">My<span style="color:#FEBB02;">Tunigo</span></div>
+      <div style="font-size:18px;font-weight:700;margin-top:8px;">🗑️ Demande de suppression de compte</div>
+    </div>
+    <div style="background:#fff;border-radius:0 0 12px 12px;padding:24px;border:1px solid #e9ecef;border-top:none;">
+      <div style="font-size:15px;line-height:1.65;margin-bottom:18px;">Un utilisateur demande la suppression de son compte. Rien n'est supprimé sans votre validation.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8f9fa;border-radius:8px;"><tbody style="display:block;padding:12px 14px;">
+        ${row("Utilisateur", `${esc(name)}<br>${esc(user.email ?? reqRow.host_email ?? "—")}`)}
+        ${row("Motif", esc(reqRow.reason || "Non précisé"))}
+        ${row("Suspendues", `${suspended} annonce(s) / excursion(s)`)}
+      </tbody></table>
+      <div style="font-size:14px;line-height:1.6;margin-top:16px;">${esc(pending)}</div>
+      <div style="text-align:center;margin:24px 0 8px;"><a href="${SITE}/?admin=1" style="display:inline-block;background:#cc0000;color:#fff;text-decoration:none;font-weight:800;font-size:16px;padding:13px 28px;border-radius:8px;">Traiter la demande</a></div>
+      <div style="font-size:13px;color:#6c757d;line-height:1.6;margin-top:16px;">Tableau de bord admin → onglet « 🗑️ Comptes ».</div>
+    </div>
+  </div></body></html>`;
+  return await sendAdminMail(`🗑️ Suppression de compte demandée — ${name}`, html);
+}
