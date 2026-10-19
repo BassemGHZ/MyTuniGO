@@ -6581,29 +6581,29 @@ function buildMesAnnonces(){
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-              <button onclick="navigate('excursion-requests')"
-                style="background:${e.pendingCount?'#fff8e0':'var(--gray-50)'};color:${e.pendingCount?'#a07000':'var(--gray-600)'};padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid ${e.pendingCount?'#f0d080':'var(--gray-200)'};cursor:pointer;display:flex;align-items:center;gap:6px;">
+<button onclick="navigate('excursion-requests')"
+                style="background:#e8590c;color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 📥 Demandes${e.pendingCount?` (${e.pendingCount})`:''}
               </button>
-              <button onclick="loadExcursionEdit(null,'${e.excursionId||e.id}')"
-                style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
-                ✏️ Modifier
-              </button>
-              ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excursionId||e.id}')" title="Aliya analyse votre excursion et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
-              <button onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})"
-                style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;">
-                👁️ Voir la fiche
-              </button>
-              <button onclick="navigate('excursion-form');appState.mesAnnoncesTab='excursions'"
+<button onclick="navigate('excursion-form');appState.mesAnnoncesTab='excursions'"
                 style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
                 📅 Calendrier
               </button>
-              <button onclick="excToggleStatus('${e.id}')"
+<button onclick="loadExcursionEdit(null,'${e.excursionId||e.id}')"
+                style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                ✏️ Modifier
+              </button>
+<button onclick="navigate('excursion-detail',{selectedExcursionId:'${e.id}'})"
+                style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;display:flex;align-items:center;gap:6px;">
+                👁️ Voir la fiche
+              </button>
+${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excursionId||e.id}')" title="Aliya analyse votre excursion et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
+<button onclick="excToggleStatus('${e.id}')"
                 style="background:#f0fdf4;color:#16a34a;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #86efac;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 ▶ ${e.status==='suspendue'?'Republier':'Suspendre'}
               </button>
-              <button onclick="requestExcursionDeletion('${e.id}')" title="La suppression définitive doit être validée par l'administrateur"
-                style="background:#fff;color:var(--gray-600);padding:8px 12px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">
+<button onclick="requestExcursionDeletion('${e.id}')" title="La suppression définitive doit être validée par l'administrateur"
+                style="margin-left:auto;background:#fff;color:var(--gray-600);padding:8px 12px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">
                 ✉️ Demander la suppression
               </button>
             </div>
@@ -10773,14 +10773,14 @@ function buildManageExcursions(){
               <span style="background:#f1f3f5;color:var(--gray-600);font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-left:4px;">${e.instant_book?'⚡ Réservation instantanée':'✋ Avec validation'}</span>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-              <button onclick="loadExcursionEdit(null,'${e.id}')" style="background:var(--blue);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;">✏️ Modifier</button>
-              ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.id}')" title="Aliya analyse votre excursion et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
               ${(()=>{
                 const n = e.instant_book ? 0 : (pendingMap[e.id]||0);
                 return n
                   ? `<button onclick="appState.excRequestsFilter='pending';navigate('excursion-requests')" title="${n} demande${n>1?'s':''} en attente de votre réponse" style="background:#fff8e0;color:#b45309;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #e6a800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">📥 Demandes <span style="background:#e6a800;color:#fff;min-width:20px;height:20px;padding:0 6px;border-radius:10px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;">${n}</span></button>`
-                  : `<button onclick="navigate('excursion-requests')" style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;">📥 Demandes</button>`;
+                  : `<button onclick="navigate('excursion-requests')" style="background:#e8590c;color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:none;cursor:pointer;">📥 Demandes</button>`;
               })()}
+              <button onclick="loadExcursionEdit(null,'${e.id}')" style="background:#fff;color:var(--blue);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--blue);cursor:pointer;">✏️ Modifier</button>
+              ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.id}')" title="Aliya analyse votre excursion et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
             </div>
           </div>
         </div>
