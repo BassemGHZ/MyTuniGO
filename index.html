@@ -2845,7 +2845,8 @@ function longStayPct(h, nights){
   if(nights>=LONG_STAY_MONTH_NIGHTS) pct = Math.max(pct, m);
   return Math.min(Math.max(pct,0),90);
 }
-function longStayTotal(h, nights, normalTotal){
+function longStayTotal(h, nights, normalTotal, excluded){
+  if(excluded) return normalTotal;
   const pct = longStayPct(h, nights);
   return pct>0 ? Math.round(normalTotal*(100-pct)/100) : normalTotal;
 }
@@ -2900,6 +2901,13 @@ async function loadResultsDatePromos(){
       discountAnnonceIds.add(r.annonce_id);
     }
   });
+  // Dates « sans réduction longs séjours » (table absente tant que le SQL n'est pas exécuté : ignoré)
+  try{
+    const { data: nl, error: nlErr } = await _sb.from('date_no_long_stay').select('annonce_id,date').gte('date', today);
+    const nlMap = {};
+    if(!nlErr) (nl||[]).forEach(r=>{ (nlMap[r.annonce_id] = nlMap[r.annonce_id] || new Set()).add(r.date); });
+    appState._resultsNoLongMap = nlMap;
+  }catch(e){ appState._resultsNoLongMap = {}; }
   appState._resultsDatePromoMap = map;
   appState._resultsDatePriceMap = priceMap;
   appState._resultsDatePromoBestPct = bestPct;
@@ -2917,6 +2925,8 @@ function computeResultsNightlyTotal(h, checkIn, checkOut){
   if(!h || !checkIn || !checkOut) return 0;
   const promos = (h.annonceId && appState._resultsDatePromoMap && appState._resultsDatePromoMap[h.annonceId]) || {};
   const prices = (h.annonceId && appState._resultsDatePriceMap && appState._resultsDatePriceMap[h.annonceId]) || {};
+  const noLong = (h.annonceId && appState._resultsNoLongMap && appState._resultsNoLongMap[h.annonceId]) || null;
+  let excluded = false;
   let total = 0, nightsN = 0;
   let d = new Date(checkIn);
   const end = new Date(checkOut);
@@ -2926,10 +2936,11 @@ function computeResultsNightlyTotal(h, checkIn, checkOut){
     // Prix fixe saisi par l'hôte pour cette date en priorité, sinon pourcentage
     // (pct>0 réduction, pct<0 majoration), sinon prix de base.
     total += guestNight(h, pct, prices[ds]);
+    if(noLong && noLong.has(ds)) excluded = true;
     nightsN++;
     d.setDate(d.getDate()+1);
   }
-  return longStayTotal(h, nightsN, total);
+  return longStayTotal(h, nightsN, total, excluded);
 }
 
 let _resultsMiniMap = null;
@@ -3023,6 +3034,8 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms, skipLong){
   if(!h || !checkIn || !checkOut) return 0;
   const promos = appState._bkDatePromos || {};
   const prices = appState._bkDatePrices || {};
+  const noLong = (appState._bkNoLongFor && appState._bkNoLongFor===h.annonceId) ? appState._bkNoLong : null;
+  let excluded = false;
   let total = 0, nightsN = 0;
   let d = new Date(checkIn);
   const end = new Date(checkOut);
@@ -3033,17 +3046,21 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms, skipLong){
     // pourcentage (pct>0 réduction, pct<0 majoration), sinon prix de base.
     const nightPrice = guestNight(h, pct, prices[ds]);
     total += nightPrice;
+    if(noLong && noLong.has(ds)) excluded = true;
     nightsN++;
     d.setDate(d.getDate()+1);
   }
-  return (skipLong ? total : longStayTotal(h, nightsN, total))*rooms;
+  return (skipLong ? total : longStayTotal(h, nightsN, total, excluded))*rooms;
 }
 // Détail pour l'affichage : total avant / après la réduction longs séjours.
 function longStayBreakdown(h, checkIn, checkOut, rooms){
   const before = computeNightlyTotal(h, checkIn, checkOut, rooms, true);
   const after  = computeNightlyTotal(h, checkIn, checkOut, rooms);
   const nights = Math.max(0, Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
-  return { before, after, saving: Math.max(0, before-after), pct: longStayPct(h, nights) };
+  const noLong = (appState._bkNoLongFor && appState._bkNoLongFor===h.annonceId) ? appState._bkNoLong : null;
+  let excluded = false;
+  if(noLong){ let d = new Date(checkIn); const end = new Date(checkOut); while(d<end){ if(noLong.has(localISODate(d))){ excluded = true; break; } d.setDate(d.getDate()+1); } }
+  return { before, after, saving: Math.max(0, before-after), pct: longStayPct(h, nights), excluded };
 }
 
 function galleryHtml(h){
@@ -3705,11 +3722,15 @@ function calcBkHTML(h){
   const origTotal = origSub + guestFee(origSub);
   const hasDiscount = origTotal > total;
   const lineLabel = multiRoom ? `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.` : `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''}`;
+  const excludedRow = (ls.excluded && longStayOffers(h).some(o=>n>=o.nights))
+    ? `<div style="background:#fff8e0;border:1px solid #f0d080;border-radius:var(--r-md);padding:8px 12px;margin:6px 0;font-size:12.5px;color:#7a5a00;line-height:1.4;">ℹ️ La réduction long séjour ne s'applique pas sur ces dates (période de forte demande).</div>`
+    : '';
   const savingRow = ls.saving>0
     ? `<div class="bk-row" style="color:var(--green);font-weight:700;gap:12px;"><span>🏷️ Réduction ${n}&nbsp;nuits (−${ls.pct}&nbsp;%)</span><span style="white-space:nowrap;flex-shrink:0;">−${ls.saving}&nbsp;€</span></div>`
     : '';
   return `<div class="bk-row"><span>${lineLabel}</span><span>${ls.before}€</span></div>
     ${savingRow}
+    ${excludedRow}
     ${longStayNudgeHTML(h, ci, co, rooms, n)}
     <div class="bk-row"><span>Taxes et frais</span><span>${taxes}€</span></div>
     <div class="bk-row total"><span>Total (${n} nuit${n>1?'s':''})</span><span>${hasDiscount?`<span style="text-decoration:line-through;color:#ffb3b3;font-size:14px;font-weight:600;margin-right:8px;">${origTotal}€</span>`:''}<span>${total}€</span></span></div>`;
@@ -11195,7 +11216,10 @@ let _hostCalAnnonceId = null;
 let _hostCalPromoMap = {}; // date -> % équivalent (positif = prix plus bas, négatif = prix plus haut)
 let _hostCalPriceMap = {}; // date -> prix par nuit fixé par l'hôte (price_override)
 let _hostCalStayMap = {}; // date -> {min_nights, max_nights} — règle de séjour imposée sur cette date précise
-let _calMode = 'block'; // 'block' | 'promo' | 'stay'
+let _calMode = 'block'; // 'block' | 'promo' | 'stay' | 'nolong'
+let _hostCalNoLong = new Set(); // dates sans réduction longs séjours (table date_no_long_stay)
+let _calNoLongSelection = new Set();
+let _calNoLongRangeStart = null;
 let _calPromoSelection = new Set();
 let _calStaySelection = new Set();
 let _calStayRangeStart = null;
@@ -11257,6 +11281,9 @@ function buildHostCalendar(){
       </button>
       <button onclick="setCalMode('stay')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='stay'?'#fff':'transparent'};color:${_calMode==='stay'?'#0d9488':'var(--gray-500)'};box-shadow:${_calMode==='stay'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
         <span style="font-size:16px;">🌙</span> Durée de séjour
+      </button>
+      <button onclick="setCalMode('nolong')" style="display:flex;align-items:center;gap:7px;padding:10px 22px;border-radius:999px;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s,color .15s,box-shadow .15s;background:${_calMode==='nolong'?'#fff':'transparent'};color:${_calMode==='nolong'?'#dc2626':'var(--gray-500)'};box-shadow:${_calMode==='nolong'?'0 2px 8px rgba(0,0,0,.10)':'none'};">
+        <span style="font-size:16px;">🚫</span> Sans réduction long séjour
       </button>
       <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;margin-left:4px;background:#e8f9f0;border:1px solid #a0e8c8;border-radius:999px;font-size:12px;font-weight:600;color:#0a6640;white-space:nowrap;">✅ Enregistrement automatique</div>
     </div>
@@ -11331,6 +11358,26 @@ function buildHostCalendar(){
     </div>
     ` : ''}
 
+    ${_calMode==='nolong' ? `
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:var(--r-lg);padding:18px 20px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#dc2626;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🚫</div>
+        <div style="flex:1;min-width:160px;">
+          <div id="nolong-selection-bar" style="font-size:14px;font-weight:800;color:var(--gray-800);">${_calNoLongSelection.size>0 ? _calNoLongSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée'}</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Cliquez une date de <strong>début</strong>, puis une date de <strong>fin</strong> (ou une seule date). Sur ces dates, vos réductions semaine / mois ne s'appliquent pas.</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px dashed #fca5a5;">
+        <button id="nolong-apply-btn" onclick="applyNoLongStay(true)" ${_calNoLongSelection.size===0?'disabled':''} style="background:#dc2626;color:#fff;padding:10px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:${_calNoLongSelection.size===0?'not-allowed':'pointer'};opacity:${_calNoLongSelection.size===0?'.5':'1'};">🚫 Désactiver la réduction sur ces dates</button>
+        <button id="nolong-restore-btn" onclick="applyNoLongStay(false)" ${_calNoLongSelection.size===0?'disabled':''} style="background:#fff;color:#dc2626;padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1.5px solid #dc2626;cursor:${_calNoLongSelection.size===0?'not-allowed':'pointer'};opacity:${_calNoLongSelection.size===0?'.5':'1'};">↺ Réactiver la réduction</button>
+        <button id="nolong-cancel-btn" onclick="cancelNoLongSelection()" style="background:#fff;color:var(--gray-600);padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid var(--gray-300);cursor:${_calNoLongSelection.size===0?'not-allowed':'pointer'};opacity:${_calNoLongSelection.size===0?'.5':'1'};">Annuler la sélection</button>
+      </div>
+    </div>
+    <div style="background:#f0f7ff;border-radius:var(--r-md);padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--blue);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:15px;flex-shrink:0;">💡</span><span>Si <strong>au moins une nuit</strong> du séjour d'un voyageur tombe sur une date marquée 🚫, aucune réduction longs séjours ne s'applique à son séjour. Vos pourcentages (${annonce?.weekly_discount_percent||0} % dès 7 nuits, ${annonce?.monthly_discount_percent||0} % dès 28 nuits) restent réglés dans « Modifier le prix ».</span>
+    </div>
+    ` : ''}
+
     <div>
       <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f0fdfa;border:1px solid #99e6db;border-radius:var(--r-md);padding:10px 14px;margin-bottom:18px;font-size:13px;color:var(--gray-700);">
@@ -11383,6 +11430,7 @@ function buildHostCalendar(){
       _hostCalPromoMap = {};
       _hostCalPriceMap = {};
       _hostCalStayMap = {};
+      _hostCalNoLong = new Set();
       if(_annIdNow){
         const _baseNow = (appState.myAnnonces.find(x=>x.id===_annIdNow)||{}).price_night||0;
         const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent,price_override').eq('annonce_id', _annIdNow);
@@ -11392,6 +11440,8 @@ function buildHostCalendar(){
         });
         const { data: stayRows } = await _sb.from('date_stay_rules').select('date,min_nights,max_nights').eq('annonce_id', _annIdNow);
         (stayRows||[]).forEach(r=>{ _hostCalStayMap[r.date] = {min:r.min_nights, max:r.max_nights}; });
+        const { data: noLongRows } = await _sb.from('date_no_long_stay').select('date').eq('annonce_id', _annIdNow);
+        _hostCalNoLong = new Set((noLongRows||[]).map(r=>r.date));
         // Dates bloquées par l'hôte : chargées depuis la base (table
         // blocked_dates) plutôt que de rester sur les données de démo
         // codées en dur dans calendarData — sans ça, un blocage ne
@@ -11429,7 +11479,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     const price     = cal.priceOverrides[dateStr];
     const promoPct  = _hostCalPromoMap[dateStr];
     const stayRule  = _hostCalStayMap[dateStr];
-    const isSelected = (_calMode==='promo' && _calPromoSelection.has(dateStr)) || (_calMode==='stay' && _calStaySelection.has(dateStr)) || (_calMode==='block' && _calBlockSelection.has(dateStr));
+    const isSelected = (_calMode==='promo' && _calPromoSelection.has(dateStr)) || (_calMode==='stay' && _calStaySelection.has(dateStr)) || (_calMode==='nolong' && _calNoLongSelection.has(dateStr)) || (_calMode==='block' && _calBlockSelection.has(dateStr));
     const clickable = !isPast && !isReserved && (_calMode==='block' || !isBlocked);
 
     const cell = document.createElement('div');
@@ -11447,7 +11497,7 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
       ';transition:background .15s,transform .1s;'+
       'background:'+bg+';color:'+color+';'+
       'border:'+(isToday?'2px solid var(--blue)':border)+';'+
-      'box-shadow:'+(isSelected?'inset 0 0 0 3px var(--blue)':'none')+';'+
+      'position:relative;box-shadow:'+(isSelected?'inset 0 0 0 3px var(--blue)':'none')+';'+
       'cursor:'+(clickable?'pointer':'not-allowed')+';';
 
     cell.textContent = day;
@@ -11473,10 +11523,18 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
       cell.appendChild(priceEl);
     }
 
+    if(_hostCalNoLong.has(dateStr) && !isPast){
+      const nl = document.createElement('span');
+      nl.textContent = '🚫'; nl.title = 'Sans réduction longs séjours';
+      nl.style.cssText = 'position:absolute;top:1px;right:3px;font-size:10px;line-height:1;';
+      cell.appendChild(nl);
+    }
+
     if(clickable){
       cell.addEventListener('click', function(){
         if(_calMode==='promo') togglePromoSelection(this.dataset.date);
         else if(_calMode==='stay') toggleStaySelection(this.dataset.date);
+        else if(_calMode==='nolong') toggleNoLongSelection(this.dataset.date);
         else toggleBlockSelection(this.dataset.date);
       });
     } else if(isReserved){
@@ -11570,6 +11628,15 @@ function refreshHostCalendarLight(){
     cancelBtn.style.opacity = _calPromoSelection.size===0 ? '.5' : '1';
     cancelBtn.style.cursor = _calPromoSelection.size===0 ? 'not-allowed' : 'pointer';
   }
+  const nlBar = document.getElementById('nolong-selection-bar');
+  if(nlBar) nlBar.textContent = _calNoLongSelection.size>0 ? _calNoLongSelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée';
+  ['nolong-apply-btn','nolong-restore-btn','nolong-cancel-btn'].forEach(id=>{
+    const b = document.getElementById(id);
+    if(!b) return;
+    if(id!=='nolong-cancel-btn') b.disabled = _calNoLongSelection.size===0;
+    b.style.opacity = _calNoLongSelection.size===0 ? '.5' : '1';
+    b.style.cursor = _calNoLongSelection.size===0 ? 'not-allowed' : 'pointer';
+  });
   const stayBar = document.getElementById('stay-selection-bar');
   if(stayBar) stayBar.textContent = _calStaySelection.size>0 ? _calStaySelection.size+' date(s) sélectionnée(s)' : 'Aucune date sélectionnée';
   const stayApplyBtn = document.getElementById('stay-apply-btn');
@@ -11593,6 +11660,8 @@ function setCalMode(mode){
   _calPromoRangeStart = null;
   _calStaySelection = new Set();
   _calStayRangeStart = null;
+  _calNoLongSelection = new Set();
+  _calNoLongRangeStart = null;
   render();
 }
 
@@ -11722,6 +11791,61 @@ function toggleStaySelection(dateStr){
       _calStayRangeStart = null;
     }
   }
+  refreshHostCalendarLight();
+}
+
+// Mode « Sans réduction long séjour » : sélection de plage (clic début / fin)
+// puis désactivation / réactivation de la réduction sur ces dates.
+function toggleNoLongSelection(dateStr){
+  if(!_calNoLongRangeStart){
+    _calNoLongRangeStart = dateStr;
+    _calNoLongSelection = new Set([dateStr]);
+  } else {
+    const start = _calNoLongRangeStart;
+    if(dateStr === start){
+      _calNoLongRangeStart = null;
+    } else {
+      const from = start < dateStr ? start : dateStr;
+      const to   = start < dateStr ? dateStr : start;
+      const sel = new Set();
+      const today = localISODate(new Date());
+      let d = new Date(from);
+      const end = new Date(to);
+      while(d <= end){
+        const ds = localISODate(d);
+        if(ds >= today) sel.add(ds);
+        d.setDate(d.getDate()+1);
+      }
+      _calNoLongSelection = sel;
+      _calNoLongRangeStart = null;
+    }
+  }
+  refreshHostCalendarLight();
+}
+function cancelNoLongSelection(){
+  _calNoLongSelection = new Set();
+  _calNoLongRangeStart = null;
+  refreshHostCalendarLight();
+}
+async function applyNoLongStay(disable){
+  if(_calNoLongSelection.size===0){ showToast('Sélectionnez au moins une date','var(--red)'); return; }
+  const annId = appState.selectedAnnonceId || (appState.myAnnonces[0] && appState.myAnnonces[0].id);
+  if(!annId){ showToast('Aucune annonce sélectionnée','var(--red)'); return; }
+  const dates = [..._calNoLongSelection];
+  if(disable){
+    const rows = dates.map(d=>({ annonce_id: annId, date: d, host_id: auth.currentUser?.id }));
+    const { error } = await _sb.from('date_no_long_stay').upsert(rows, { onConflict: 'annonce_id,date' });
+    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+    dates.forEach(d=>_hostCalNoLong.add(d));
+    showToast('🚫 Réduction longs séjours désactivée sur '+dates.length+' date'+(dates.length>1?'s':''),'#dc2626');
+  } else {
+    const { error } = await _sb.from('date_no_long_stay').delete().eq('annonce_id', annId).in('date', dates);
+    if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+    dates.forEach(d=>_hostCalNoLong.delete(d));
+    showToast('↺ Réduction longs séjours réactivée sur '+dates.length+' date'+(dates.length>1?'s':''),'var(--gray-700)');
+  }
+  _calNoLongSelection = new Set();
+  _calNoLongRangeStart = null;
   refreshHostCalendarLight();
 }
 
@@ -11983,8 +12107,11 @@ async function initBlockedDatesPicker(hId){
   // durée min/max par défaut de l'annonce (h.minNights/h.maxNights) qui
   // continue de s'appliquer (voir goConfirm()).
   appState._bkDateStayRules = {};
+  appState._bkNoLong = new Set(); appState._bkNoLongFor = h.annonceId || null;
   if(h.annonceId){
     const todayStrPromo = localISODate(new Date());
+    const { data: noLongRows } = await _sb.from('date_no_long_stay').select('date').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
+    appState._bkNoLong = new Set((noLongRows||[]).map(r=>r.date));
     const { data: promoRows } = await _sb.from('date_discounts').select('date,discount_percent,price_override').eq('annonce_id', h.annonceId).gte('date', todayStrPromo);
     (promoRows||[]).forEach(r=>{
       appState._bkDatePromos[r.date] = datePriceRowPct(r, h.hostPrice!=null ? h.hostPrice : h.price);
