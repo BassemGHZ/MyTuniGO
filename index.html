@@ -1097,7 +1097,7 @@ let appState = {
   checkIn:'', checkOut:'', rooms:1,
   confirmedBooking:null,
   annoncePage:0,
-  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',cityCustom:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
+  annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',cityCustom:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,weekly_discount_percent:0,monthly_discount_percent:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
   annoncePublished:false,
   favorites:[],
   reservations:[
@@ -2828,20 +2828,24 @@ function datePriceNight(base, pct, override){
   if(override!=null && !isNaN(override)) return Math.round(override);
   return pct ? Math.round(base*(1-pct/100)) : base;
 }
-/* Tarifs semaine / mois (19/10) : dès 7 nuits, prix moyen par nuit = prix
-   semaine ÷ 7 ; dès 30 nuits, prix mois ÷ 30 (le plus bas des deux). Le
-   voyageur paie toujours le MOINS CHER entre le total au tarif nuit /
-   calendrier et le total au tarif semaine / mois. Par chambre ; même calcul
-   que fn_logement_pricing en base (qui fait foi). */
-function longStayTotal(h, nights, normalTotal){
-  const w = +(h && h.priceWeek) || 0, m = +(h && h.priceMonth) || 0;
-  let best = null;
-  if(nights>=30 && m>0) best = Math.round(m*nights/30);
-  if(nights>=7 && w>0){ const x = Math.round(w*nights/7); best = best==null ? x : Math.min(best, x); }
-  return (best!=null && best<normalTotal) ? best : normalTotal;
+/* Réductions longs séjours (19/10), modèle Airbnb / Booking : l'hôte règle
+   deux POURCENTAGES (annonces.weekly_discount_percent dès 7 nuits,
+   monthly_discount_percent dès 28 nuits). Le plus fort des pourcentages
+   applicables s'applique au total du séjour (prix du calendrier et promos
+   compris). Par chambre ; même calcul que fn_logement_pricing en base
+   (qui fait foi). */
+const LONG_STAY_WEEK_NIGHTS = 7, LONG_STAY_MONTH_NIGHTS = 28;
+function longStayPct(h, nights){
+  const w = +(h && h.weeklyDiscount) || 0, m = +(h && h.monthlyDiscount) || 0;
+  let pct = 0;
+  if(nights>=LONG_STAY_WEEK_NIGHTS) pct = Math.max(pct, w);
+  if(nights>=LONG_STAY_MONTH_NIGHTS) pct = Math.max(pct, m);
+  return Math.min(Math.max(pct,0),90);
 }
-// Pourcentage équivalent d'une ligne tarifaire (pour les badges PROMO /
-// haute saison) : calculé depuis le prix fixe et le prix de base actuel.
+function longStayTotal(h, nights, normalTotal){
+  const pct = longStayPct(h, nights);
+  return pct>0 ? Math.round(normalTotal*(100-pct)/100) : normalTotal;
+}
 function datePriceRowPct(row, base){
   if(row.price_override!=null && base>0) return Math.round((1-row.price_override/base)*100);
   return row.discount_percent||0;
@@ -5148,18 +5152,17 @@ function annStep2(ad){
 }
 
 function annStep3(ad){
-  if(!ad.price_week) ad.price_week=Math.round(ad.price_night*6.5);
-  if(!ad.price_month) ad.price_month=Math.round(ad.price_night*25);
   return `<div class="ann-card">
   <div class="ann-sec">Tarification</div>
   <div class="price-row-ann">
     <div class="price-card"><label>Prix par nuit *</label>
       <div class="pc-inp"><span>€</span><input id="af-price" type="number" min="1" value="${ad.price_night}" oninput="annSet('price_night',+this.value);refreshHostEarnBox('ann-earn-box',+this.value,'logement')"></div></div>
-    <div class="price-card"><label>Prix / semaine</label>
-      <div class="pc-inp"><span>€</span><input type="number" min="0" value="${ad.price_week}" oninput="annSet('price_week',+this.value)"></div></div>
-    <div class="price-card"><label>Prix / mois</label>
-      <div class="pc-inp"><span>€</span><input type="number" min="0" value="${ad.price_month}" oninput="annSet('price_month',+this.value)"></div></div>
+    <div class="price-card"><label>Réduction dès 7 nuits</label>
+      <div class="pc-inp"><span>%</span><input type="number" min="0" max="90" step="1" value="${ad.weekly_discount_percent||0}" oninput="annSet('weekly_discount_percent',Math.min(90,Math.max(0,Math.round(+this.value||0))))"></div></div>
+    <div class="price-card"><label>Réduction dès 28 nuits</label>
+      <div class="pc-inp"><span>%</span><input type="number" min="0" max="90" step="1" value="${ad.monthly_discount_percent||0}" oninput="annSet('monthly_discount_percent',Math.min(90,Math.max(0,Math.round(+this.value||0))))"></div></div>
   </div>
+  <p style="font-size:12px;color:var(--gray-500);margin-bottom:8px;">Réductions pour les longs séjours (facultatif, 0 = aucune) : le pourcentage s'applique au total du séjour. Ex. 10 % dès 7 nuits : 7 nuits à 90 € = 567 € au lieu de 630 €.</p>
   <p style="font-size:12px;color:var(--gray-500);margin-bottom:20px;">Hébergements similaires dans votre zone : entre <strong>65€</strong> et <strong>145€</strong> / nuit.</p>
   <div class="ann-sec">Politique d'annulation</div>
   <div class="cancel-grid">
@@ -5567,8 +5570,8 @@ async function annPublish(){
     lat: ad.lat ? parseFloat(ad.lat) : null,
     lng: ad.lng ? parseFloat(ad.lng) : null,
     price_night: ad.price_night || 0,
-    price_week: ad.price_week || 0,
-    price_month: ad.price_month || 0,
+    weekly_discount_percent: Math.min(90,Math.max(0,Math.round(+ad.weekly_discount_percent||0))),
+    monthly_discount_percent: Math.min(90,Math.max(0,Math.round(+ad.monthly_discount_percent||0))),
     stars: ad.stars || 3,
     rooms: ad.rooms || 1,
     bathrooms: ad.bathrooms || 1,
@@ -5640,7 +5643,7 @@ function buildAnnonceSuccess(){
         <div class="suc-ref">${ref}</div>
         <p style="font-size:13px;color:var(--gray-500);margin-top:10px;">Conservez cette référence pour suivre votre annonce.</p>
         <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;flex-wrap:wrap;">
-          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,price_week:0,price_month:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
+          <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,weekly_discount_percent:0,monthly_discount_percent:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
           <button onclick="navigate('home')" style="background:var(--gray-100);color:var(--gray-800);padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">🏠 Accueil</button>
         </div>
       </div>
@@ -6355,6 +6358,8 @@ function mapAnnonceRow(a, resaStats, viewStats, avisStats){
     bathrooms: a.bathrooms || 1,
     capacity: a.capacity || 2,
     price_night: a.price_night || 0,
+    weekly_discount_percent: a.weekly_discount_percent || 0,
+    monthly_discount_percent: a.monthly_discount_percent || 0,
     min_stay: a.min_stay || 1,
     max_stay: a.max_stay || 30,
     checkin: a.checkin || '15:00',
@@ -8825,6 +8830,15 @@ function openEditPriceModal(annonceId){
 
         <div style="margin-bottom:18px;">${mountHostEarnBox('edit-earn-box', +a.price_night||0, 'logement', '', a.founder_since)}</div>
 
+        <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:8px;">Réductions longs séjours (%)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
+          <div><div style="font-size:12px;color:var(--gray-600);margin-bottom:4px;">Dès 7 nuits</div>
+            <input type="number" id="edit-week-pct" min="0" max="90" step="1" value="${a.weekly_discount_percent||0}" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:16px;font-weight:700;text-align:center;"></div>
+          <div><div style="font-size:12px;color:var(--gray-600);margin-bottom:4px;">Dès 28 nuits</div>
+            <input type="number" id="edit-month-pct" min="0" max="90" step="1" value="${a.monthly_discount_percent||0}" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:16px;font-weight:700;text-align:center;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:18px;line-height:1.5;">0 = aucune réduction. S'applique au total du séjour, comme sur Airbnb ou Booking.</div>
+
         <button onclick="saveEditedPrice('${a.id}')" style="width:100%;background:var(--blue);color:#fff;padding:12px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">Enregistrer le nouveau prix</button>
       </div>
     </div>`;
@@ -8835,7 +8849,9 @@ async function saveEditedPrice(annonceId){
   const val = parseFloat(document.getElementById('edit-price-input')?.value);
   if(!val || val<=0){ showToast('⚠️ Entrez un prix valide','var(--red)'); return; }
 
-  const { error } = await _sb.from('annonces').update({ price_night: val }).eq('id', annonceId);
+  const pctOf = id => Math.min(90, Math.max(0, Math.round(parseFloat(document.getElementById(id)?.value)||0)));
+  const wk = pctOf('edit-week-pct'), mo = pctOf('edit-month-pct');
+  const { error } = await _sb.from('annonces').update({ price_night: val, weekly_discount_percent: wk, monthly_discount_percent: mo }).eq('id', annonceId);
   if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
 
   document.getElementById('modal-root').innerHTML = '';
@@ -8843,7 +8859,7 @@ async function saveEditedPrice(annonceId){
 
   // Met à jour immédiatement la copie en mémoire (hotels[]), sans attendre un rechargement
   const hEntry = hotels.find(x=>x.annonceId===annonceId);
-  if(hEntry) hEntry.price = val;
+  if(hEntry){ hEntry.price = val; hEntry.weeklyDiscount = wk; hEntry.monthlyDiscount = mo; }
 
   navigate('mesannonces');
 }
@@ -12698,8 +12714,8 @@ function renderAdminAnnonceModal(id){
       ${field("Nom de l'hébergement", a.name)}
       ${field('Type', a.type_label||a.type)}
       ${field('Prix / nuit', (a.price_night||0)+'€')}
-      ${field('Prix / semaine', a.price_week ? a.price_week+'€' : '—')}
-      ${field('Prix / mois', a.price_month ? a.price_month+'€' : '—')}
+      ${field('Réduction dès 7 nuits', a.weekly_discount_percent ? a.weekly_discount_percent+' %' : '—')}
+      ${field('Réduction dès 28 nuits', a.monthly_discount_percent ? a.monthly_discount_percent+' %' : '—')}
       ${field('Ville', a.city)}
       ${field('Pays', a.country)}
       ${field('Adresse', a.address)}
@@ -14153,8 +14169,8 @@ async function loadPublishedAnnonces(){
         reviews: rs ? rs.count : 0,
         price: a.price_night || 0,       // prix par nuit fixé par l'hôte (affiché au voyageur)
         hostPrice: a.price_night || 0,
-        priceWeek: +a.price_week || 0,   // tarif 7 nuits (appliqué dès 7 nuits, voir longStayTotal)
-        priceMonth: +a.price_month || 0, // tarif 30 nuits (appliqué dès 30 nuits)
+        weeklyDiscount: +a.weekly_discount_percent || 0,   // % dès 7 nuits (voir longStayTotal)
+        monthlyDiscount: +a.monthly_discount_percent || 0, // % dès 28 nuits
         emoji: a.emoji || '🏠',
         features: (a.amenities||[]).map(id=>{
           // Les vraies annonces stockent des identifiants internes (wifi, pool…)
