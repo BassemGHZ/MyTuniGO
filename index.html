@@ -2572,7 +2572,7 @@ function getFilteredBase(ignoreCity){
     let priceForFilter = h.price;
     if(appState.searchCheckIn && appState.searchCheckOut){
       const nights = Math.max(0, Math.round((new Date(appState.searchCheckOut)-new Date(appState.searchCheckIn))/86400000));
-      if(nights>0) priceForFilter = h.price * nights;
+      if(nights>0) priceForFilter = longStayTotal(h, nights, h.price * nights);
     }
     if(priceForFilter < (appState.filters.minPrice||0)) return false;
     if((appState.filters.maxPrice||2000) < 2000 && priceForFilter > (appState.filters.maxPrice||2000)) return false;
@@ -2828,6 +2828,18 @@ function datePriceNight(base, pct, override){
   if(override!=null && !isNaN(override)) return Math.round(override);
   return pct ? Math.round(base*(1-pct/100)) : base;
 }
+/* Tarifs semaine / mois (19/10) : dès 7 nuits, prix moyen par nuit = prix
+   semaine ÷ 7 ; dès 30 nuits, prix mois ÷ 30 (le plus bas des deux). Le
+   voyageur paie toujours le MOINS CHER entre le total au tarif nuit /
+   calendrier et le total au tarif semaine / mois. Par chambre ; même calcul
+   que fn_logement_pricing en base (qui fait foi). */
+function longStayTotal(h, nights, normalTotal){
+  const w = +(h && h.priceWeek) || 0, m = +(h && h.priceMonth) || 0;
+  let best = null;
+  if(nights>=30 && m>0) best = Math.round(m*nights/30);
+  if(nights>=7 && w>0){ const x = Math.round(w*nights/7); best = best==null ? x : Math.min(best, x); }
+  return (best!=null && best<normalTotal) ? best : normalTotal;
+}
 // Pourcentage équivalent d'une ligne tarifaire (pour les badges PROMO /
 // haute saison) : calculé depuis le prix fixe et le prix de base actuel.
 function datePriceRowPct(row, base){
@@ -2886,7 +2898,7 @@ function computeResultsNightlyTotal(h, checkIn, checkOut){
   if(!h || !checkIn || !checkOut) return 0;
   const promos = (h.annonceId && appState._resultsDatePromoMap && appState._resultsDatePromoMap[h.annonceId]) || {};
   const prices = (h.annonceId && appState._resultsDatePriceMap && appState._resultsDatePriceMap[h.annonceId]) || {};
-  let total = 0;
+  let total = 0, nightsN = 0;
   let d = new Date(checkIn);
   const end = new Date(checkOut);
   while(d < end){
@@ -2895,9 +2907,10 @@ function computeResultsNightlyTotal(h, checkIn, checkOut){
     // Prix fixe saisi par l'hôte pour cette date en priorité, sinon pourcentage
     // (pct>0 réduction, pct<0 majoration), sinon prix de base.
     total += guestNight(h, pct, prices[ds]);
+    nightsN++;
     d.setDate(d.getDate()+1);
   }
-  return total;
+  return longStayTotal(h, nightsN, total);
 }
 
 let _resultsMiniMap = null;
@@ -2920,7 +2933,7 @@ function initResultsMaps(){
   }
   const coords = filtered.filter(h=>h.lat&&h.lng).map(h=>{
     const nightly = h.price||h.price_night;
-    const total = searchNightsMap>0 ? nightly*searchNightsMap : 0;
+    const total = searchNightsMap>0 ? longStayTotal(h, searchNightsMap, nightly*searchNightsMap) : 0;
     return {id:h.id,lat:h.lat,lng:h.lng,name:h.name,price:nightly,displayPrice: total>0?total:nightly, isTotal: total>0, nights:searchNightsMap, emoji:h.emoji};
   });
   const center = coords.length>0 ? [coords[0].lat, coords[0].lng] : [36.8065, 10.1815]; // Tunis par défaut
@@ -2991,7 +3004,7 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms){
   if(!h || !checkIn || !checkOut) return 0;
   const promos = appState._bkDatePromos || {};
   const prices = appState._bkDatePrices || {};
-  let total = 0;
+  let total = 0, nightsN = 0;
   let d = new Date(checkIn);
   const end = new Date(checkOut);
   while(d < end){
@@ -3001,9 +3014,10 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms){
     // pourcentage (pct>0 réduction, pct<0 majoration), sinon prix de base.
     const nightPrice = guestNight(h, pct, prices[ds]);
     total += nightPrice;
+    nightsN++;
     d.setDate(d.getDate()+1);
   }
-  return total*rooms;
+  return longStayTotal(h, nightsN, total)*rooms;
 }
 
 function galleryHtml(h){
@@ -14139,6 +14153,8 @@ async function loadPublishedAnnonces(){
         reviews: rs ? rs.count : 0,
         price: a.price_night || 0,       // prix par nuit fixé par l'hôte (affiché au voyageur)
         hostPrice: a.price_night || 0,
+        priceWeek: +a.price_week || 0,   // tarif 7 nuits (appliqué dès 7 nuits, voir longStayTotal)
+        priceMonth: +a.price_month || 0, // tarif 30 nuits (appliqué dès 30 nuits)
         emoji: a.emoji || '🏠',
         features: (a.amenities||[]).map(id=>{
           // Les vraies annonces stockent des identifiants internes (wifi, pool…)
