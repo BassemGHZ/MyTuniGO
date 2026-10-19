@@ -106,20 +106,26 @@ function layout(title: string, intro: string, recap: string, cta?: { label: stri
 // Récapitulatif. Pour l'hôte (hostNet fourni ou null), on n'affiche pas ce que
 // le voyageur paie mais ce que l'hôte reçoit (prix − commission MyTunigo).
 // deno-lint-ignore no-explicit-any
-function recapBlock(r: any, propName: string, hostNet?: number | null) {
+function recapBlock(r: any, propName: string, hostNet?: number | null, times?: { checkin?: string | null; checkout?: string | null }) {
   const row = (k: string, v: string) =>
     `<tr><td style="padding:5px 0;color:#6c757d;">${k}</td><td style="padding:5px 0;text-align:right;font-weight:600;">${v}</td></tr>`;
   return `<table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8f9fa;border-radius:8px;padding:12px;">
     <tbody style="display:block;padding:12px 14px;">
       ${row("Hébergement", esc(propName))}
-      ${row("Arrivée", fmtDate(r.check_in))}
-      ${row("Départ", fmtDate(r.check_out))}
+      ${row("Arrivée", fmtDate(r.check_in) + fmtTime(times?.checkin))}
+      ${row("Départ", fmtDate(r.check_out) + fmtTime(times?.checkout))}
       ${row("Voyageurs", String(r.guests_count ?? 1))}
       ${row("Référence", esc(r.reference ?? "—"))}
       ${hostNet === undefined
         ? row("Total", `<span style="color:#003580;font-size:16px;">${esc(r.total)}€</span>`)
         : hostNet === null ? "" : row("Vous recevez", `<span style="color:#0a8f5c;font-size:16px;">${esc(fmtAmount(hostNet))}€</span>`)}
     </tbody></table>`;
+}
+
+// « 15:00 » ou « 15:00:00 » → « à 15h00 » ; vide si l'hôte n'a pas renseigné d'heure.
+function fmtTime(t?: string | null) {
+  const m = String(t ?? "").match(/^(\d{1,2}):(\d{2})/);
+  return m ? ` à ${m[1].padStart(2, "0")}h${m[2]}` : "";
 }
 
 function fmtAmount(n: number) {
@@ -202,7 +208,7 @@ async function nearbyExcursionsBlock(logementId: string | null | undefined): Pro
 // deno-lint-ignore no-explicit-any
 async function loadContext(r: any) {
   const [{ data: ann, error: annErr }, { data: guest, error: guestErr }] = await Promise.all([
-    admin.from("annonces").select("name,contact_email,contact_firstname,user_id").eq("id", r.logement_id).maybeSingle(),
+    admin.from("annonces").select("name,contact_email,contact_firstname,user_id,checkin,checkout").eq("id", r.logement_id).maybeSingle(),
     admin.from("profiles").select("email,first_name").eq("id", r.guest_id).maybeSingle(),
   ]);
   if (annErr) mailErrors.push(`lecture annonces : ${annErr.message}`);
@@ -212,6 +218,7 @@ async function loadContext(r: any) {
     hostEmail: ann?.contact_email ?? null,
     hostName: ann?.contact_firstname ?? "",
     ownerId: (ann?.user_id ?? null) as string | null,
+    times: { checkin: ann?.checkin ?? null, checkout: ann?.checkout ?? null },
     guestEmail: guest?.email ?? null,
     guestName: guest?.first_name ?? "",
   };
@@ -316,7 +323,7 @@ async function confirmPayment(req: Request, body: any) {
       `🎉 Réservation confirmée — ${c.propName}`,
       layout("Votre réservation est confirmée !",
         `Bonjour ${esc(c.guestName)},<br><br>Votre paiement a bien été enregistré. Votre séjour à <strong>${esc(c.propName)}</strong> est confirmé.`,
-        recapBlock(r, c.propName) + codeBlock(r.booking_code, "guest", "logement"),
+        recapBlock(r, c.propName, undefined, c.times) + codeBlock(r.booking_code, "guest", "logement"),
         { label: "🧳 Voir mes voyages", url: SITE },
         "", nearby),
     ),
@@ -325,7 +332,7 @@ async function confirmPayment(req: Request, body: any) {
       `🎉 Réservation confirmée et payée — ${c.propName}`,
       layout("Une réservation est confirmée",
         `Bonjour ${esc(c.hostName)},<br><br>Le voyageur a payé : la réservation pour <strong>${esc(c.propName)}</strong> est confirmée. Les dates sont bloquées dans votre calendrier.`,
-        recapBlock(r, c.propName, net) + codeBlock(r.booking_code, "host", "logement"),
+        recapBlock(r, c.propName, net, c.times) + codeBlock(r.booking_code, "host", "logement"),
         { label: "📨 Gérer mes réservations", url: SITE }),
     ),
   ]);
