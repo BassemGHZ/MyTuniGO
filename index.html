@@ -3689,7 +3689,7 @@ function calcBkHTML(h){
   const hasDiscount = origTotal > total;
   const lineLabel = multiRoom ? `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''} × ${rooms} ch.` : `${avgUnit}€ (moy.) × ${n} nuit${n>1?'s':''}`;
   const savingRow = ls.saving>0
-    ? `<div class="bk-row" style="color:var(--green);font-weight:700;"><span>🏷️ Réduction séjour de ${n} nuits (−${ls.pct} %)</span><span>−${ls.saving}€</span></div>`
+    ? `<div class="bk-row" style="color:var(--green);font-weight:700;gap:12px;"><span>🏷️ Réduction ${n}&nbsp;nuits (−${ls.pct}&nbsp;%)</span><span style="white-space:nowrap;flex-shrink:0;">−${ls.saving}&nbsp;€</span></div>`
     : '';
   return `<div class="bk-row"><span>${lineLabel}</span><span>${ls.before}€</span></div>
     ${savingRow}
@@ -3888,7 +3888,7 @@ function buildConfirm(){
           <div class="sum-row"><span>Départ</span><span>${appState.checkOut||'—'}</span></div>
           ${isMultiRoomType(h)?`<div class="sum-row"><span>Chambres</span><span>${appState.rooms||1}</span></div>`:''}
           ${nights>0?`<div class="sum-row"><span>Durée</span><span>${nights} nuit${nights>1?'s':''}</span></div>`:''}
-          ${lsC.saving>0?`<div class="sum-row" style="color:var(--green);"><span style="color:var(--green);font-weight:700;">🏷️ Réduction séjour de ${nights} nuits (−${lsC.pct} %)</span><span style="color:var(--green);">−${lsC.saving}€</span></div>`:''}
+          ${lsC.saving>0?`<div class="sum-row" style="color:var(--green);gap:12px;"><span style="color:var(--green);font-weight:700;">🏷️ Réduction ${nights}&nbsp;nuits (−${lsC.pct}&nbsp;%)</span><span style="color:var(--green);white-space:nowrap;flex-shrink:0;">−${lsC.saving}&nbsp;€</span></div>`:''}
           <div class="sum-row" style="font-weight:800;font-size:15px;border-top:1px solid var(--gray-300);margin-top:8px;padding-top:8px;">
             <span>Total estimé</span><span style="color:var(--blue)">${total}€</span>
           </div>
