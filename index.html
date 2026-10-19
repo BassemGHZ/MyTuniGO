@@ -1356,6 +1356,35 @@ window.addEventListener('popstate', function(e){
   render();
 });
 
+/* Apparitions (« Vues » de l'hôte) : une annonce affichée dans une liste de
+   résultats ou sur l'accueil compte une fois, puis n'est plus recomptée
+   pendant 30 minutes sur ce navigateur (filtres, tri, rechargements).
+   Envoi par lot via log_annonce_impressions (le serveur écarte les annonces
+   non publiées et celles de l'utilisateur connecté). */
+const IMPRESSION_WINDOW_MS = 30*60*1000;
+let _impQueue = new Set(), _impTimer = null;
+function queueImpression(h){
+  try{
+    if(!h || !h.annonceId) return;
+    if(auth.currentUser && h.userId && auth.currentUser.id === h.userId) return;
+    let seen = {};
+    try{ seen = JSON.parse(sessionStorage.getItem('imp_seen')||'{}'); }catch(e){}
+    const now = Date.now();
+    if(seen[h.annonceId] && now - seen[h.annonceId] < IMPRESSION_WINDOW_MS) return;
+    seen[h.annonceId] = now;
+    try{ sessionStorage.setItem('imp_seen', JSON.stringify(seen)); }catch(e){}
+    _impQueue.add(h.annonceId);
+    if(!_impTimer) _impTimer = setTimeout(flushImpressions, 1500);
+  }catch(e){}
+}
+async function flushImpressions(){
+  _impTimer = null;
+  const ids = [..._impQueue]; _impQueue = new Set();
+  for(let i=0;i<ids.length;i+=50){
+    try{ await _sb.rpc('log_annonce_impressions', { p_ids: ids.slice(i,i+50) }); }catch(e){}
+  }
+}
+
 async function logAnnonceView(hId){
   const h = hotels.find(x=>x.id===hId);
   if(!h?.annonceId) return; // pas une vraie annonce (démo)
@@ -2402,6 +2431,7 @@ function buildHome(){
 }
 
 function hotelCardHTML(h){
+  queueImpression(h);
   const hasDiscount = h.discount>0;
   const hasDatePromo = !hasDiscount && h.annonceId && (appState._resultsDiscountAnnonceIds||new Set()).has(h.annonceId);
   const finalPrice = hasDiscount ? guestNight(h, h.discount) : h.price;
@@ -3273,6 +3303,7 @@ function buildResults(){
 }
 
 function resultCardHTML(h){
+  queueImpression(h);
   const hasDiscount = h.discount>0;
   const hasDatePromo = !hasDiscount && h.annonceId && (appState._resultsDiscountAnnonceIds||new Set()).has(h.annonceId);
   // Prix "à la nuit" affiché quand aucune date n'est recherchée : pour une
@@ -6398,7 +6429,7 @@ function computeOccupancyRate(resaList, windowDays){
 function mapAnnonceRow(a, resaStats, viewStats, avisStats){
   const h = hotels.find(x=>x.annonceId===a.id);
   const s = (resaStats && resaStats[a.id]) || {count:0, revenue:0, occupancy:0};
-  const v = (viewStats && viewStats[a.id]) || 0;
+  const v = (viewStats && viewStats[a.id]) || {imp:0, clk:0};
   const ar = (avisStats && avisStats[a.id]) || null;
   const noteMoyenne = ar ? Math.round((ar.sum/ar.count)*10)/10 : 0;
   return {
@@ -6432,7 +6463,7 @@ function mapAnnonceRow(a, resaStats, viewStats, avisStats){
     // Réservations, revenus et vues = vraies données Supabase.
     // Clics/occupation/note : pas encore de table dédiée, restent à 0.
     stats: {
-      vues:v, clics:0, reservations:s.count, revenus:s.revenue, tauxOccupation:s.occupancy||0, noteMoyenne:noteMoyenne, avis:(ar?ar.count:0),
+      vues:v.imp, clics:v.clk, reservations:s.count, revenus:s.revenue, tauxOccupation:s.occupancy||0, noteMoyenne:noteMoyenne, avis:(ar?ar.count:0),
       vuesMois: Array(12).fill(0), revenusMois: Array(12).fill(0)
     }
   };
@@ -6478,16 +6509,18 @@ async function loadMesAnnonces(container){
     }
   }
 
-  // Agrège les vraies vues par annonce
+  // Compteurs par annonce : « Vues » = apparitions dans les recherches,
+  // « Clics » = ouvertures de la fiche (annonce_views). Repli sur l'ancien
+  // comptage si la fonction n'existe pas encore en base.
   const viewStats = {};
   if(annIds.length){
-    const { data: viewRows, error: viewErr } = await _sb.from('annonce_views')
-      .select('annonce_id')
-      .in('annonce_id', annIds);
-    if(viewErr){
-      console.warn('Erreur chargement stats vues:', viewErr.message);
+    const { data: cnt, error: cntErr } = await _sb.rpc('fn_my_annonce_counts', { p_ids: annIds });
+    if(!cntErr && cnt){
+      cnt.forEach(r=>{ viewStats[r.annonce_id] = { imp:+r.impressions||0, clk:+r.clicks||0 }; });
     } else {
-      (viewRows||[]).forEach(v=>{ viewStats[v.annonce_id] = (viewStats[v.annonce_id]||0) + 1; });
+      console.warn('Compteurs vues/clics indisponibles, repli :', cntErr && cntErr.message);
+      const { data: viewRows } = await _sb.from('annonce_views').select('annonce_id').in('annonce_id', annIds);
+      (viewRows||[]).forEach(v=>{ const o = viewStats[v.annonce_id] || (viewStats[v.annonce_id]={imp:0,clk:0}); o.imp++; });
     }
   }
 
@@ -6725,13 +6758,13 @@ ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excurs
           <!-- Mini stats -->
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin:12px 0;">
             ${[
-              {icon:'👁️',val:a.stats.vues.toLocaleString(),label:'Vues'},
-              {icon:'🖱️',val:a.stats.clics,label:'Clics'},
+              {icon:'👁️',val:a.stats.vues.toLocaleString(),label:'Vues',tip:'Nombre de fois où votre annonce est apparue dans une recherche'},
+              {icon:'🖱️',val:a.stats.clics.toLocaleString(),label:'Clics',tip:'Nombre de fois où un voyageur a ouvert votre fiche'},
               {icon:'📅',val:a.stats.reservations,label:'Résa'},
               {icon:'💶',val:a.stats.revenus.toLocaleString()+'€',label:'Revenus'},
               {icon:'📊',val:a.stats.tauxOccupation+'%',label:'Occupation'},
               {icon:'⭐',val:a.stats.noteMoyenne>0?a.stats.noteMoyenne+'/5':'—',label:'Note'},
-            ].map(s=>`<div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;text-align:center;">
+            ].map(s=>`<div title="${s.tip||''}" style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;text-align:center;">
               <div style="font-size:14px;">${s.icon}</div>
               <div style="font-size:14px;font-weight:800;color:var(--gray-900);">${s.val}</div>
               <div style="font-size:10px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;">${s.label}</div>
@@ -6853,17 +6886,27 @@ async function loadAnnonceDetail(container){
     });
   }
 
-  // Charger les vraies vues (total + répartition par mois de l'année en cours)
-  const { data: viewRows } = await _sb.from('annonce_views').select('viewed_at').eq('annonce_id', a.id);
-  const vuesMois = Array(12).fill(0);
+  // Vues (apparitions dans les recherches) et clics (ouvertures de la fiche) :
+  // total + répartition par mois de l'année en cours. Repli sur l'ancien
+  // comptage si la fonction n'existe pas encore en base.
   const thisYear = new Date().getFullYear();
-  (viewRows||[]).forEach(v=>{
-    const d = new Date(v.viewed_at);
-    if(d.getFullYear()===thisYear) vuesMois[d.getMonth()]++;
-  });
+  const vuesMois = Array(12).fill(0), clicsMois = Array(12).fill(0);
+  const { data: monthRows, error: monthErr } = await _sb.rpc('fn_annonce_monthly', { p_annonce: a.id, p_year: thisYear });
+  let totalVues = 0, totalClics = 0;
+  if(!monthErr && monthRows){
+    monthRows.forEach(r=>{ vuesMois[r.month-1] = +r.impressions||0; clicsMois[r.month-1] = +r.clicks||0; });
+    const { data: cnt } = await _sb.rpc('fn_my_annonce_counts', { p_ids: [a.id] });
+    totalVues = cnt && cnt[0] ? +cnt[0].impressions||0 : vuesMois.reduce((x,y)=>x+y,0);
+    totalClics = cnt && cnt[0] ? +cnt[0].clicks||0 : clicsMois.reduce((x,y)=>x+y,0);
+  } else {
+    const { data: viewRows } = await _sb.from('annonce_views').select('viewed_at').eq('annonce_id', a.id);
+    (viewRows||[]).forEach(v=>{ const d = new Date(v.viewed_at); if(d.getFullYear()===thisYear) vuesMois[d.getMonth()]++; });
+    totalVues = (viewRows||[]).length;
+  }
 
   const s=a.stats;
-  s.vues = (viewRows||[]).length;
+  s.vues = totalVues;
+  s.clics = totalClics;
   s.vuesMois = vuesMois;
   // Seules les réservations confirmée/terminée comptent comme "réservations" réelles
   s.reservations = resaRows ? resaRows.filter(r=>r.status==='confirmée'||r.status==='terminée').length : 0;
@@ -6906,8 +6949,8 @@ async function loadAnnonceDetail(container){
     <!-- KPI cards -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px;">
       ${[
-        {icon:'👁️',val:s.vues.toLocaleString(),label:'Vues totales',sub:'30 derniers jours',color:'var(--blue)'},
-        {icon:'🖱️',val:s.clics,label:'Clics',sub:`Taux ${s.vues>0?Math.round(s.clics/s.vues*100):0}%`,color:'#8e44ad'},
+        {icon:'👁️',val:s.vues.toLocaleString(),label:'Vues totales',sub:'Apparitions dans les recherches',color:'var(--blue)'},
+        {icon:'🖱️',val:s.clics.toLocaleString(),label:'Clics',sub:`Ouvertures de la fiche · Taux ${s.vues>0?Math.min(100,Math.round(s.clics/s.vues*100)):0}%`,color:'#8e44ad'},
         {icon:'📅',val:s.reservations,label:'Réservations',sub:'Confirmées',color:'var(--green)'},
         {icon:'💶',val:s.revenus.toLocaleString()+'€',label:'Revenus',sub:'Après commission',color:'#c0392b'},
         {icon:'📊',val:s.tauxOccupation+'%',label:'Taux occupation',sub:'Nuits réservées',color:'#e67e22'},
@@ -6924,7 +6967,7 @@ async function loadAnnonceDetail(container){
 
       <!-- Chart vues -->
       <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">👁️ Vues par mois</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">👁️ Vues par mois <span style="font-size:11px;font-weight:500;color:var(--gray-500);">(apparitions dans les recherches)</span></div>
         <div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">12 derniers mois</div>
         <div style="display:flex;align-items:flex-end;gap:4px;height:100px;">
           ${s.vuesMois.map((v,i)=>`
@@ -6957,7 +7000,7 @@ async function loadAnnonceDetail(container){
         <div style="font-size:15px;font-weight:700;margin-bottom:16px;">🎯 Entonnoir de conversion</div>
         ${[
           {label:'Vues',val:s.vues,color:'var(--blue)',pct:100},
-          {label:'Clics',val:s.clics,color:'#8e44ad',pct:s.vues>0?Math.round(s.clics/s.vues*100):0},
+          {label:'Clics',val:s.clics,color:'#8e44ad',pct:s.vues>0?Math.min(100,Math.round(s.clics/s.vues*100)):0},
           {label:'Réservations',val:s.reservations,color:'var(--green)',pct:s.clics>0?Math.round(s.reservations/s.clics*100):0},
         ].map(f=>`<div style="margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
