@@ -15547,6 +15547,81 @@ async function sendAssistantMessage(){
 
 initAssistantWidget();
 
+/* ===================== FENÊTRE « ENREGISTREMENT EN COURS » ===================== */
+// Pendant un envoi à la base (enregistrer, publier, payer…), un voile bloque
+// l'écran avec un message : l'utilisateur voit que son clic est pris en
+// compte et ne peut pas cliquer deux fois. Affiché après 200 ms seulement
+// (rien pour une erreur de saisie immédiate) ; une même action ne peut pas
+// être relancée tant qu'elle n'est pas terminée.
+let _busyCount = 0, _busyTimer = null;
+function showBusy(msg){
+  _busyCount++;
+  let ov = document.getElementById('busy-ov');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'busy-ov';
+    ov.setAttribute('role','status'); ov.setAttribute('aria-live','polite');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:22px 28px;display:flex;align-items:center;gap:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);max-width:340px;">'
+      + '<div style="width:28px;height:28px;border:3px solid #dbe4f0;border-top-color:var(--blue);border-radius:50%;animation:busySpin .8s linear infinite;flex-shrink:0;"></div>'
+      + '<div id="busy-msg" style="font-size:15px;font-weight:700;color:var(--gray-800);line-height:1.4;"></div></div>';
+    if(!document.getElementById('busy-style')){
+      const st = document.createElement('style'); st.id = 'busy-style';
+      st.textContent = '@keyframes busySpin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(st);
+    }
+    document.body.appendChild(ov);
+  }
+  document.getElementById('busy-msg').textContent = msg || 'Enregistrement en cours…';
+}
+function hideBusy(){
+  _busyCount = Math.max(0, _busyCount-1);
+  if(_busyCount===0) document.getElementById('busy-ov')?.remove();
+}
+function withBusy(fn, msg){
+  let running = false;
+  return async function(...args){
+    if(running) return;              // double clic ignoré
+    running = true;
+    let shown = false;
+    const t = setTimeout(()=>{ shown = true; showBusy(msg); }, 200);
+    try { return await fn.apply(this, args); }
+    finally { clearTimeout(t); if(shown) hideBusy(); running = false; }
+  };
+}
+(function(){
+  const SAVE = 'Enregistrement en cours…';
+  const WRAP = {
+    // Profil
+    saveProfile: SAVE, saveCompleteIdentity: SAVE, submitProfileChange: 'Envoi de votre demande…',
+    saveBankAccount: SAVE, deleteBankAccount: 'Suppression en cours…',
+    submitAccountDeletion: 'Envoi de votre demande…', cancelAccountDeletion: 'Annulation en cours…', cancelProfileChange: 'Annulation en cours…',
+    submitNewPassword: SAVE, submitSupportForm: 'Envoi de votre message…',
+    // Hébergements
+    annPublish: 'Publication de votre annonce…', saveAnnonceEditOwner: SAVE, saveEditedPrice: SAVE,
+    toggleAnnonceStatus: 'Mise à jour de l’annonce…', requestAnnonceDeletion: 'Envoi de votre demande…',
+    payOnSite: 'Envoi de votre demande de réservation…', submitReservationPayment: 'Paiement en cours…',
+    handleBookingRequest: 'Envoi de votre réponse…', confirmGuestCancel: 'Annulation en cours…',
+    saveReview: 'Publication de votre avis…', saveGuestReview: 'Publication de votre avis…',
+    // Excursions
+    excFormPublish: 'Publication de votre excursion…', saveExcursionEdit: SAVE,
+    excToggleStatus: 'Mise à jour de l’excursion…', requestExcursionDeletion: 'Envoi de votre demande…',
+    bookExcursion: 'Envoi de votre réservation…', submitExcursionPayment: 'Paiement en cours…',
+    handleExcursionBookingRequest: 'Envoi de votre réponse…',
+    // Administration
+    saveAdminAnnonceEdit: SAVE, saveAdminExcursionEdit: SAVE,
+    validateAnnonce: 'Validation en cours…', rejectAnnonce: 'Enregistrement du refus…',
+    validateExcursion: 'Validation en cours…', rejectExcursion: 'Enregistrement du refus…',
+    applyPendingAnnonceChanges: 'Mise en ligne des modifications…', rejectPendingAnnonceChanges: 'Enregistrement du refus…',
+    toggleFounderBadge: SAVE, adminFinalizeAccountDeletion: 'Suppression du compte…',
+    adminRefuseAccountDeletion: 'Enregistrement du refus…', adminDecideProfileChange: SAVE,
+  };
+  Object.entries(WRAP).forEach(([name, msg])=>{
+    if(typeof window[name]==='function') window[name] = withBusy(window[name], msg);
+    else console.warn('withBusy : fonction introuvable', name);
+  });
+})();
+
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('service-worker.js').catch(e => console.warn('Service worker non enregistré:', e.message));
