@@ -7198,8 +7198,11 @@ function buildProfil(){
         <div style="display:flex;flex-direction:column;gap:12px;">
           ${identityFieldOrInput('Prénom', u, 'first')}
           ${identityFieldOrInput('Nom', u, 'last')}
-          <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Téléphone</label>
-            <input id="pf-phone" type="tel" value="${u.phone||''}" placeholder="+33 6 12 34 56 78" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
+          ${u.phone
+            ? lockedIdentityField('Téléphone', u.phone)
+            : `<div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Téléphone</label>
+            <input id="pf-phone" type="tel" placeholder="+216 20 123 456" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            <div style="font-size:11.5px;color:var(--gray-500);margin-top:4px;">⚠️ Une fois enregistré, il ne pourra plus être modifié que sur demande.</div></div>`}
           ${u.birthdate
             ? lockedIdentityField('Date de naissance', fmtBirth(u.birthdate))
             : `<div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Date de naissance</label>
@@ -7230,7 +7233,7 @@ function buildProfil(){
             <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--gray-100);">
               <span style="font-size:16px;width:24px;">${icon}</span>
               <div style="flex:1;">
-                <div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">${label}${['Prénom','Nom'].includes(label)||(label==='Date de naissance'&&u.birthdate)?' <span title="Modifiable uniquement sur demande">🔒</span>':''}</div>
+                <div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">${label}${['Prénom','Nom'].includes(label)||(label==='Date de naissance'&&u.birthdate)||(label==='Téléphone'&&u.phone)?' <span title="Modifiable uniquement sur demande">🔒</span>':''}</div>
                 <div style="font-size:14px;font-weight:600;color:var(--gray-800);">${escHtml(val)}</div>
               </div>
             </div>`).join('')}
@@ -7298,21 +7301,24 @@ async function saveProfile(){
   const u = auth.currentUser;
   // Prénom, nom et date de naissance sont verrouillés (trigger
   // trg_profile_identity_lock) : seule une date jamais saisie peut être ajoutée.
-  const phone     = document.getElementById('pf-phone')?.value?.trim()||null;
+  // Téléphone verrouillé une fois saisi : seul un numéro encore vide peut être ajouté
+  const phoneInput = document.getElementById('pf-phone');
+  const phone     = phoneInput ? (phoneInput.value.trim()||null) : (u.phone||null);
   const birthInput = document.getElementById('pf-birth');
   const birthdate = birthInput ? (birthInput.value||null) : (u.birthdate||null);
   const country   = document.getElementById('pf-country')?.value||null;
   const bio       = document.getElementById('pf-bio')?.value?.trim()||null;
   // Un numéro = un seul compte (index unique profiles_phone_norm_key en base,
   // sur la forme normalisée : +216 50 676 798 = 0021650676798 = 50 676 798).
-  if(phone && phone.replace(/\D/g,'').length < 8){
+  if(phoneInput && phone && phone.replace(/\D/g,'').length < 8){
     showToast('⚠️ Numéro de téléphone invalide (au moins 8 chiffres)','var(--red)');return;
   }
 
   const btn = document.querySelector('button[onclick="saveProfile()"]');
   if(btn){btn.disabled=true;btn.textContent='⏳ Enregistrement…';}
 
-  const upd = { phone, country, bio };
+  const upd = { country, bio };
+  if(phoneInput && phone) upd.phone = phone;
   if(birthInput && birthdate) upd.birthdate = birthdate;
   const fIn = document.getElementById('pf-first-in'), lIn = document.getElementById('pf-last-in');
   if(fIn || lIn){
@@ -7438,9 +7444,9 @@ async function saveCompleteIdentity(){
 function profileChangeStatusHTML(){
   const d = _profChange.uid===auth.currentUser?.id ? _profChange.data : null;
   const link = '<button onclick="openProfileChangeDialog()" style="background:none;border:none;color:var(--blue-l);font-size:12.5px;font-weight:700;cursor:pointer;padding:0;">Demander une correction</button>';
-  const note = '<div style="font-size:12px;color:var(--gray-500);line-height:1.55;padding-top:8px;">🔒 Prénom, nom et date de naissance ne sont modifiables que sur demande. '+link+'</div>';
+  const note = '<div style="font-size:12px;color:var(--gray-500);line-height:1.55;padding-top:8px;">🔒 Prénom, nom, date de naissance et téléphone ne sont modifiables que sur demande. '+link+'</div>';
   if(d && d.status==='en attente'){
-    const parts = [d.new_first_name&&('prénom « '+escHtml(d.new_first_name)+' »'), d.new_last_name&&('nom « '+escHtml(d.new_last_name)+' »'), d.new_birthdate&&('date de naissance '+fmtBirth(d.new_birthdate))].filter(Boolean).join(', ');
+    const parts = [d.new_first_name&&('prénom « '+escHtml(d.new_first_name)+' »'), d.new_last_name&&('nom « '+escHtml(d.new_last_name)+' »'), d.new_birthdate&&('date de naissance '+fmtBirth(d.new_birthdate)), d.new_phone&&('téléphone '+escHtml(d.new_phone))].filter(Boolean).join(', ');
     return '<div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;color:#7a5a00;line-height:1.55;margin-top:10px;">⏳ Demande de correction en cours ('+parts+'), envoyée le '+acctDelFmtDate(d.created_at)+'. <button onclick="cancelProfileChange()" style="background:none;border:none;color:#7a5a00;text-decoration:underline;font-size:12.5px;cursor:pointer;padding:0;">Annuler</button></div>';
   }
   if(d && d.status==='refusée' && d.processed_at && (Date.now()-new Date(d.processed_at))<30*864e5){
@@ -7462,8 +7468,8 @@ async function loadProfileChange(){
   if(data && data.status==='acceptée'){
     const { data: prof } = await _sb.rpc('get_my_profile').maybeSingle();
     const u = auth.currentUser;
-    if(prof && u && (prof.first_name!==u.firstName || prof.last_name!==u.lastName || (prof.birthdate||null)!==(u.birthdate||null))){
-      u.firstName = prof.first_name; u.lastName = prof.last_name; u.birthdate = prof.birthdate;
+    if(prof && u && (prof.first_name!==u.firstName || prof.last_name!==u.lastName || (prof.birthdate||null)!==(u.birthdate||null) || (prof.phone||null)!==(u.phone||null))){
+      u.firstName = prof.first_name; u.lastName = prof.last_name; u.birthdate = prof.birthdate; u.phone = prof.phone;
       if(appState.page==='profil'){ navigate('profil'); renderAuthArea(); return; }
     }
   }
@@ -7488,8 +7494,9 @@ function openProfileChangeDialog(){
       <div><label style="${lab}">Prénom</label><input id="pc-first" maxlength="60" value="${escHtml(u.firstName||'')}" style="${inp}"></div>
       <div><label style="${lab}">Nom</label><input id="pc-last" maxlength="60" value="${escHtml(u.lastName||'')}" style="${inp}"></div>
       <div><label style="${lab}">Date de naissance</label><input id="pc-birth" type="date" max="${new Date().toISOString().slice(0,10)}" value="${u.birthdate||''}" style="${inp}"></div>
+      <div><label style="${lab}">Téléphone</label><input id="pc-phone" type="tel" maxlength="30" value="${escHtml(u.phone||'')}" placeholder="+216 20 123 456" style="${inp}"></div>
       <div><label style="${lab}">Motif de la correction</label>
-        <textarea id="pc-reason" maxlength="500" placeholder="Ex. : faute de frappe à l'inscription, changement de nom après mariage…" style="${inp}min-height:70px;font-family:inherit;resize:vertical;"></textarea></div>
+        <textarea id="pc-reason" maxlength="500" placeholder="Ex. : changement de numéro, faute de frappe à l'inscription, changement de nom après mariage…" style="${inp}min-height:70px;font-family:inherit;resize:vertical;"></textarea></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:16px;">
       <button onclick="document.getElementById('profchg-ov').remove()" style="flex:1;padding:11px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">Annuler</button>
@@ -7504,7 +7511,9 @@ const PROFILE_CHANGE_ERRORS = {
   NO_CHANGE:"Vous n'avez rien modifié.",
   ALREADY_PENDING:'Une demande de correction est déjà en cours.',
   NAME_INVALID:'Prénom ou nom trop long (60 caractères maximum).',
-  BIRTHDATE_INVALID:'Date de naissance invalide (16 ans minimum).'
+  BIRTHDATE_INVALID:'Date de naissance invalide (16 ans minimum).',
+  PHONE_INVALID:'Numéro de téléphone invalide (au moins 8 chiffres).',
+  PHONE_TAKEN:'Ce numéro de téléphone est déjà utilisé par un autre compte.'
 };
 
 async function submitProfileChange(){
@@ -7512,11 +7521,12 @@ async function submitProfileChange(){
   const last   = document.getElementById('pc-last')?.value.trim()||'';
   const birth  = document.getElementById('pc-birth')?.value||null;
   const reason = document.getElementById('pc-reason')?.value.trim()||'';
+  const phoneNew = document.getElementById('pc-phone')?.value.trim()||'';
   if(!first || !last){ showToast('⚠️ Prénom et nom obligatoires','var(--red)'); return; }
   if(reason.length<3){ showToast('⚠️ '+PROFILE_CHANGE_ERRORS.REASON_REQUIRED,'var(--red)'); return; }
   const btn = document.getElementById('pc-go');
   if(btn){ btn.disabled=true; btn.textContent='⏳ Envoi…'; }
-  const { error } = await _sb.rpc('fn_request_profile_change', { p_first:first, p_last:last, p_birthdate:birth, p_reason:reason });
+  const { error } = await _sb.rpc('fn_request_profile_change', { p_first:first, p_last:last, p_birthdate:birth, p_reason:reason, p_phone:phoneNew||null });
   if(error){
     if(btn){ btn.disabled=false; btn.textContent='Envoyer la demande'; }
     const k = Object.keys(PROFILE_CHANGE_ERRORS).find(k=>(error.message||'').includes(k));
@@ -7553,6 +7563,7 @@ async function buildAdminProfileChanges(content){
         ${diff('Prénom', r.old_first_name, r.new_first_name)}
         ${diff('Nom', r.old_last_name, r.new_last_name)}
         ${diff('Naissance', r.old_birthdate?fmtBirth(r.old_birthdate):'', r.new_birthdate?fmtBirth(r.new_birthdate):null)}
+        ${diff('Téléphone', r.old_phone, r.new_phone)}
       </tbody></table>
       <div style="font-size:13px;color:#374151;margin-bottom:12px;"><strong>Motif :</strong> ${escHtml(r.reason)}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -7562,12 +7573,12 @@ async function buildAdminProfileChanges(content){
   const stLabel = {'acceptée':['✅ Acceptée','#0d9e6e','#e8f9f0'],'refusée':['⛔ Refusée','#cc0000','#fff0f0'],'annulée':['↩️ Annulée','#6b7280','#f5f5f5']};
   content.innerHTML = `
     <div style="font-size:18px;font-weight:800;margin-bottom:4px;">✏️ Demandes de correction de profil</div>
-    <div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">Prénom, nom et date de naissance sont verrouillés ; l'utilisateur demande une correction avec un motif. Une demande acceptée est appliquée immédiatement.</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">Prénom, nom, date de naissance et téléphone sont verrouillés ; l'utilisateur demande une correction avec un motif. Une demande acceptée est appliquée immédiatement.</div>
     ${pending.length ? pending.map(card).join('') : '<div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;padding:24px;text-align:center;color:#6b7280;margin-bottom:16px;">Aucune demande en attente.</div>'}
     ${done.length ? `<div style="font-size:14px;font-weight:800;margin:20px 0 8px;">Historique (6 derniers mois)</div>
       <div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;overflow:hidden;">
       ${done.map(r=>{ const l = stLabel[r.status]||[r.status,'#6b7280','#f5f5f5'];
-        const what = [r.new_first_name&&'prénom', r.new_last_name&&'nom', r.new_birthdate&&'date de naissance'].filter(Boolean).join(', ');
+        const what = [r.new_first_name&&'prénom', r.new_last_name&&'nom', r.new_birthdate&&'date de naissance', r.new_phone&&'téléphone'].filter(Boolean).join(', ');
         return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:13px;">
           <div><strong>${escHtml((r.old_first_name||'')+' '+(r.old_last_name||''))}</strong> <span style="color:#6b7280;">· ${escHtml(what)} · ${acctDelFmtDate(r.created_at)}</span>${r.admin_note?`<div style="color:#6b7280;font-size:12px;">${escHtml(r.admin_note)}</div>`:''}</div>
           <span style="background:${l[2]};color:${l[1]};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap;">${l[0]}</span></div>`; }).join('')}
