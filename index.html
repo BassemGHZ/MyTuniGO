@@ -8807,10 +8807,11 @@ function excFormStep1(fd){
       ${charCounterHTML('ef-schedule-count', fd.schedule, 200)}</div>
 
     <div style="margin-bottom:14px;">
-      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Point de rendez-vous</label>
-      <input type="text" maxlength="70" placeholder="Ex : Devant la grande porte de la médina, Place Jemaa el-Fna" value="${fd.meetingPoint||''}"
-        oninput="excSet('meetingPoint',this.value)"
-        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:8px;">
+      <label style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--gray-600);letter-spacing:.3px;display:block;margin-bottom:5px;">Point de rendez-vous <span style="color:var(--red);">*</span></label>
+      <input id="ef-meeting-point" type="text" maxlength="70" required placeholder="Ex : Devant la grande porte de la médina, Place Jemaa el-Fna" value="${escHtml(fd.meetingPoint||'')}"
+        oninput="excSet('meetingPoint',this.value);this.style.borderColor=''"
+        style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:4px;">
+      ${fd.address?.trim() ? `<button type="button" onclick="excMeetingFromAddress()" style="background:none;border:none;color:var(--blue-l);font-size:12.5px;font-weight:700;cursor:pointer;padding:0;margin-bottom:10px;">📍 Le rendez-vous est à l'adresse de l'excursion (${escHtml(fd.address.trim())})</button>` : '<div style="margin-bottom:8px;"></div>'}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px;">HEURE DE DÉBUT <span style="color:var(--red);">*</span></label>
@@ -9049,6 +9050,14 @@ function excAutoDuration(key){
 function excRefresh(){ const el=document.getElementById('exc-form-step'); if(el){ el.innerHTML=excFormStep(appState.excursionFormPage||0, appState.excursionFormData); if((appState.excursionFormPage||0)===0) setTimeout(()=>initExcPosPicker('exc'), 50); } }
 function excToggleLang(l){ const arr=appState.excursionFormData.language||[]; if(arr.includes(l)) appState.excursionFormData.language=arr.filter(x=>x!==l); else arr.push(l); excRefresh(); }
 function excToggleInclude(id){ const arr=appState.excursionFormData.includes||[]; if(arr.includes(id)) appState.excursionFormData.includes=arr.filter(x=>x!==id); else arr.push(id); excRefresh(); }
+// Point de rendez-vous = adresse de l'excursion (70 caractères maximum)
+function excMeetingFromAddress(){
+  const fd = appState.excursionFormData;
+  const v = (fd.address||'').trim().slice(0,70);
+  fd.meetingPoint = v;
+  const m = document.getElementById('ef-meeting-point');
+  if(m){ m.value = v; m.style.borderColor=''; }
+}
 function excSetHighlight(i,v){ if(!appState.excursionFormData.highlights) appState.excursionFormData.highlights=['','','','']; appState.excursionFormData.highlights[i]=v; }
 
 function excFormValidate(){
@@ -9062,6 +9071,12 @@ function excFormValidate(){
     { const de = descLengthError(fd.description); if(de){ showToast(de,'var(--red)'); return false; } }
   }
   if(cur===1){
+    if(!(fd.meetingPoint||'').trim()){
+      showToast('⚠️ Indiquez le point de rendez-vous','var(--red)');
+      const m = document.getElementById('ef-meeting-point');
+      if(m){ m.style.borderColor='var(--red)'; m.scrollIntoView({behavior:'smooth', block:'center'}); m.focus(); }
+      return false;
+    }
     if(!fd.meetingTime){
       showToast("⚠️ Indiquez l'heure de début de l'excursion",'var(--red)');
       const t = document.getElementById('ef-meeting-time');
@@ -9185,6 +9200,15 @@ async function uploadExcursionPhotos(ref, photos){
 async function excFormPublish(){
   if(!excFormValidate()) return;
   const fd = appState.excursionFormData;
+  // Adresse et point de rendez-vous obligatoires
+  if(!(fd.address||'').trim()){
+    showToast("⚠️ Indiquez l'adresse de l'excursion (étape Informations)",'var(--red)');
+    appState.excursionFormPage=0; navigate('excursion-form'); return;
+  }
+  if(!(fd.meetingPoint||'').trim()){
+    showToast('⚠️ Indiquez le point de rendez-vous (étape Programme)','var(--red)');
+    appState.excursionFormPage=1; navigate('excursion-form'); return;
+  }
   // Heure de début obligatoire (étape Programme)
   if(!fd.meetingTime){
     showToast("⚠️ Indiquez l'heure de début de l'excursion (étape Programme)",'var(--red)');
@@ -9266,7 +9290,7 @@ async function excFormPublish(){
 
   try {
     const { data: excIns, error } = await _sb.from('excursions').insert([payload]).select('id').single();
-    if(error) throw new Error(friendlyDbError(error.message));
+    if(error) throw new Error(/MEETING_POINT_REQUIRED/.test(error.message) ? 'le point de rendez-vous est obligatoire' : /ADDRESS_REQUIRED/.test(error.message) ? "l'adresse est obligatoire" : friendlyDbError(error.message));
 
     // E-mails admin (à valider) + accusé de réception au prestataire
     if(excIns?.id) await callNotifyAdmin('submitted','excursion',excIns.id);
@@ -11698,7 +11722,7 @@ function buildExcursionEditFormInner(){
     <!-- Rendez-vous -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📍 Point de rendez-vous</div>
-      ${field('Adresse / lieu','meetingPoint')}
+      ${field('Lieu du rendez-vous *','meetingPoint')}
       <div id="ed-times" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;" oninput="if(event.target.type==='time') excAutoDuration('ed')">
         ${field('Heure début *','meetingTime','time')}
         ${field('Heure fin','meetingTimeEnd','time')}
@@ -11767,6 +11791,7 @@ async function saveExcursionEdit(){
   if(!ed || !ed.id) return;
   { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
   if(_charCount(ed.schedule) > 200){ showToast('⚠️ Programme trop long : 200 caractères maximum.','var(--red)'); return; }
+  if(!(ed.meetingPoint||'').trim()){ showToast('⚠️ Indiquez le point de rendez-vous','var(--red)'); return; }
   if(!ed.meetingTime){ showToast("⚠️ Indiquez l'heure de début de l'excursion",'var(--red)'); return; }
   if(excTimeSpan(ed.meetingTime, ed.meetingTimeEnd) === 0){ showToast("⚠️ L'heure de fin doit être différente de l'heure de début",'var(--red)'); return; }
   const updates = {
@@ -11791,7 +11816,7 @@ async function saveExcursionEdit(){
   };
 
   const { error } = await _sb.from('excursions').update(updates).eq('id', ed.id);
-  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  if(error){ showToast(/MEETING_POINT_REQUIRED/.test(error.message) ? '⚠️ Indiquez le point de rendez-vous' : 'Erreur : '+error.message,'var(--red)'); return; }
 
   // Retire immédiatement l'excursion du tableau public en mémoire, comme pour une suspension
   const gIdx = excursions.findIndex(x=>x.excursionId===ed.id);
