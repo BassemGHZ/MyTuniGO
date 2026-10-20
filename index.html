@@ -2499,6 +2499,11 @@ function doSearch(){
   appState.searchDest=document.getElementById('s-dest').value;
   appState.searchCheckIn=document.getElementById('s-in').value;
   appState.searchCheckOut=document.getElementById('s-out').value;
+  // Une nouvelle recherche remplace les dates retenues sur une fiche
+  // (appState.checkIn/checkOut), prioritaires sur celles de la recherche :
+  // sans ça, la fiche gardait les dates de la recherche précédente.
+  appState.checkIn  = appState.searchCheckIn  || '';
+  appState.checkOut = appState.searchCheckOut || '';
   appState.searchGuests=parseInt(document.getElementById('s-guests').value)||2;
   appState.filters={minPrice:0,maxPrice:2000,minRating:0,types:[],amenities:[],promoOnly:false};
   appState.sort='recommended';
