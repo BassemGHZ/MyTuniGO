@@ -867,6 +867,19 @@ function founderUntil(founderSince){
 function founderActive(founderSince){
   const u = founderUntil(founderSince); return !!(u && u.getTime()>Date.now() && new Date(founderSince).getTime()<=Date.now());
 }
+// Compteur du statut fondateur : jours restants de la période à 0 %
+function founderDaysLeft(founderSince){
+  const u = founderUntil(founderSince); if(!u) return null;
+  return Math.max(0, Math.ceil((u.getTime()-Date.now())/86400000));
+}
+function founderCounterHTML(founderSince){
+  if(!founderSince) return '';
+  const d = founderDaysLeft(founderSince), u = founderUntil(founderSince);
+  const style = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;';
+  return d>0
+    ? `<span style="${style}background:#fff6db;color:#8a6200;border:1px solid #f5d38a;">⭐ Hôte fondateur · 0 % encore <strong>${d} jour${d>1?'s':''}</strong> (jusqu'au ${u.toLocaleDateString('fr-FR')})</span>`
+    : `<span style="${style}background:#f1f3f5;color:#6b7280;border:1px solid #dee2e6;">⭐ Hôte fondateur · période à 0 % terminée le ${u.toLocaleDateString('fr-FR')} — commission ${ratePct(HOST_COMMISSION_RATE)}</span>`;
+}
 function logementRate(founderSince){ return founderActive(founderSince) ? 0 : HOST_COMMISSION_RATE; }
 
 // Taux négocié des excursions du prestataire connecté (12 % par défaut)
@@ -6470,6 +6483,7 @@ function mapAnnonceRow(a, resaStats, viewStats, avisStats){
     price_night: a.price_night || 0,
     weekly_discount_percent: a.weekly_discount_percent || 0,
     monthly_discount_percent: a.monthly_discount_percent || 0,
+    founder_since: a.founder_since || null,
     min_stay: a.min_stay || 1,
     max_stay: a.max_stay || 30,
     checkin: a.checkin || '15:00',
@@ -6810,6 +6824,7 @@ ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excurs
           </div>
         </div>
       </div>
+      ${a.founder_since?`<div style="padding:10px 20px;border-top:1px solid #f5d38a;background:#fffbf0;">${founderCounterHTML(a.founder_since)}</div>`:''}
       ${a.status==='en attente'?`<div style="background:#fff8e0;padding:10px 20px;font-size:13px;color:#856404;border-top:1px solid #ffe080;">⏳ Votre annonce est en cours de vérification par notre équipe. Délai estimé : 24h.</div>`:''}
       ${a.status==='suspendue'?`<div style="background:#fff0f0;padding:10px 20px;font-size:13px;color:var(--red);border-top:1px solid #ffcccc;">⛔ Cette annonce est suspendue. Republier pour la rendre visible aux voyageurs.</div>`:''}
     </div>`).join('')}
@@ -13134,6 +13149,7 @@ async function buildAdminAnnonces(content){
               💶 ${a.price_night||0}€/nuit &nbsp;·&nbsp; 
               🔖 <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;">${a.ref||'—'}</code>
             </div>
+            ${a.founder_since?`<div style="margin-top:6px;">${founderCounterHTML(a.founder_since)}</div>`:''}
             <div style="font-size:13px;color:#6b7280;margin-top:4px;">
               👤 ${a.contact_firstname||''} ${a.contact_lastname||''} — ${a.contact_email||''}
             </div>
