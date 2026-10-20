@@ -1,27 +1,39 @@
 // =====================================================================
 // MyTunigo — Edge Function "notify-excursion-booking"
-// E-mails des réservations d'excursions.
+// Réservations d'excursions : paiement en ligne et e-mails.
+//
+// Processus (18/10/2026, même principe que les logements) :
+//   demande -> l'organisateur accepte -> le voyageur paie en ligne sous 24 h
+//   -> réservation confirmée. Réservation instantanée : 30 min pour payer.
+//   Plus de paiement sur place : le voyageur paie en ligne le prix + 8 % de
+//   taxes et frais, l'organisateur reçoit le prix − 8 %. Montants calculés en
+//   base (fn_excursion_booking_guard). Les anciennes réservations « paiement
+//   sur place » (pay_on_site) gardent leur affichage d'origine.
 //
 // Appel (POST JSON, avec le JWT de l'utilisateur connecté) :
 //   { type: "created",   booking_id }                 (VOYAGEUR)
-//       -> voyageur : réservation confirmée (réservation instantanée)
-//                     ou demande envoyée (validation du prestataire)
-//       -> prestataire : nouvelle réservation / nouvelle demande
+//       -> demande (en attente) : accusé au voyageur + alerte au prestataire.
+//          Réservation instantanée (acceptée) : rien, le voyageur paie d'abord.
 //   { type: "decision",  booking_id, host_message? }  (PRESTATAIRE)
-//       -> voyageur : demande acceptée ('confirmée') ou refusée ('refusée')
+//       -> voyageur : demande acceptée (lien de paiement, 24 h) ou refusée
+//   { type: "confirm_payment", booking_id, method }   (VOYAGEUR)
+//       -> vérifie voyageur + statut 'acceptée' + délai, passe en 'confirmée'
+//          (mode test : aucun débit), e-mails voyageur + prestataire
 //   { type: "cancelled", booking_id }                 (VOYAGEUR)
-//       -> prestataire : annulation + voyageur : confirmation d'annulation
+//       -> prestataire : annulation (motif) + voyageur : confirmation
 //
-// Appel par la tâche planifiée fn_auto_reject_expired_excursion_bookings() :
+// Appel par la tâche planifiée fn_auto_reject_expired_excursion_bookings()
+// (toutes les 10 min) :
 //   { type: "expire_pending" }
-//       -> demandes restées 'en attente' dont la date d'excursion est passée
-//          (heure de Tunis) : passage en 'refusée' + e-mail au voyageur.
-//          Traitement par lot, idempotent, sans paramètre ni destinataire
-//          fourni par l'appel : un appel en trop n'envoie rien de plus.
+//       -> acceptées non payées dans le délai : 'expirée' + e-mail voyageur ;
+//          demandes restées 'en attente' au début de l'excursion : 'refusée' + e-mail.
+//          Idempotent, sans paramètre ni destinataire fourni par l'appel.
 //
-// Sécurité : destinataires et contenu lus en base ; l'appelant doit être
-// le voyageur (created / cancelled) ou le propriétaire de l'excursion
-// (decision), et le statut doit correspondre.
+// Sécurité : destinataires, montants et contenu lus en base ; l'appelant doit
+// être le voyageur (created / confirm_payment / cancelled) ou le
+// propriétaire de l'excursion (decision), et le statut doit correspondre.
+// Le prestataire voit ce qu'il reçoit (et ce qu'il encaisse sur place),
+// jamais les frais payés par le voyageur.
 //
 // Secrets : RESEND_API_KEY, SB_SERVICE_ROLE_KEY (ou SUPABASE_SERVICE_ROLE_KEY).
 // =====================================================================
@@ -55,6 +67,14 @@ const fmtDate = (d: string | null) => {
   const [y, m, dd] = String(d).slice(0, 10).split("-");
   return `${dd}/${m}/${y}`;
 };
+const fmtDateTime = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString("fr-FR", {
+        timeZone: "Africa/Tunis", day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      })
+    : "—";
+const money = (n: unknown) => `${Number(n ?? 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })}€`;
 
 function layout(title: string, intro: string, recap: string, cta?: { label: string; url: string }, outro = "") {
   return `<!doctype html><html><body style="margin:0;background:#f3f6fa;font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#212529;">
@@ -73,47 +93,49 @@ function layout(title: string, intro: string, recap: string, cta?: { label: stri
   </div></body></html>`;
 }
 
-// Récapitulatif. Pour le prestataire (hostNet fourni ou null), on n'affiche pas
-// ce que le participant paie mais ce que le prestataire reçoit.
+const row = (k: string, v: string) =>
+  `<tr><td style="padding:5px 0;color:#6c757d;">${k}</td><td style="padding:5px 0;text-align:right;font-weight:600;">${v}</td></tr>`;
+const table = (rows: string) =>
+  `<table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8f9fa;border-radius:8px;">
+    <tbody style="display:block;padding:12px 14px;">${rows}</tbody></table>`;
+
+// Récapitulatif voyageur : total payé ou à payer en ligne
+// (ancienne réservation « paiement sur place » : total à régler sur place)
 // deno-lint-ignore no-explicit-any
-function recapBlock(b: any, title: string, hostNet?: number | null) {
-  const row = (k: string, v: string) =>
-    `<tr><td style="padding:5px 0;color:#6c757d;">${k}</td><td style="padding:5px 0;text-align:right;font-weight:600;">${v}</td></tr>`;
-  return `<table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8f9fa;border-radius:8px;">
-    <tbody style="display:block;padding:12px 14px;">
-      ${row("Excursion", esc(title))}
-      ${row("Date", fmtDate(b.date))}
-      ${row("Participants", String(b.participants ?? 1))}
-      ${row("Paiement", esc(b.payment_method ?? "—"))}
-      ${row("Référence", esc(b.reference ?? "—"))}
-      ${hostNet === undefined
-        ? row("Total", `<span style="color:#003580;font-size:16px;">${esc(b.total)}€</span>`)
-        : hostNet === null ? "" : row("Vous recevez", `<span style="color:#0a8f5c;font-size:16px;">${esc(fmtAmount(hostNet))}€</span>`)}
-    </tbody></table>`;
+function recapGuest(b: any, title: string) {
+  const legacyOnSite = !!b.pay_on_site;
+  const paid = !!b.paid_at;
+  return table(
+    row("Excursion", esc(title)) + row("Date", fmtDate(b.date)) +
+    row("Participants", String(b.participants ?? 1)) + row("Référence", esc(b.reference ?? "—")) +
+    row(legacyOnSite ? "À payer sur place" : paid ? "Total payé" : "Total à payer en ligne",
+        `<span style="font-size:16px;color:#003580;">${money(b.total)}</span>`),
+  );
 }
 
-function fmtAmount(n: number) {
-  return Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+// Récapitulatif prestataire : ce qu'il reçoit, jamais les frais payés par le voyageur
+// deno-lint-ignore no-explicit-any
+function recapOwner(b: any, title: string, net: number | null, showMoney = true) {
+  return table(
+    row("Excursion", esc(title)) + row("Date", fmtDate(b.date)) +
+    row("Participants", String(b.participants ?? 1)) + row("Référence", esc(b.reference ?? "—")) +
+    (showMoney && net != null ? row("Vous recevez", `<span style="font-size:16px;color:#0a8f5c;">${money(net)}</span>`) : ""),
+  );
 }
 
 // Montant reçu par le prestataire : reversement figé à la confirmation s'il
-// existe, sinon devis (12 % par défaut ou taux négocié). null si indisponible.
+// existe, sinon devis calculé en base. null si indisponible.
 // deno-lint-ignore no-explicit-any
-async function hostNetFor(b: any, ownerId: string | null | undefined): Promise<number | null> {
+async function hostNetFor(b: any): Promise<number | null> {
   const { data: pay } = await admin.from("booking_payouts").select("payout")
     .eq("kind", "excursion").eq("booking_id", b.id).maybeSingle();
   if (pay && pay.payout != null) return Number(pay.payout);
-  if (!ownerId) return null;
-  const { data: q, error } = await admin.rpc("fn_commission_quote", {
-    p_kind: "excursion", p_booking: b.id,
-  });
+  const { data: q, error } = await admin.rpc("fn_commission_quote", { p_kind: "excursion", p_booking: b.id });
   if (error) { console.warn("devis commission :", error.message); return null; }
-  const row = Array.isArray(q) ? q[0] : q;
-  return row && row.payout != null ? Number(row.payout) : null;
+  const r = Array.isArray(q) ? q[0] : q;
+  return r && r.payout != null ? Number(r.payout) : null;
 }
 
-// Code de réservation (6 caractères, créé en base à la confirmation).
-// Contrôle à l'arrivée : ne prouve pas l'identité.
 function codeBlock(code: string | null | undefined, who: "guest" | "host", kind: "logement" | "excursion") {
   if (!code) return "";
   const hint = who === "guest"
@@ -134,6 +156,7 @@ const hostNote = (msg: string) => msg
   ? `<div style="margin-top:14px;padding:10px 14px;border-left:3px solid #0071c2;background:#f0f7ff;font-style:italic;">« ${esc(msg)} »<br><span style="font-style:normal;font-size:12px;color:#6c757d;">— votre prestataire</span></div>`
   : "";
 
+
 async function sendMail(to: string | null | undefined, subject: string, html: string) {
   if (!to) { mailErrors.push(`destinataire vide pour « ${subject} »`); return; }
   if (!RESEND_API_KEY) { mailErrors.push("RESEND_API_KEY manquant dans les secrets"); return; }
@@ -149,30 +172,72 @@ async function sendMail(to: string | null | undefined, subject: string, html: st
   }
 }
 
-// ---------- demandes expirées (tâche planifiée) ----------
-async function expirePending() {
-  const todayTn = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Tunis" }); // YYYY-MM-DD
-  // La mise à jour sert de « réservation » : seules les lignes réellement
-  // passées de 'en attente' à 'refusée' par cet appel reçoivent un e-mail.
-  const { data: expired, error } = await admin.from("excursion_bookings")
-    .update({ status: "refusée" })
-    .eq("status", "en attente")
-    .lt("date", todayTn)
-    .select("*");
-  if (error) return json({ error: error.message }, 500);
+const payUrl = (id: string) => `${SITE}/?payexc=${encodeURIComponent(id)}`;
 
-  for (const b of expired ?? []) {
+// ---------- expirations (tâche planifiée) ----------
+// Début d'une excursion : date + heure de rendez-vous, heure de Tunis (UTC+1,
+// sans heure d'été) ; heure absente ou invalide : minuit (comme fn_safe_time).
+function excursionStart(dateISO: string, hhmm: unknown): Date {
+  const m = /^\s*([01]?\d|2[0-3]):([0-5]\d)\s*$/.exec(String(hhmm ?? ""));
+  const t = m ? `${m[1].padStart(2, "0")}:${m[2]}` : "00:00";
+  return new Date(`${dateISO.slice(0, 10)}T${t}:00+01:00`);
+}
+
+async function expirePending() {
+  const nowIso = new Date().toISOString();
+  const todayTn = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Tunis" }); // YYYY-MM-DD
+
+  // 1. Acceptées non payées dans le délai -> 'expirée' (places libérées)
+  const { data: unpaid, error: unpaidErr } = await admin.from("excursion_bookings")
+    .update({ status: "expirée", expired_reason: "payment_timeout" })
+    .eq("status", "acceptée")
+    .lt("payment_deadline", nowIso)
+    .select("*");
+  if (unpaidErr) return json({ error: unpaidErr.message }, 500);
+
+  // 2. Demandes restées 'en attente' alors que l'excursion a commencé
+  //    (heure de rendez-vous, heure de Tunis ; sans heure : minuit) -> 'refusée'.
+  //    La mise à jour sert de « réservation » : seules les lignes réellement
+  //    changées par cet appel reçoivent un e-mail.
+  const { data: cands, error: candErr } = await admin.from("excursion_bookings")
+    .select("id,date,excursion_id").eq("status", "en attente").lte("date", todayTn);
+  if (candErr) return json({ error: candErr.message }, 500);
+  const excIds = [...new Set((cands ?? []).map((c) => c.excursion_id))];
+  const { data: excTimes } = excIds.length
+    ? await admin.from("excursions").select("id,meeting_time").in("id", excIds)
+    : { data: [] };
+  const timeOf = Object.fromEntries((excTimes ?? []).map((e) => [e.id, e.meeting_time]));
+  const startedIds = (cands ?? []).filter((c) => {
+    const st = excursionStart(String(c.date), timeOf[c.excursion_id]);
+    return st.getTime() <= Date.now();
+  }).map((c) => c.id);
+  let stale: typeof unpaid = [];
+  if (startedIds.length) {
+    const { data, error } = await admin.from("excursion_bookings")
+      .update({ status: "refusée" })
+      .eq("status", "en attente")
+      .in("id", startedIds)
+      .select("*");
+    if (error) return json({ error: error.message }, 500);
+    stale = data ?? [];
+  }
+
+  for (const b of [...(unpaid ?? []), ...(stale ?? [])]) {
     const [{ data: exc }, { data: guest }] = await Promise.all([
       admin.from("excursions").select("title").eq("id", b.excursion_id).maybeSingle(),
       admin.from("profiles").select("email,first_name").eq("id", b.guest_id).maybeSingle(),
     ]);
     const title = exc?.title ?? "votre excursion";
-    await sendMail(guest?.email, `Votre demande pour ${title} a expiré`.slice(0, 150),
-      layout("Demande expirée",
-        `Bonjour ${esc(guest?.first_name ?? "")},<br><br>Le prestataire de <strong>${esc(title)}</strong> n'a pas répondu à votre demande avant la date de l'excursion. La demande est donc close.`,
-        recapBlock(b, title), { label: "🔍 Voir d'autres excursions", url: SITE }));
+    const isUnpaid = b.status === "expirée";
+    await sendMail(guest?.email,
+      (isUnpaid ? `⌛ Réservation annulée — paiement non effectué (${title})` : `Votre demande pour ${title} a expiré`).slice(0, 150),
+      layout(isUnpaid ? "Délai de paiement dépassé" : "Demande expirée",
+        `Bonjour ${esc(guest?.first_name ?? "")},<br><br>` + (isUnpaid
+          ? `Le paiement de votre réservation pour <strong>${esc(title)}</strong> n'a pas été effectué dans le délai prévu. La réservation est annulée et les places ont été libérées. Aucun montant n'a été débité.`
+          : `Le prestataire de <strong>${esc(title)}</strong> n'a pas répondu à votre demande avant le début de l'excursion. La demande est donc close.`),
+        recapGuest(b, title), { label: "🔍 Voir d'autres excursions", url: SITE }));
   }
-  return json({ ok: true, expired: (expired ?? []).length });
+  return json({ ok: true, expired_unpaid: (unpaid ?? []).length, expired_pending: (stale ?? []).length });
 }
 
 Deno.serve(async (req) => {
@@ -196,75 +261,112 @@ Deno.serve(async (req) => {
     const id = String(body.booking_id ?? "");
     if (!id) return json({ error: "booking_id manquant" }, 400);
 
-    const { data: b, error: readErr } = await admin.from("excursion_bookings").select("*").eq("id", id).maybeSingle();
+    let { data: b, error: readErr } = await admin.from("excursion_bookings").select("*").eq("id", id).maybeSingle();
     if (readErr) return json({ error: readErr.message }, 500);
     if (!b) return json({ error: "not_found" }, 404);
 
+    // ----- Paiement (mode test) -----
+    if (type === "confirm_payment") {
+      if (b.guest_id !== uid) return json({ error: "not_found" }, 404);
+      if (b.status !== "acceptée") return json({ error: "not_acceptée" }, 409);
+      const nowIso = new Date().toISOString();
+      if (!b.payment_deadline || b.payment_deadline <= nowIso) return json({ error: "expired" }, 409);
+      // TODO paiement réel : vérifier ici la transaction (ou la confirmer depuis
+      // le webhook du prestataire de paiement). Mode test : aucun débit.
+      const method = String(body.method ?? "card").replace(/[^a-z]/gi, "").slice(0, 12) || "card";
+      const { data: upd, error: updErr } = await admin.from("excursion_bookings")
+        .update({ status: "confirmée", paid_at: nowIso, payment_method: `en ligne (${method}, test)` })
+        .eq("id", b.id).eq("status", "acceptée").gt("payment_deadline", nowIso)
+        .select("*");
+      if (updErr) return json({ error: updErr.message }, 500);
+      if (!upd || !upd.length) return json({ error: "expired" }, 409);
+      b = upd[0];
+    }
+
     const [{ data: exc }, { data: guest }] = await Promise.all([
-      admin.from("excursions").select("title,owner_id,contact_email,contact_firstname").eq("id", b.excursion_id).maybeSingle(),
+      admin.from("excursions").select("title,owner_id,contact_email,contact_firstname,instant_book").eq("id", b.excursion_id).maybeSingle(),
       admin.from("profiles").select("email,first_name").eq("id", b.guest_id).maybeSingle(),
     ]);
     const title = exc?.title ?? "votre excursion";
     const guestName = guest?.first_name ?? "";
     const hostName = exc?.contact_firstname ?? "";
-    const recap = recapBlock(b, title);
-    const recapOwner = recapBlock(b, title, await hostNetFor(b, exc?.owner_id));
-    // Réservation confirmée : on joint le code de réservation
-    const recapGuest = b.status === "confirmée" ? recap + codeBlock(b.booking_code, "guest", "excursion") : recap;
-    const recapHost = b.status === "confirmée" ? recapOwner + codeBlock(b.booking_code, "host", "excursion") : recapOwner;
 
     if (type === "created") {
       if (b.guest_id !== uid) return json({ error: "not_guest" }, 403);
       if (b.created_at && Date.now() - new Date(b.created_at).getTime() > CREATED_MAX_AGE_MS) return json({ error: "too_old" }, 409);
-      const instant = b.status === "confirmée";
-      if (!instant && b.status !== "en attente") return json({ error: "invalid_state" }, 409);
+      // Réservation instantanée : aucun e-mail avant le paiement
+      if (b.status === "acceptée") return json({ ok: true, waiting_payment: true });
+      if (b.status !== "en attente") return json({ error: "invalid_state" }, 409);
       await Promise.all([
-        sendMail(guest?.email,
-          instant ? `✅ Réservation confirmée — ${title}` : `📨 Demande envoyée — ${title}`,
-          layout(instant ? "Réservation confirmée !" : "Demande envoyée !",
-            `Bonjour ${esc(guestName)},<br><br>` + (instant
-              ? `Votre réservation pour <strong>${esc(title)}</strong> est confirmée. Le prestataire a été prévenu.`
-              : `Votre demande de réservation pour <strong>${esc(title)}</strong> a bien été transmise au prestataire. Vous recevrez un e-mail dès sa réponse.`),
-            recapGuest, { label: "🧳 Voir mes voyages", url: SITE },
+        sendMail(guest?.email, `📨 Demande envoyée — ${title}`,
+          layout("Demande envoyée !",
+            `Bonjour ${esc(guestName)},<br><br>Votre demande de réservation pour <strong>${esc(title)}</strong> a bien été transmise au prestataire.
+             <br><br><strong>Aucun paiement n'est demandé pour l'instant.</strong> Dès que le prestataire acceptera, vous recevrez un e-mail avec un lien de paiement : vous aurez alors <strong>24 h pour payer en ligne</strong> et confirmer votre place.`,
+            recapGuest(b, title), { label: "🧳 Suivre ma demande", url: SITE },
             "Pensez à vérifier vos spams si vous ne recevez pas nos e-mails.")),
-        sendMail(exc?.contact_email,
-          instant ? `🎉 Nouvelle réservation — ${title}` : `📨 Nouvelle demande de réservation — ${title}`,
-          layout(instant ? "Nouvelle réservation" : "Nouvelle demande à traiter",
-            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Un voyageur")}</strong> ` + (instant
-              ? `a réservé <strong>${esc(title)}</strong> (réservation instantanée).`
-              : `souhaite réserver <strong>${esc(title)}</strong>. Acceptez ou refusez la demande depuis votre espace, rubrique « Demandes d'excursions ».`),
-            recapHost, { label: instant ? "Voir la réservation" : "Répondre à la demande", url: SITE })),
+        sendMail(exc?.contact_email, `📨 Nouvelle demande de réservation — ${title}`,
+          layout("Nouvelle demande à traiter",
+            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Un voyageur")}</strong> souhaite réserver <strong>${esc(title)}</strong>. Acceptez ou refusez la demande depuis votre espace, rubrique « Demandes d'excursions ».
+             <br><br>Si vous acceptez, le voyageur aura 24 h pour payer en ligne ; sa place ne sera confirmée qu'après ce paiement.`,
+            recapOwner(b, title, await hostNetFor(b)), { label: "Répondre à la demande", url: SITE })),
       ]);
     } else if (type === "decision") {
       if (exc?.owner_id !== uid) return json({ error: "not_owner" }, 403);
-      if (b.status !== "confirmée" && b.status !== "refusée") return json({ error: "invalid_state" }, 409);
-      const ok = b.status === "confirmée";
+      if (b.status !== "acceptée" && b.status !== "refusée") return json({ error: "invalid_state" }, 409);
+      const ok = b.status === "acceptée";
       const msg = String(body.host_message ?? "").trim().slice(0, 1000);
       await sendMail(guest?.email,
-        ok ? `✅ Votre réservation est confirmée — ${title}` : `Votre demande n'a pas été retenue — ${title}`,
+        ok ? `✅ Demande acceptée — payez sous 24 h pour confirmer (${title})` : `Votre demande n'a pas été retenue — ${title}`,
         layout(ok ? "Demande acceptée !" : "Demande non retenue",
           `Bonjour ${esc(guestName)},<br><br>` + (ok
-            ? `Bonne nouvelle : le prestataire a accepté votre demande pour <strong>${esc(title)}</strong>. Votre réservation est confirmée.`
-            : `Le prestataire n'a pas pu accepter votre demande pour <strong>${esc(title)}</strong>.`) + hostNote(msg),
-          recapGuest, ok ? { label: "🧳 Voir mes voyages", url: SITE } : { label: "🔍 Voir d'autres excursions", url: SITE }));
+            ? `Bonne nouvelle : le prestataire a accepté votre demande pour <strong>${esc(title)}</strong>.
+               <br><br>Pour confirmer votre place, <strong>payez ${money(b.total)} en ligne avant le ${fmtDateTime(b.payment_deadline)}</strong>. Passé ce délai, la demande sera annulée et les places remises en vente.`
+            : `Le prestataire n'a pas pu accepter votre demande pour <strong>${esc(title)}</strong>. Aucun paiement n'a été effectué.`) + hostNote(msg),
+          recapGuest(b, title),
+          ok ? { label: "💳 Payer et confirmer", url: payUrl(b.id) } : { label: "🔍 Voir d'autres excursions", url: SITE },
+          ok ? "Vous devrez être connecté avec le compte utilisé pour la demande." : ""));
+    } else if (type === "confirm_payment") {
+      const net = await hostNetFor(b);
+      await Promise.all([
+        sendMail(guest?.email, `🎉 Réservation confirmée — ${title}`,
+          layout("Votre réservation est confirmée !",
+            `Bonjour ${esc(guestName)},<br><br>Votre paiement a bien été enregistré. Votre place pour <strong>${esc(title)}</strong> est confirmée.`,
+            recapGuest(b, title) + codeBlock(b.booking_code, "guest", "excursion"),
+            { label: "🧳 Voir mes voyages", url: SITE })),
+        sendMail(exc?.contact_email, `🎉 Nouvelle réservation confirmée — ${title}`,
+          layout("Une réservation est confirmée",
+            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Un voyageur")}</strong> a payé en ligne : sa réservation pour <strong>${esc(title)}</strong> est confirmée.`,
+            recapOwner(b, title, net) + codeBlock(b.booking_code, "host", "excursion"),
+            { label: "Voir la réservation", url: SITE })),
+      ]);
     } else if (type === "cancelled") {
       if (b.guest_id !== uid) return json({ error: "not_guest" }, 403);
       if (b.status !== "annulée") return json({ error: "invalid_state" }, 409);
+      // Motif et montant remboursable : lus en base (fn_guest_cancel_policy)
+      const reason = b.cancel_reason
+        ? `<div style="margin-top:14px;padding:10px 14px;border-left:3px solid #b42318;background:#fff5f5;"><strong>Motif :</strong> ${esc(b.cancel_reason)}</div>`
+        : "";
+      const refund = Number(b.refund_amount ?? 0);
+      const moneyTxt = !b.paid_at
+        ? "Aucun paiement n'avait été effectué : rien ne vous sera prélevé."
+        : refund > 0
+          ? `Vous serez remboursé de ${money(refund)}.`
+          : "Selon la politique d'annulation de cette excursion, cette réservation n'est pas remboursable.";
       await Promise.all([
         sendMail(exc?.contact_email, `❌ Réservation annulée — ${title}`,
           layout("Réservation annulée",
-            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Le voyageur")}</strong> a annulé sa réservation pour <strong>${esc(title)}</strong>. Les places sont de nouveau disponibles.`,
-            recapOwner)),
+            `Bonjour ${esc(hostName)},<br><br><strong>${esc(guestName || "Le voyageur")}</strong> a annulé sa réservation pour <strong>${esc(title)}</strong>. Les places sont de nouveau disponibles.${reason}`,
+            recapOwner(b, title, null, false))),
         sendMail(guest?.email, `Votre annulation est confirmée — ${title}`,
           layout("Annulation confirmée",
-            `Bonjour ${esc(guestName)},<br><br>Nous confirmons l'annulation de votre réservation pour <strong>${esc(title)}</strong>.`,
-            recap, { label: "🔍 Voir d'autres excursions", url: SITE })),
+            `Bonjour ${esc(guestName)},<br><br>Nous confirmons l'annulation de votre réservation pour <strong>${esc(title)}</strong>. ${moneyTxt}${reason}`,
+            recapGuest(b, title), { label: "🔍 Voir d'autres excursions", url: SITE })),
       ]);
     } else {
       return json({ error: "type invalide" }, 400);
     }
 
-    if (mailErrors.length) return json({ error: "mail_failed" }, 502);
+    if (mailErrors.length) return json({ ok: type === "confirm_payment", error: "mail_failed" }, type === "confirm_payment" ? 200 : 502);
     return json({ ok: true });
   } catch (err) {
     console.error("notify-excursion-booking:", (err as Error).message);

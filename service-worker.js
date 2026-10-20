@@ -4,7 +4,7 @@
 // mettre en cache les appels Supabase (prix, disponibilités, réservations…)
 // qui doivent toujours refléter les données les plus fraîches.
 
-const CACHE_NAME = 'mytunigo-shell-v1';
+const CACHE_NAME = 'mytunigo-shell-v2';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -56,3 +56,44 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cached) => cached || fetch(event.request).catch(() => cached))
   );
 });
+
+// ---------------------------------------------------------------------
+// Notifications push (envoyées par l'Edge Function send-push)
+// Contenu : { title, body, url, tag }
+// ---------------------------------------------------------------------
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'MyTunigo', body: event.data ? event.data.text() : '' }; }
+  const title = data.title || 'MyTunigo';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-96.png',
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    data: { url: data.url || '/' }
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  // Seuls les liens internes au site sont ouverts
+  let target;
+  try {
+    target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin);
+    if (target.origin !== self.location.origin) target = new URL('/', self.location.origin);
+  } catch (e) { target = new URL('/', self.location.origin); }
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const win = all.find((c) => new URL(c.url).origin === self.location.origin);
+    if (win) {
+      try { await win.navigate(target.href); } catch (e) {}
+      return win.focus();
+    }
+    return self.clients.openWindow(target.href);
+  })());
+});
+
+// Le navigateur a renouvelé l'abonnement : la page le réenregistrera à la
+// prochaine ouverture (rattachement automatique au compte connecté).
+self.addEventListener('pushsubscriptionchange', () => {});
