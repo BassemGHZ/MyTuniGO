@@ -8861,10 +8861,18 @@ function excFormStep1(fd){
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:12px;">
         ${Array.from({length: Math.min(PHOTO_RULES.excursion.max, Math.max(PHOTO_RULES.excursion.min, (fd.photos||[]).length + 1))}, (_,i)=>i).map(i=>{
           const photo = (fd.photos||[])[i];
-          return '<div style="aspect-ratio:4/3;border-radius:var(--r-md);border:2px dashed var(--gray-300);overflow:hidden;position:relative;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">'
+          const n = (fd.photos||[]).length;
+          const btn = 'position:absolute;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;line-height:1;padding:5px 7px;z-index:1;';
+          return '<div style="aspect-ratio:4/3;border-radius:var(--r-md);border:2px '+(photo?'solid transparent':'dashed var(--gray-300)')+';overflow:hidden;position:relative;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;'+(photo?'cursor:grab;':'')+'"'
+            +(photo ? ' draggable="true" ondragstart="excDragStart(event,'+i+')" ondragover="event.preventDefault();this.style.opacity=\'.6\'" ondragleave="this.style.opacity=\'1\'" ondrop="event.preventDefault();this.style.opacity=\'1\';excDragDrop('+i+')"' : '')
+            +'>'
             +(photo
-              ? '<img src="'+photo.dataUrl+'" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;">'
-                +'<button onclick="excRemovePhoto('+i+')" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1;z-index:1;">×</button>'
+              ? '<img src="'+photo.dataUrl+'" draggable="false" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;pointer-events:none;">'
+                +(i===0 ? '<span style="position:absolute;top:6px;left:6px;background:var(--yellow);color:var(--gray-900);font-size:11px;font-weight:800;padding:3px 8px;border-radius:12px;z-index:1;">⭐ Principale</span>' : '')
+                +'<button onclick="excRemovePhoto('+i+')" title="Supprimer" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1;z-index:1;">×</button>'
+                +(i>0 ? '<button onclick="excMovePhoto('+i+',-1)" title="Déplacer à gauche" style="'+btn+'bottom:6px;left:6px;">◀</button>' : '')
+                +(i>0 ? '<button onclick="excSetMainPhoto('+i+')" title="Définir comme principale" style="'+btn+'bottom:6px;left:50%;transform:translateX(-50%);">⭐</button>' : '')
+                +(i<n-1 ? '<button onclick="excMovePhoto('+i+',1)" title="Déplacer à droite" style="'+btn+'bottom:6px;right:6px;">▶</button>' : '')
               : '<span style="font-size:28px;opacity:.3;">📷</span>'
                 +'<span style="font-size:11px;color:var(--gray-400);text-align:center;">Photo '+(i+1)+'</span>')
             +'</div>';
@@ -8881,6 +8889,7 @@ function excFormStep1(fd){
       </div>
 
       <div style="margin-top:4px;">${photoCountHTML('excursion', (fd.photos||[]).length)}</div>
+      ${(fd.photos||[]).length>1?'<p style="font-size:12px;color:var(--gray-500);margin-top:6px;">💡 Glissez les photos (ou utilisez ◀ ▶) pour changer leur ordre. La première est l\'image principale.</p>':''}
     </div>
 
     ${excNavBtns()}
@@ -8899,6 +8908,34 @@ async function excUploadPhotos(input){
 }
 
 /* excAddPhotoUrl removed */
+
+// Ordre des photos (comme pour les hébergements) : glisser-déposer sur
+// ordinateur, flèches ◀ ▶ et ⭐ partout (le glisser ne marche pas au doigt).
+let _excDragIdx = null;
+function excDragStart(e, idx){ _excDragIdx = idx; e.dataTransfer.effectAllowed = 'move'; }
+function excDragDrop(targetIdx){
+  const ph = appState.excursionFormData.photos||[];
+  const src = _excDragIdx; _excDragIdx = null;
+  if(src===null || src===targetIdx || !ph[src] || !ph[targetIdx]) return;
+  const [moved] = ph.splice(src,1);
+  ph.splice(targetIdx,0,moved);
+  excRefresh();
+}
+function excMovePhoto(idx, dir){
+  const ph = appState.excursionFormData.photos||[];
+  const j = idx+dir;
+  if(j<0 || j>=ph.length) return;
+  [ph[idx], ph[j]] = [ph[j], ph[idx]];
+  excRefresh();
+}
+function excSetMainPhoto(idx){
+  const ph = appState.excursionFormData.photos||[];
+  if(idx<=0 || !ph[idx]) return;
+  const [p] = ph.splice(idx,1);
+  ph.unshift(p);
+  excRefresh();
+  showToast('⭐ Photo principale mise à jour','var(--blue)');
+}
 
 function excRemovePhoto(idx){
   const fd = appState.excursionFormData;
