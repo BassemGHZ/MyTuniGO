@@ -9126,6 +9126,7 @@ function excFormValidate(){
     if(!fd.category){showToast('⚠️ Choisissez une catégorie','var(--red)');return false;}
     if(!fd.title?.trim()){showToast('⚠️ Ajoutez un titre','var(--red)');return false;}
     if(!fd.address?.trim()||!fd.governorate||!fd.city){showToast('⚠️ Remplissez l\'adresse, le gouvernorat et la ville','var(--red)');return false;}
+    { const g = parseInt(fd.groupSize); if(!(g>=1 && g<=100)){ showToast('⚠️ Indiquez un groupe maximum entre 1 et 100 personnes','var(--red)'); return false; } }
     if(fd.city==='__OTHER__'&&!(fd.cityCustom||'').trim()){showToast('⚠️ Indiquez le nom de la ville ou localité','var(--red)');return false;}
     { const de = descLengthError(fd.description); if(de){ showToast(de,'var(--red)'); return false; } }
   }
@@ -9331,7 +9332,8 @@ async function excFormPublish(){
     price: fd.price||0,
     base_price: fd.price||0,
     price_type: fd.priceType||'personne',
-    max_participants: fd.maxParticipants||10,
+    // Le champ « Groupe max » du formulaire s'appelle groupSize (avant : maxParticipants, jamais rempli → toujours 10)
+    max_participants: Math.min(100, Math.max(1, parseInt(fd.groupSize)||parseInt(fd.maxParticipants)||10)),
     min_age: fd.minAge||0,
     difficulty: fd.difficulty||'facile',
     languages: fd.language||['Français'],
