@@ -7321,7 +7321,7 @@ let _bank = { uid:null, loading:false, data:null, editing:false };
 const BANK_ERRORS = {
   IBAN_INVALID:   "IBAN invalide : vérifiez le numéro (pays, longueur et clé).",
   RIB_KEY_INVALID:"RIB invalide : la clé (2 derniers chiffres) ne correspond pas au numéro.",
-  BIC_INVALID:    "BIC invalide : 8 ou 11 caractères (ex. STBKTNTT).",
+  BIC_INVALID:    "BIC invalide : code de 8 ou 11 caractères (ex. STBKTNTT), pas le nom de la banque. Facultatif : laissez vide si vous ne le connaissez pas.",
   HOLDER_INVALID: "Indiquez le nom du titulaire du compte.",
   NOT_HOST:       "Les coordonnées bancaires sont réservées aux hôtes et organisateurs."
 };
@@ -7343,6 +7343,22 @@ function ibanLocalCheck(raw){
   if(v.startsWith('TN') && (v.length!==24 || 97 - mod97(v.slice(4,22)+'00') !== +v.slice(22))) return { ok:false, err:'RIB_KEY_INVALID' };
   return { ok:true, iban:v };
 }
+// BIC : espaces, tirets et points ignorés ; '' si vide, null si invalide
+function bicNormalize(raw){
+  const v = String(raw||'').toUpperCase().replace(/[\s.\-]/g,'');
+  if(!v) return '';
+  return /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v) ? v : null;
+}
+function bankBicInput(el){
+  const hint = document.getElementById('bk-bic-hint');
+  if(!hint) return;
+  const raw = el.value.replace(/[\s.\-]/g,'');
+  // erreur affichée seulement une fois la saisie assez longue (ou manifestement fausse)
+  const bad = raw && bicNormalize(raw)===null && (raw.length>=8 || /[^A-Za-z0-9]/.test(raw) || /\d/.test(raw.slice(0,6)));
+  hint.style.display = bad ? '' : 'none';
+  hint.textContent = bad ? BANK_ERRORS.BIC_INVALID : '';
+  el.style.borderColor = bad ? 'var(--red)' : '';
+}
 function ibanGroup(v){ return String(v||'').replace(/\s/g,'').toUpperCase().replace(/(.{4})/g,'$1 ').trim(); }
 
 function bankCardHTML(){
@@ -7362,8 +7378,9 @@ function bankCardHTML(){
         <div id="bk-iban-hint" style="font-size:12px;margin-top:4px;color:var(--gray-500);">${a?'Saisissez à nouveau le numéro complet pour le modifier.':'RIB tunisien : converti automatiquement en IBAN TN.'}</div></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div><label style="${lab}">Banque (facultatif)</label><input id="bk-bank" maxlength="80" value="${escHtml(a?.bank_name||'')}" style="${inp}"></div>
-        <div><label style="${lab}">BIC (facultatif)</label><input id="bk-bic" maxlength="11" value="${escHtml(a?.bic||'')}" style="${inp}text-transform:uppercase;"></div>
+        <div><label style="${lab}">BIC (facultatif)</label><input id="bk-bic" maxlength="20" autocomplete="off" spellcheck="false" placeholder="STBKTNTT" value="${escHtml(a?.bic||'')}" oninput="bankBicInput(this)" style="${inp}text-transform:uppercase;"></div>
       </div>
+      <div id="bk-bic-hint" style="display:none;font-size:12px;color:var(--red);margin-top:-4px;line-height:1.45;"></div>
       <div style="display:flex;gap:10px;margin-top:4px;">
         <button onclick="_bank.editing=false;renderBankCard()" style="flex:1;padding:10px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;cursor:pointer;">Annuler</button>
         <button id="bk-save" onclick="saveBankAccount()" style="flex:1;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:700;cursor:pointer;">💾 Enregistrer</button>
@@ -7423,7 +7440,14 @@ async function saveBankAccount(){
   const holder = document.getElementById('bk-holder')?.value?.trim()||'';
   const iban   = document.getElementById('bk-iban')?.value||'';
   const bank   = document.getElementById('bk-bank')?.value?.trim()||'';
-  const bic    = document.getElementById('bk-bic')?.value?.trim()||'';
+  const bic    = bicNormalize(document.getElementById('bk-bic')?.value);
+  if(bic===null){
+    const h = document.getElementById('bk-bic-hint');
+    if(h){ h.style.display=''; h.textContent = BANK_ERRORS.BIC_INVALID; }
+    const f = document.getElementById('bk-bic');
+    if(f){ f.style.borderColor='var(--red)'; f.focus(); }
+    return;
+  }
   if(holder.length<2){ showToast('⚠️ '+BANK_ERRORS.HOLDER_INVALID,'var(--red)'); return; }
   const c = ibanLocalCheck(iban);
   if(!c.ok){ showToast('⚠️ '+BANK_ERRORS[c.err],'var(--red)'); return; }
