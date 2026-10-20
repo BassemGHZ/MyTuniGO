@@ -1856,8 +1856,8 @@ async function handleLogin(){
   auth.currentUser = {
     id: data.user.id,
     role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
-    firstName: meta.first_name || email.split('@')[0],
-    lastName:  meta.last_name  || '',
+    firstName: prof?.first_name || meta.first_name || email.split('@')[0],
+    lastName:  prof?.last_name  || meta.last_name  || '',
     email:     data.user.email,
     photo:     prof?.photo || null,
     phone:     prof?.phone || null,
@@ -7185,20 +7185,22 @@ function buildProfil(){
         </div>
         ${editing ? `
         <div style="display:flex;flex-direction:column;gap:12px;">
-          <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Prénom</label>
-            <input id="pf-first" type="text" value="${u.firstName}" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-          <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Nom</label>
-            <input id="pf-last" type="text" value="${u.lastName}" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
+          ${lockedIdentityField('Prénom', u.firstName, 'pf-first')}
+          ${lockedIdentityField('Nom', u.lastName, 'pf-last')}
           <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Téléphone</label>
             <input id="pf-phone" type="tel" value="${u.phone||''}" placeholder="+33 6 12 34 56 78" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
-          <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Date de naissance</label>
-            <input id="pf-birth" type="date" value="${u.birthdate||''}" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;"></div>
+          ${u.birthdate
+            ? lockedIdentityField('Date de naissance', fmtBirth(u.birthdate))
+            : `<div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Date de naissance</label>
+            <input id="pf-birth" type="date" max="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
+            <div style="font-size:11.5px;color:var(--gray-500);margin-top:4px;">⚠️ Une fois enregistrée, elle ne pourra plus être modifiée que sur demande.</div></div>`}
           <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Pays</label>
             <select id="pf-country" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;">
               ${['Tunisie','France','Belgique','Suisse','Maroc','Sénégal','Côte d\'Ivoire','Autre'].map(c=>`<option ${(u.country||'France')===c?'selected':''}>${c}</option>`).join('')}
             </select></div>
           <div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">Bio</label>
-            <textarea id="pf-bio" placeholder="Parlez-vous en quelques mots…" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:70px;">${u.bio||''}</textarea></div>
+            <textarea id="pf-bio" placeholder="Parlez-vous en quelques mots…" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;min-height:70px;">${escHtml(u.bio||'')}</textarea></div>
+          <div id="profil-change-status">${profileChangeStatusHTML()}</div>
           <div style="display:flex;gap:8px;margin-top:4px;">
             <button onclick="saveProfile()" style="flex:1;background:var(--blue);color:#fff;padding:10px;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">💾 Enregistrer</button>
             <button onclick="appState.profilEditing=false;navigate('profil')" style="padding:10px 16px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;cursor:pointer;">Annuler</button>
@@ -7212,16 +7214,17 @@ function buildProfil(){
             ['E-mail','📧',u.email],
             ['Téléphone','📱',u.phone||'Non renseigné'],
             ['Pays','🌍',u.country||'Non renseigné'],
-            ['Date de naissance','🎂',u.birthdate||'Non renseignée'],
+            ['Date de naissance','🎂',u.birthdate?fmtBirth(u.birthdate):'Non renseignée'],
           ].map(([label,icon,val])=>`
             <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--gray-100);">
               <span style="font-size:16px;width:24px;">${icon}</span>
               <div style="flex:1;">
-                <div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">${label}</div>
-                <div style="font-size:14px;font-weight:600;color:var(--gray-800);">${val}</div>
+                <div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">${label}${['Prénom','Nom'].includes(label)||(label==='Date de naissance'&&u.birthdate)?' <span title="Modifiable uniquement sur demande">🔒</span>':''}</div>
+                <div style="font-size:14px;font-weight:600;color:var(--gray-800);">${escHtml(val)}</div>
               </div>
             </div>`).join('')}
-          ${u.bio?`<div style="padding:8px 0;"><div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px;">Bio</div><div style="font-size:14px;color:var(--gray-700);line-height:1.6;">${u.bio}</div></div>`:''}
+          <div id="profil-change-status">${profileChangeStatusHTML()}</div>
+          ${u.bio?`<div style="padding:8px 0;"><div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px;">Bio</div><div style="font-size:14px;color:var(--gray-700);line-height:1.6;">${escHtml(u.bio)}</div></div>`:''}
         </div>`}
       </div>
 
@@ -7276,16 +7279,17 @@ function buildProfil(){
   </div>`;
   setTimeout(loadProfilHostReviews, 0);
   setTimeout(loadProfilStats, 0);
+  setTimeout(loadProfileChange, 0);
   return d;
 }
 
 async function saveProfile(){
   const u = auth.currentUser;
-  const first = document.getElementById('pf-first')?.value?.trim();
-  const last  = document.getElementById('pf-last')?.value?.trim();
-  if(!first||!last){showToast('⚠️ Prénom et nom obligatoires','var(--red)');return;}
+  // Prénom, nom et date de naissance sont verrouillés (trigger
+  // trg_profile_identity_lock) : seule une date jamais saisie peut être ajoutée.
   const phone     = document.getElementById('pf-phone')?.value?.trim()||null;
-  const birthdate = document.getElementById('pf-birth')?.value||null;
+  const birthInput = document.getElementById('pf-birth');
+  const birthdate = birthInput ? (birthInput.value||null) : (u.birthdate||null);
   const country   = document.getElementById('pf-country')?.value||null;
   const bio       = document.getElementById('pf-bio')?.value?.trim()||null;
   // Un numéro = un seul compte (index unique profiles_phone_norm_key en base,
@@ -7297,24 +7301,20 @@ async function saveProfile(){
   const btn = document.querySelector('button[onclick="saveProfile()"]');
   if(btn){btn.disabled=true;btn.textContent='⏳ Enregistrement…';}
 
-  const { error: dbErr } = await _sb.from('profiles').update({
-    first_name: first, last_name: last, phone, birthdate, country, bio
-  }).eq('id', u.id);
+  const upd = { phone, country, bio };
+  if(birthInput && birthdate) upd.birthdate = birthdate;
+  const { error: dbErr } = await _sb.from('profiles').update(upd).eq('id', u.id);
 
   if(dbErr){
     const dupPhone = dbErr.code==='23505' && /phone/i.test(dbErr.message||'');
-    showToast(dupPhone ? '⚠️ Ce numéro de téléphone est déjà utilisé par un autre compte.' : 'Erreur : '+dbErr.message,'var(--red)');
+    const locked = /IDENTITY_LOCKED/.test(dbErr.message||'');
+    showToast(dupPhone ? '⚠️ Ce numéro de téléphone est déjà utilisé par un autre compte.'
+      : locked ? '⚠️ Prénom, nom et date de naissance ne se modifient que sur demande de correction.'
+      : 'Erreur : '+dbErr.message,'var(--red)');
     if(btn){btn.disabled=false;btn.textContent='💾 Enregistrer';}
     return;
   }
 
-  // Garde le prénom/nom synchronisés avec les métadonnées d'authentification,
-  // utilisées à la connexion et à la restauration de session.
-  try{ await _sb.auth.updateUser({ data: { first_name: first, last_name: last } }); }
-  catch(e){ console.warn('auth.updateUser error:', e.message); }
-
-  u.firstName = first;
-  u.lastName  = last;
   u.phone     = phone;
   u.birthdate = birthdate;
   u.country   = country;
@@ -7326,6 +7326,170 @@ async function saveProfile(){
   showToast('✅ Profil mis à jour !','var(--green)');
   navigate('profil');
   renderAuthArea();
+}
+
+/* ===================== IDENTITÉ VERROUILLÉE / DEMANDE DE CORRECTION ===================== */
+// Prénom, nom et date de naissance ne se modifient pas librement (confiance
+// entre hôtes et voyageurs, titulaire du RIB). Une correction se demande
+// (rpc fn_request_profile_change) et l'admin l'accepte ou la refuse
+// (onglet admin « ✏️ Corrections »).
+let _profChange = { uid:null, data:null };
+
+function fmtBirth(d){ return d ? new Date(String(d)+'T12:00:00').toLocaleDateString('fr-FR') : ''; }
+
+function lockedIdentityField(label, value, id){
+  return `<div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;">${label} 🔒</label>
+    <div ${id?`id="${id}"`:''} style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-200);border-radius:var(--r-md);font-size:14px;background:var(--gray-50);color:var(--gray-700);">${escHtml(value||'—')}</div></div>`;
+}
+
+function profileChangeStatusHTML(){
+  const d = _profChange.uid===auth.currentUser?.id ? _profChange.data : null;
+  const link = '<button onclick="openProfileChangeDialog()" style="background:none;border:none;color:var(--blue-l);font-size:12.5px;font-weight:700;cursor:pointer;padding:0;">Demander une correction</button>';
+  const note = '<div style="font-size:12px;color:var(--gray-500);line-height:1.55;padding-top:8px;">🔒 Prénom, nom et date de naissance ne sont modifiables que sur demande. '+link+'</div>';
+  if(d && d.status==='en attente'){
+    const parts = [d.new_first_name&&('prénom « '+escHtml(d.new_first_name)+' »'), d.new_last_name&&('nom « '+escHtml(d.new_last_name)+' »'), d.new_birthdate&&('date de naissance '+fmtBirth(d.new_birthdate))].filter(Boolean).join(', ');
+    return '<div style="background:#fff8e0;border:1px solid #ffe080;border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;color:#7a5a00;line-height:1.55;margin-top:10px;">⏳ Demande de correction en cours ('+parts+'), envoyée le '+acctDelFmtDate(d.created_at)+'. <button onclick="cancelProfileChange()" style="background:none;border:none;color:#7a5a00;text-decoration:underline;font-size:12.5px;cursor:pointer;padding:0;">Annuler</button></div>';
+  }
+  if(d && d.status==='refusée' && d.processed_at && (Date.now()-new Date(d.processed_at))<30*864e5){
+    return '<div style="background:#fff0f0;border:1px solid #ffcccc;border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;color:var(--red);line-height:1.55;margin-top:10px;">Votre demande de correction a été refusée'+(d.admin_note?' : '+escHtml(d.admin_note).replace(/[.!?]?$/,'.'):'.')+'</div>' + note;
+  }
+  if(d && d.status==='acceptée' && d.processed_at && (Date.now()-new Date(d.processed_at))<7*864e5){
+    return '<div style="background:#e8f9f0;border:1px solid #a0e8c8;border-radius:var(--r-md);padding:10px 12px;font-size:12.5px;color:#0a6b47;line-height:1.55;margin-top:10px;">✅ Votre correction a été acceptée.</div>' + note;
+  }
+  return note;
+}
+
+async function loadProfileChange(){
+  const uid = auth.currentUser?.id;
+  if(!uid) return;
+  const { data, error } = await _sb.rpc('fn_my_profile_change');
+  if(error){ console.warn('fn_my_profile_change:', error.message); return; }
+  _profChange = { uid, data };
+  // Correction acceptée : on relit le profil pour afficher le nouveau nom
+  if(data && data.status==='acceptée'){
+    const { data: prof } = await _sb.rpc('get_my_profile').maybeSingle();
+    const u = auth.currentUser;
+    if(prof && u && (prof.first_name!==u.firstName || prof.last_name!==u.lastName || (prof.birthdate||null)!==(u.birthdate||null))){
+      u.firstName = prof.first_name; u.lastName = prof.last_name; u.birthdate = prof.birthdate;
+      if(appState.page==='profil'){ navigate('profil'); renderAuthArea(); return; }
+    }
+  }
+  document.querySelectorAll('#profil-change-status').forEach(el=>{ el.innerHTML = profileChangeStatusHTML(); });
+}
+
+function openProfileChangeDialog(){
+  const u = auth.currentUser;
+  if(!u){ openModal('login'); return; }
+  if(_profChange.data?.status==='en attente'){ showToast('Une demande de correction est déjà en cours.','var(--blue)'); return; }
+  document.getElementById('profchg-ov')?.remove();
+  const inp = 'width:100%;padding:9px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;';
+  const lab = 'font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.3px;display:block;margin-bottom:4px;';
+  const ov = document.createElement('div');
+  ov.id = 'profchg-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.onclick = e => { if(e.target===ov) ov.remove(); };
+  ov.innerHTML = `<div style="background:#fff;border-radius:var(--r-lg);max-width:440px;width:100%;max-height:90vh;overflow:auto;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+    <div style="font-size:18px;font-weight:800;margin-bottom:6px;">✏️ Demander une correction</div>
+    <div style="font-size:13px;color:var(--gray-600);line-height:1.55;margin-bottom:14px;">Modifiez uniquement ce qui est faux. L'équipe MyTunigo vérifie la demande avant de l'appliquer.</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div><label style="${lab}">Prénom</label><input id="pc-first" maxlength="60" value="${escHtml(u.firstName||'')}" style="${inp}"></div>
+      <div><label style="${lab}">Nom</label><input id="pc-last" maxlength="60" value="${escHtml(u.lastName||'')}" style="${inp}"></div>
+      <div><label style="${lab}">Date de naissance</label><input id="pc-birth" type="date" max="${new Date().toISOString().slice(0,10)}" value="${u.birthdate||''}" style="${inp}"></div>
+      <div><label style="${lab}">Motif de la correction</label>
+        <textarea id="pc-reason" maxlength="500" placeholder="Ex. : faute de frappe à l'inscription, changement de nom après mariage…" style="${inp}min-height:70px;font-family:inherit;resize:vertical;"></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button onclick="document.getElementById('profchg-ov').remove()" style="flex:1;padding:11px;background:var(--gray-100);border:1px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;">Annuler</button>
+      <button id="pc-go" onclick="submitProfileChange()" style="flex:1;padding:11px;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:800;cursor:pointer;">Envoyer la demande</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+const PROFILE_CHANGE_ERRORS = {
+  REASON_REQUIRED:'Indiquez le motif de la correction.',
+  NO_CHANGE:"Vous n'avez rien modifié.",
+  ALREADY_PENDING:'Une demande de correction est déjà en cours.',
+  NAME_INVALID:'Prénom ou nom trop long (60 caractères maximum).',
+  BIRTHDATE_INVALID:'Date de naissance invalide (16 ans minimum).'
+};
+
+async function submitProfileChange(){
+  const first  = document.getElementById('pc-first')?.value.trim()||'';
+  const last   = document.getElementById('pc-last')?.value.trim()||'';
+  const birth  = document.getElementById('pc-birth')?.value||null;
+  const reason = document.getElementById('pc-reason')?.value.trim()||'';
+  if(!first || !last){ showToast('⚠️ Prénom et nom obligatoires','var(--red)'); return; }
+  if(reason.length<3){ showToast('⚠️ '+PROFILE_CHANGE_ERRORS.REASON_REQUIRED,'var(--red)'); return; }
+  const btn = document.getElementById('pc-go');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Envoi…'; }
+  const { error } = await _sb.rpc('fn_request_profile_change', { p_first:first, p_last:last, p_birthdate:birth, p_reason:reason });
+  if(error){
+    if(btn){ btn.disabled=false; btn.textContent='Envoyer la demande'; }
+    const k = Object.keys(PROFILE_CHANGE_ERRORS).find(k=>(error.message||'').includes(k));
+    showToast('⚠️ '+(k?PROFILE_CHANGE_ERRORS[k]:'Erreur : '+error.message),'var(--red)');
+    return;
+  }
+  document.getElementById('profchg-ov')?.remove();
+  showToast("✅ Demande envoyée : l'équipe MyTunigo va la vérifier.",'var(--green)');
+  loadProfileChange();
+}
+
+async function cancelProfileChange(){
+  if(!confirm('Annuler votre demande de correction ?')) return;
+  const { error } = await _sb.rpc('fn_cancel_profile_change');
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast('Demande annulée','var(--gray-700)');
+  loadProfileChange();
+}
+
+/* ---- Admin : demandes de correction de profil ---- */
+async function buildAdminProfileChanges(content){
+  content.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">⏳ Chargement…</div>';
+  const { data, error } = await _sb.rpc('fn_admin_profile_changes');
+  if(error){ content.innerHTML = '<div style="padding:24px;color:#cc0000;">Erreur : '+escHtml(error.message)+'</div>'; return; }
+  const rows = Array.isArray(data) ? data : [];
+  const pending = rows.filter(r=>r.status==='en attente');
+  const done = rows.filter(r=>r.status!=='en attente');
+  const diff = (label, oldV, newV) => newV==null ? '' :
+    `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;">${label}</td><td style="padding:4px 12px 4px 0;text-decoration:line-through;color:#9ca3af;">${escHtml(oldV||'—')}</td><td style="padding:4px 0;font-weight:700;color:#111827;">→ ${escHtml(newV)}</td></tr>`;
+  const card = r => `<div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;padding:16px 18px;margin-bottom:12px;">
+      <div style="font-size:15px;font-weight:800;color:#111827;">${escHtml((r.old_first_name||'')+' '+(r.old_last_name||''))}</div>
+      <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">${escHtml(r.email||'—')} · demandé le ${acctDelFmtDate(r.created_at)}</div>
+      <table style="font-size:13px;border-collapse:collapse;margin-bottom:10px;"><tbody>
+        ${diff('Prénom', r.old_first_name, r.new_first_name)}
+        ${diff('Nom', r.old_last_name, r.new_last_name)}
+        ${diff('Naissance', r.old_birthdate?fmtBirth(r.old_birthdate):'', r.new_birthdate?fmtBirth(r.new_birthdate):null)}
+      </tbody></table>
+      <div style="font-size:13px;color:#374151;margin-bottom:12px;"><strong>Motif :</strong> ${escHtml(r.reason)}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button onclick="adminDecideProfileChange('${r.id}', true)" style="background:#0d9e6e;color:#fff;padding:9px 16px;border-radius:8px;border:none;font-size:13px;font-weight:800;cursor:pointer;">✅ Accepter et appliquer</button>
+        <button onclick="adminDecideProfileChange('${r.id}', false)" style="background:#fff;color:#374151;padding:9px 16px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-weight:700;cursor:pointer;">Refuser</button>
+      </div></div>`;
+  const stLabel = {'acceptée':['✅ Acceptée','#0d9e6e','#e8f9f0'],'refusée':['⛔ Refusée','#cc0000','#fff0f0'],'annulée':['↩️ Annulée','#6b7280','#f5f5f5']};
+  content.innerHTML = `
+    <div style="font-size:18px;font-weight:800;margin-bottom:4px;">✏️ Demandes de correction de profil</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:16px;line-height:1.6;">Prénom, nom et date de naissance sont verrouillés ; l'utilisateur demande une correction avec un motif. Une demande acceptée est appliquée immédiatement.</div>
+    ${pending.length ? pending.map(card).join('') : '<div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;padding:24px;text-align:center;color:#6b7280;margin-bottom:16px;">Aucune demande en attente.</div>'}
+    ${done.length ? `<div style="font-size:14px;font-weight:800;margin:20px 0 8px;">Historique (6 derniers mois)</div>
+      <div style="background:#fff;border:1px solid #e8ecf0;border-radius:12px;overflow:hidden;">
+      ${done.map(r=>{ const l = stLabel[r.status]||[r.status,'#6b7280','#f5f5f5'];
+        const what = [r.new_first_name&&'prénom', r.new_last_name&&'nom', r.new_birthdate&&'date de naissance'].filter(Boolean).join(', ');
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:13px;">
+          <div><strong>${escHtml((r.old_first_name||'')+' '+(r.old_last_name||''))}</strong> <span style="color:#6b7280;">· ${escHtml(what)} · ${acctDelFmtDate(r.created_at)}</span>${r.admin_note?`<div style="color:#6b7280;font-size:12px;">${escHtml(r.admin_note)}</div>`:''}</div>
+          <span style="background:${l[2]};color:${l[1]};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap;">${l[0]}</span></div>`; }).join('')}
+      </div>` : ''}`;
+}
+
+async function adminDecideProfileChange(id, accept){
+  let note = null;
+  if(accept){ if(!confirm('Appliquer cette correction au profil ?')) return; }
+  else { note = prompt("Motif du refus (affiché à l'utilisateur) :", ''); if(note===null) return; }
+  const { error } = await _sb.rpc('fn_admin_decide_profile_change', { p_request:id, p_accept:accept, p_note:note });
+  if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
+  showToast(accept ? '✅ Correction appliquée' : 'Demande refusée', accept ? 'var(--green)' : 'var(--gray-700)');
+  const c = document.getElementById('admin-content');
+  if(c) buildAdminProfileChanges(c);
 }
 
 /* ===================== COORDONNÉES BANCAIRES (RIB) ===================== */
@@ -12908,6 +13072,7 @@ function buildAdminDashboard(){
         ['annonces','📋 Annonces'],
         ['excursions','✈️ Excursions'],
         ['comptes','🗑️ Comptes'],
+        ['corrections','✏️ Corrections'],
       ];
       tabs.forEach(([id,label],i)=>{
         const btn = document.createElement('button');
@@ -13006,6 +13171,7 @@ function switchAdminTab(tab){
   else if(tab==='annonces') buildAdminAnnonces(content);
   else if(tab==='excursions') buildAdminExcursions(content);
   else if(tab==='comptes') buildAdminAccountDeletions(content);
+  else if(tab==='corrections') buildAdminProfileChanges(content);
 }
 
 /* ---- Admin : demandes de suppression de compte ---- */
@@ -14699,8 +14865,8 @@ if(_restoredPage && _restoredPage!=='home'){
         auth.currentUser = {
           id: session.user.id,
           role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
-          firstName: meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
-          lastName:  meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
+          firstName: prof?.first_name || meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
+          lastName:  prof?.last_name || meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
           email:     session.user.email,
           photo:     prof?.photo || meta.avatar_url || meta.picture || null,
           phone:     prof?.phone || null,
@@ -14744,8 +14910,8 @@ _sb.auth.getSession().then(async ({ data: { session } }) => {
     auth.currentUser = {
       id: session.user.id,
       role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
-      firstName: meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
-      lastName:  meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
+      firstName: prof?.first_name || meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
+      lastName:  prof?.last_name || meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
       email:     session.user.email,
       photo:     prof?.photo || meta.avatar_url || meta.picture || null,
       phone:     prof?.phone || null,
