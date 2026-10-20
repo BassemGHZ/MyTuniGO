@@ -968,6 +968,7 @@ const AMENITIES_ANN = [
   {id:'wifi',icon:'📶',name:'Wi-Fi gratuit'},
   {id:'parking',icon:'🅿️',name:'Parking'},
   {id:'ac',icon:'❄️',name:'Climatisation'},
+  {id:'heating',icon:'🔥',name:'Chauffage'},
   {id:'kitchen',icon:'🍳',name:'Cuisine équipée'},
   {id:'terrace',icon:'🌿',name:'Terrasse'},
   {id:'sea',icon:'🌊',name:'Vue mer'},
@@ -3471,7 +3472,7 @@ function renderTypesFilterHTML(){
 }
 
 function renderAmenitiesFilterHTML(){
-  const allAmen = ['Parking','Climatisation','Piscine','Wi-Fi gratuit','Cuisine équipée','Terrasse','Vue mer','Spa','Animaux acceptés','Salle de sport','Petit-déjeuner','Restauration','Navette aéroport','Accès PMR','Non-fumeur'];
+  const allAmen = ['Parking','Climatisation','Piscine','Chauffage','Wi-Fi gratuit','Cuisine équipée','Terrasse','Vue mer','Spa','Animaux acceptés','Salle de sport','Petit-déjeuner','Restauration','Navette aéroport','Accès PMR','Non-fumeur'];
   const visibleCount = appState.filterExpanded?.amenities ? allAmen.length : 3;
   return allAmen.slice(0, visibleCount).map(a=>'<div class="f-opt">'
     +'<input type="checkbox" '+(appState.filters.amenities.includes(a)?'checked':'')+' onchange="toggleAmenF(\''+a+'\',this.checked)">'
@@ -15172,7 +15173,7 @@ async function loadPublishedAnnonces(){
           // correspondre au filtre équipements, quel que soit le nombre de
           // cases cochées.
           const labelMap = {
-            wifi:'Wi-Fi gratuit', pool:'Piscine', parking:'Parking', ac:'Climatisation',
+            wifi:'Wi-Fi gratuit', pool:'Piscine', parking:'Parking', ac:'Climatisation', heating:'Chauffage',
             kitchen:'Cuisine équipée', spa:'Spa', gym:'Salle de sport', pets:'Animaux acceptés',
             breakfast:'Petit-déjeuner', terrace:'Terrasse', sea:'Vue mer', transfer:'Navette aéroport',
             restauration:'Restauration',
