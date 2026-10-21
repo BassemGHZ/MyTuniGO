@@ -1116,12 +1116,7 @@ let appState = {
   annonceData:{type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',governorate:'',city:'',cityCustom:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,weekly_discount_percent:0,monthly_discount_percent:0,cancellation:'flexible',payLater:true,payNow:false,checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''},
   annoncePublished:false,
   favorites:[],
-  reservations:[
-    {id:'SF-A1B2C3D4',hotelId:1,name:'Sophie Moreau',email:'sophie@exemple.com',checkIn:'2025-06-10',checkOut:'2025-06-14',rooms:1,nights:4,total:832,commission:58,netToHost:774,status:'confirmée',paymentMethod:'Carte bancaire',createdAt:'2025-05-01'},
-    {id:'SF-E5F6G7H8',hotelId:4,name:'Sophie Moreau',email:'sophie@exemple.com',checkIn:'2025-08-20',checkOut:'2025-08-25',rooms:2,nights:5,total:1078,commission:75,netToHost:1003,status:'confirmée',paymentMethod:'PayPal',createdAt:'2025-05-10'},
-    {id:'SF-I9J0K1L2',hotelId:3,name:'Sophie Moreau',email:'sophie@exemple.com',checkIn:'2025-03-05',checkOut:'2025-03-08',rooms:1,nights:3,total:918,status:'terminée',createdAt:'2025-02-15'},
-    {id:'SF-M3N4O5P6',hotelId:6,name:'Sophie Moreau',email:'sophie@exemple.com',checkIn:'2024-12-20',checkOut:'2024-12-27',rooms:1,nights:7,total:2623,status:'annulée',createdAt:'2024-11-10'},
-  ],
+  reservations:[],   // réelles, chargées depuis la base (les réservations de démonstration « SF-… » ont été retirées)
   resaFilter:'toutes',
   excursionFilter:'toutes',
   selectedExcursionId:null,
@@ -4366,6 +4361,37 @@ function contactSupportFromFooter(){
   return true;
 }
 
+// Réservations du voyageur (séjours et excursions), lues en base, pour le
+// formulaire « Contacter le support » : référence · nom du bien · date.
+async function loadSupportReservations(prefRef){
+  const uid = auth.currentUser?.id;
+  if(!uid) return;
+  try{
+    const [{ data: resas }, { data: bks }] = await Promise.all([
+      _sb.from('reservations').select('id,reference,logement_id,check_in,status').eq('guest_id', uid).order('check_in',{ascending:false}).limit(40),
+      _sb.from('excursion_bookings').select('id,reference,booking_code,excursion_id,date,status').eq('guest_id', uid).order('date',{ascending:false}).limit(40),
+    ]);
+    const annIds = [...new Set((resas||[]).map(r=>r.logement_id).filter(Boolean))];
+    const excIds = [...new Set((bks||[]).map(b=>b.excursion_id).filter(Boolean))];
+    const [{ data: anns }, { data: excs }] = await Promise.all([
+      annIds.length ? _sb.from('annonces').select('id,name').in('id', annIds) : Promise.resolve({ data: [] }),
+      excIds.length ? _sb.from('excursions').select('id,title').in('id', excIds) : Promise.resolve({ data: [] }),
+    ]);
+    const annName = Object.fromEntries((anns||[]).map(a=>[a.id, a.name]));
+    const excName = Object.fromEntries((excs||[]).map(e=>[e.id, e.title]));
+    const fmt = d => d ? new Date(String(d).slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR') : '';
+    const items = [
+      ...(resas||[]).map(r=>({ ref: r.reference||r.id, id: r.id, d: r.check_in, label: '🏠 '+(annName[r.logement_id]||'Hébergement') })),
+      ...(bks||[]).map(b=>({ ref: b.reference||b.booking_code||b.id, id: b.id, d: b.date, label: '🧭 '+(excName[b.excursion_id]||'Excursion') })),
+    ].sort((a,b)=>String(b.d||'').localeCompare(String(a.d||'')));
+    const sel = document.getElementById('support-ref'), wrap = document.getElementById('support-ref-wrap');
+    if(!sel || !wrap || !items.length) return;
+    sel.innerHTML = '<option value="">— Aucune en particulier —</option>' + items.map(it=>
+      `<option value="${escHtml(it.ref)}" ${prefRef && (prefRef===it.ref || prefRef===it.id) ? 'selected' : ''}>${escHtml(it.ref)} · ${escHtml(it.label)} · ${fmt(it.d)}</option>`).join('');
+    wrap.style.display = '';
+  } catch(e){ console.warn('loadSupportReservations:', e.message); }
+}
+
 // Référence d'une annonce ou d'une excursion (ANN-… / EXC-…), avec bouton copier
 function listingRefHTML(ref){
   if(!ref) return '';
@@ -4380,7 +4406,6 @@ function copyListingRef(ref){
 
 function openSupportForm(prefRef, opts){
   closeSupportForm();
-  const resas = (appState.reservations||[]).slice().sort(compareByArrival);
   const ov = document.createElement('div');
   ov.id = 'support-overlay';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -4392,12 +4417,11 @@ function openSupportForm(prefRef, opts){
       <button onclick="closeSupportForm()" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--gray-500);">×</button>
     </div>
     <div style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">Nous vous répondrons par e-mail à <strong>${(auth.currentUser&&auth.currentUser.email)||'votre adresse'}</strong>.</div>
-    ${resas.length?`
+    <div id="support-ref-wrap" style="display:none;">
     <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Réservation concernée (facultatif)</label>
     <select id="support-ref" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:14px;background:#fff;">
       <option value="">— Aucune en particulier —</option>
-      ${resas.map(r=>`<option value="${r.id}" ${prefRef===r.id?'selected':''}>${r.id} · ${r._propName||'Hébergement'} · ${r.checkIn?new Date(r.checkIn+'T00:00:00').toLocaleDateString('fr-FR'):''}</option>`).join('')}
-    </select>`:''}
+    </select></div>
     <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Sujet</label>
     <input id="support-subject" maxlength="120" value="${escHtml(opts?.subject ? opts.subject+' — ' : '')}" placeholder="Ex : question sur mon paiement" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:14px;">
     <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Votre message</label>
@@ -4410,6 +4434,7 @@ function openSupportForm(prefRef, opts){
   </div>`;
   document.body.appendChild(ov);
   setTimeout(()=>{ const t=document.getElementById('support-message'); if(t) t.focus(); },0);
+  loadSupportReservations(prefRef);
 }
 function closeSupportForm(){ const o=document.getElementById('support-overlay'); if(o) o.remove(); }
 async function submitSupportForm(){
