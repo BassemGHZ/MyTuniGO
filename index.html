@@ -4366,7 +4366,19 @@ function contactSupportFromFooter(){
   return true;
 }
 
-function openSupportForm(prefRef){
+// Référence d'une annonce ou d'une excursion (ANN-… / EXC-…), avec bouton copier
+function listingRefHTML(ref){
+  if(!ref) return '';
+  return `<span style="display:inline-flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;color:var(--gray-500);">🔖 <code style="background:var(--gray-100);padding:2px 7px;border-radius:4px;font-size:12px;color:var(--gray-700);">${escHtml(ref)}</code>
+    <button onclick="event.stopPropagation();copyListingRef('${escHtml(ref)}')" title="Copier la référence" style="background:none;border:none;cursor:pointer;color:var(--blue-l);font-size:12px;font-weight:700;padding:0;">Copier</button></span>`;
+}
+function copyListingRef(ref){
+  const done = ()=>showToast('📋 Référence '+ref+' copiée','var(--blue)');
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(ref).then(done, ()=>prompt('Référence :', ref));
+  else prompt('Référence :', ref);
+}
+
+function openSupportForm(prefRef, opts){
   closeSupportForm();
   const resas = (appState.reservations||[]).slice().sort(compareByArrival);
   const ov = document.createElement('div');
@@ -4387,7 +4399,7 @@ function openSupportForm(prefRef){
       ${resas.map(r=>`<option value="${r.id}" ${prefRef===r.id?'selected':''}>${r.id} · ${r._propName||'Hébergement'} · ${r.checkIn?new Date(r.checkIn+'T00:00:00').toLocaleDateString('fr-FR'):''}</option>`).join('')}
     </select>`:''}
     <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Sujet</label>
-    <input id="support-subject" maxlength="120" placeholder="Ex : question sur mon paiement" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:14px;">
+    <input id="support-subject" maxlength="120" value="${escHtml(opts?.subject ? opts.subject+' — ' : '')}" placeholder="Ex : question sur mon paiement" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;margin-bottom:14px;">
     <label style="font-size:12px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:5px;">Votre message</label>
     <textarea id="support-message" rows="6" maxlength="3000" placeholder="Décrivez votre demande…" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r-md);font-size:14px;resize:vertical;font-family:inherit;"></textarea>
     <div id="support-error" style="display:none;color:var(--red);font-size:13px;margin-top:8px;"></div>
@@ -5774,7 +5786,7 @@ function buildAnnonceSuccess(){
         <h2>Annonce publiée avec succès !</h2>
         <p>Votre annonce <strong>${ad.name||'hébergement'}</strong> est en cours de vérification. Vous recevrez une confirmation à <strong>${ad.email}</strong> sous 24h.</p>
         <div class="suc-ref">${ref}</div>
-        <p style="font-size:13px;color:var(--gray-500);margin-top:10px;">Conservez cette référence pour suivre votre annonce.</p>
+        <p style="font-size:13px;color:var(--gray-500);margin-top:10px;">Vous la retrouverez à tout moment dans « Mes annonces ». Citez-la si vous écrivez au support.</p>
         <div style="display:flex;gap:12px;justify-content:center;margin-top:24px;flex-wrap:wrap;">
           <button onclick="appState.annoncePublished=false;appState.annoncePage=0;appState.annonceData={type:'',name:'',stars:3,desc:'',rooms:1,bathrooms:1,capacity:2,size:'',address:'',city:'',country:'Tunisie',zip:'',floor:'',access:'',lat:'',lng:'',locMode:'address',icalUrls:{airbnb:'',booking:'',vrbo:'',autre:''},photos:[],amenities:[],price_night:89,weekly_discount_percent:0,monthly_discount_percent:0,cancellation:'flexible',checkin:'15:00',checkout:'11:00',min_stay:1,firstname:'',lastname:'',email:'',phone:''};navigate('annonce')" style="background:var(--blue);color:#fff;padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle annonce</button>
           <button onclick="navigate('home')" style="background:var(--gray-100);color:var(--gray-800);padding:11px 22px;border-radius:var(--r-md);font-size:15px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">🏠 Accueil</button>
@@ -6623,7 +6635,7 @@ async function loadMesAnnonces(container){
     appState.myExcursions = (excData||[]).map(e=>{
       const bs = bkStats[e.id] || {count:0, revenue:0};
       return {
-        id: e.id, excursionId: e.id, ownerId: e.owner_id,
+        id: e.id, excursionId: e.id, ownerId: e.owner_id, ref: e.ref||'',
         title: e.title||'Excursion', emoji: '✈️', city: e.city||'', country: e.country||'Tunisie',
         category: e.category||'', categoryLabel: e.category_label||'',
         duration: e.duration||'—', durationMin: 0,
@@ -6725,7 +6737,8 @@ function buildMesAnnonces(){
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
             <div>
               <div style="font-size:16px;font-weight:800;color:var(--gray-900);margin-bottom:4px;">${e.title}</div>
-              <div style="font-size:13px;color:var(--gray-500);margin-bottom:8px;">📍 ${e.city||'—'}, ${e.country||'—'} · ⏱ ${e.duration||'—'} · ${e.price||0}€ / ${e.priceType||'personne'}</div>
+              <div style="font-size:13px;color:var(--gray-500);margin-bottom:4px;">📍 ${e.city||'—'}, ${e.country||'—'} · ⏱ ${e.duration||'—'} · ${e.price||0}€ / ${e.priceType||'personne'}</div>
+              <div style="margin-bottom:8px;">${listingRefHTML(e.ref)}</div>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <span style="background:${{publiée:'#e8f9f0','en attente':'#fff8e0',brouillon:'#f1f3f5'}[e.status]||'#f1f3f5'};color:${{publiée:'#0d9e6e','en attente':'#e6a800',brouillon:'#6c757d'}[e.status]||'#6c757d'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;">${e.status||'en attente'}</span>
                 <span style="font-size:12px;color:var(--gray-400);">${(e.availability||[]).length} date${(e.availability||[]).length>1?'s':''} disponible${(e.availability||[]).length>1?'s':''}</span>
@@ -6758,6 +6771,7 @@ ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excurs
                 style="background:#f0fdf4;color:#16a34a;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid #86efac;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 ▶ ${e.status==='suspendue'?'Republier':'Suspendre'}
               </button>
+${e.ref?`<button onclick="openSupportForm(null,{subject:'Excursion ${e.ref}'})" title="Écrire au support au sujet de cette excursion" style="background:#fff;color:var(--gray-700);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">💬 Support</button>`:''}
 <button onclick="requestExcursionDeletion('${e.id}')" title="La suppression définitive doit être validée par l'administrateur"
                 style="margin-left:auto;background:#fff;color:var(--gray-600);padding:8px 12px;border-radius:20px;font-size:13px;font-weight:700;border:1.5px solid var(--gray-300);cursor:pointer;">
                 ✉️ Demander la suppression
@@ -6795,6 +6809,7 @@ ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excurs
             <div>
               <span style="font-size:17px;font-weight:700;color:var(--blue-l);cursor:pointer;" onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})">${a.name}</span>
               <div style="font-size:13px;color:var(--gray-500);margin-top:3px;">📍 ${a.city}, ${a.country} · ${a.typeLabel} ${'★'.repeat(a.stars)}</div>
+              ${listingRefHTML(a.ref)}
             </div>
             <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
               <span style="font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;background:${statusBg[a.status]||'#f1f3f5'};color:${statusColor[a.status]||'#6c757d'};white-space:nowrap;">${a.status.toUpperCase()}</span>
@@ -6827,6 +6842,7 @@ ${e.status==='publiée'?`<button onclick="askAliyaReview('excursion','${e.excurs
               <button onclick="navigate('annonce-detail',{selectedAnnonceId:'${a.id}'})" style="background:#e8f4ff;color:var(--blue-l);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--blue-l);cursor:pointer;">📊 Statistiques</button>
               <button onclick="loadAnnonceEditOwner(null,'${a.id}')" style="background:#eef2f7;color:#003580;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #b3c9e0;cursor:pointer;">✏️ Modifier l'annonce</button>
               ${a.hotelId?`<button onclick="navigate('detail',{selectedHotelId:${a.hotelId}})" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #6bcf9e;cursor:pointer;">👁️ Voir l'annonce</button>`:''}
+              ${a.ref?`<button onclick="openSupportForm(null,{subject:'Annonce ${a.ref}'})" title="Écrire au support au sujet de cette annonce" style="background:#fff;color:var(--gray-700);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid var(--gray-300);cursor:pointer;">💬 Support</button>`:''}
               ${a.status==='publiée'?`<button onclick="askAliyaReview('annonce','${a.id}')" title="Aliya analyse votre annonce et propose des améliorations" style="background:#fff7e6;color:#8a5a00;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:1px solid #f5d38a;cursor:pointer;">✨ Avis d'Aliya</button>`:''}
               ${a.status==='publiée'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#fff8e0;color:#a07000;padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #ffe080;cursor:pointer;">⏸ Suspendre</button>`:''}
               ${a.status==='suspendue'||a.status==='en attente'?`<button onclick="toggleAnnonceStatus('${a.id}')" style="background:#e8f9f0;color:var(--green);padding:7px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:1px solid #a0e8c8;cursor:pointer;">▶ Republier</button>`:''}
@@ -9393,7 +9409,8 @@ function buildExcursionFormSuccess(){
         <p style="font-size:15px;color:var(--gray-700);margin-bottom:20px;line-height:1.7;">
           Votre excursion <strong>${appState.excursionFormData.title||''}</strong> a été soumise. Vous recevrez une confirmation à <strong>${appState.excursionFormData.email||''}</strong> sous 24h.
         </p>
-        <div style="background:var(--gray-50);border-radius:var(--r-md);padding:12px 16px;text-align:center;font-family:monospace;font-size:15px;margin-bottom:20px;">${ref}</div>
+        <div style="background:var(--gray-50);border-radius:var(--r-md);padding:12px 16px;text-align:center;font-family:monospace;font-size:15px;margin-bottom:8px;">${ref}</div>
+        <p style="font-size:13px;color:var(--gray-500);text-align:center;margin-bottom:20px;">Vous la retrouverez à tout moment dans « Mes annonces ». Citez-la si vous écrivez au support.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="appState.excursionFormPublished=false;appState.excursionFormPage=0;appState.excursionFormData={};navigate('excursion-form')"
             style="flex:1;padding:12px;background:var(--blue);color:#fff;border-radius:var(--r-md);font-size:14px;font-weight:700;border:none;cursor:pointer;">+ Nouvelle excursion</button>
