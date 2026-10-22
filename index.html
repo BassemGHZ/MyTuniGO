@@ -11830,7 +11830,8 @@ async function loadExcursionEdit(container, id){
     availability: e.availability||[],
     instantBook: !!e.instant_book, freeCancellation: !!e.free_cancellation, payOnSite: !!e.pay_on_site,
     firstname: e.contact_firstname||'', lastname: e.contact_lastname||'',
-    email: e.contact_email||'', phone: e.contact_phone||''
+    email: e.contact_email||'', phone: e.contact_phone||'',
+    ref: e.ref||'', photos: e.photos||[], newPhotos: [], photoOrder: []
   };
 
   if(container){
@@ -11845,6 +11846,79 @@ async function loadExcursionEdit(container, id){
 function edSet(key,val){ appState.excEditData[key]=val; }
 // Nouvelle ville : l'ancien point n'est plus valable, la carte se recentre (repli sur le centre).
 function edCityPicked(v){ const d=appState.excEditData; d.city=v; d.lat=null; d.lng=null; edRefresh(); }
+// Photos en modification d'excursion : même fonctionnement que les annonces
+// (une liste ordonnée : photos en ligne 'u:<url>' et nouvelles 'n:<id>').
+function exePhotoItems(){
+  const ed = appState.excEditData;
+  const urls = ed.photos||[], news = ed.newPhotos||[];
+  const all = [...urls.map(u=>'u:'+u), ...news.map(p=>'n:'+p.id)];
+  const order = (ed.photoOrder||[]).filter(k=>all.includes(k));
+  all.forEach(k=>{ if(!order.includes(k)) order.push(k); });
+  ed.photoOrder = order;
+  return order.map(k=> k.startsWith('u:') ? { key:k, url:k.slice(2) } : { key:k, np: news.find(p=>'n:'+p.id===k) });
+}
+let _exeDragIdx = null;
+function exeDragStart(e, idx){ _exeDragIdx = idx; e.dataTransfer.effectAllowed = 'move'; }
+function exeDragDrop(target){
+  const order = exePhotoItems().map(x=>x.key), src = _exeDragIdx; _exeDragIdx = null;
+  if(src===null || src===target || !order[src] || !order[target]) return;
+  const [m] = order.splice(src,1); order.splice(target,0,m);
+  appState.excEditData.photoOrder = order; edRefresh();
+}
+function exeMovePhoto(idx, dir){
+  const order = exePhotoItems().map(x=>x.key), j = idx+dir;
+  if(j<0 || j>=order.length) return;
+  [order[idx], order[j]] = [order[j], order[idx]];
+  appState.excEditData.photoOrder = order; edRefresh();
+}
+function exeSetMainPhoto(idx){
+  const order = exePhotoItems().map(x=>x.key);
+  if(idx<=0 || !order[idx]) return;
+  const [m] = order.splice(idx,1); order.unshift(m);
+  appState.excEditData.photoOrder = order; edRefresh();
+  showToast('⭐ Photo principale mise à jour','var(--blue)');
+}
+function exeRemovePhoto(idx){
+  const it = exePhotoItems()[idx], ed = appState.excEditData;
+  if(!it) return;
+  if(it.url) ed.photos = (ed.photos||[]).filter(u=>u!==it.url);
+  else ed.newPhotos = (ed.newPhotos||[]).filter(p=>p.id!==it.np.id);
+  edRefresh();
+}
+async function exeUploadPhotos(files){
+  if(!files || !files.length) return;
+  const ed = appState.excEditData;
+  if(!ed.newPhotos) ed.newPhotos = [];
+  const room = PHOTO_RULES.excursion.max - (ed.photos||[]).length - ed.newPhotos.length;
+  const added = await readPhotoFiles(files, room);
+  if(!added.length) return;
+  ed.newPhotos.push(...added);
+  edRefresh();
+}
+function exePhotosSectionHTML(){
+  const ed = appState.excEditData, items = exePhotoItems(), n = items.length;
+  const b = 'position:absolute;bottom:4px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;line-height:1;padding:4px 6px;';
+  return `<div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
+    <div style="font-size:16px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">📷 Photos ${photoCountHTML('excursion', n)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px;">
+      ${items.map((it,i)=>`<div draggable="true" ondragstart="exeDragStart(event,${i})" ondragover="event.preventDefault();this.style.opacity='.6'" ondragleave="this.style.opacity='1'" ondrop="event.preventDefault();this.style.opacity='1';exeDragDrop(${i})" style="position:relative;cursor:grab;">
+        <img src="${it.url || it.np?.dataUrl || ''}" draggable="false" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:${it.np?'2px solid var(--green)':'1px solid var(--gray-200)'};pointer-events:none;">
+        ${i===0?'<span style="position:absolute;top:4px;left:4px;background:var(--yellow);color:var(--gray-900);font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;">⭐ Principale</span>':''}
+        ${it.np&&i!==0?'<span style="position:absolute;top:4px;left:4px;background:var(--green);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;">Nouvelle</span>':''}
+        <span onclick="exeRemovePhoto(${i})" title="Supprimer" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.65);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;font-weight:800;">✕</span>
+        ${i>0?`<button type="button" onclick="exeMovePhoto(${i},-1)" title="Déplacer à gauche" style="${b}left:4px;">◀</button>`:''}
+        ${i>0?`<button type="button" onclick="exeSetMainPhoto(${i})" title="Définir comme principale" style="${b}left:50%;transform:translateX(-50%);">⭐</button>`:''}
+        ${i<n-1?`<button type="button" onclick="exeMovePhoto(${i},1)" title="Déplacer à droite" style="${b}right:4px;">▶</button>`:''}
+      </div>`).join('')}
+      ${n===0?'<div style="font-size:13px;color:var(--gray-500);grid-column:1/-1;">Aucune photo.</div>':''}
+    </div>
+    <input type="file" id="exc-edit-photo-input" accept="image/jpeg,image/png,image/webp,image/gif" multiple style="display:none;" onchange="exeUploadPhotos(this.files)">
+    <button type="button" onclick="document.getElementById('exc-edit-photo-input').click()" style="background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">📤 Ajouter des photos</button>
+    <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">JPG, PNG, WEBP — optimisées automatiquement</span>
+    ${n>1?'<p style="font-size:12px;color:var(--gray-500);margin-top:10px;">💡 Glissez les photos (ou utilisez ◀ ▶ et ⭐) pour changer leur ordre. La première est l\'image principale.</p>':''}
+  </div>`;
+}
+
 function edRefresh(){ const el=document.getElementById('exc-edit-form'); if(el){ el.innerHTML=buildExcursionEditFormInner(); setTimeout(()=>initExcPosPicker('ed'), 50); } }
 function edToggleLang(l){ const arr=appState.excEditData.language||[]; appState.excEditData.language = arr.includes(l) ? arr.filter(x=>x!==l) : [...arr,l]; edRefresh(); }
 function edToggleInclude(id){ const arr=appState.excEditData.includes||[]; appState.excEditData.includes = arr.includes(id) ? arr.filter(x=>x!==id) : [...arr,id]; edRefresh(); }
@@ -11961,6 +12035,8 @@ function buildExcursionEditFormInner(){
       ${area("Déroulé / programme","schedule",3,{max:200})}
     </div>
 
+    ${exePhotosSectionHTML()}
+
     <!-- Rendez-vous -->
     <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
       <div style="font-size:16px;font-weight:700;margin-bottom:14px;">📍 Point de rendez-vous</div>
@@ -12034,6 +12110,17 @@ async function saveExcursionEdit(){
   { const de = descLengthError(ed.description); if(de){ showToast(de,'var(--red)'); return; } }
   if(_charCount(ed.schedule) > 200){ showToast('⚠️ Programme trop long : 200 caractères maximum.','var(--red)'); return; }
   if(!(ed.meetingPoint||'').trim()){ showToast('⚠️ Indiquez le point de rendez-vous','var(--red)'); return; }
+  { const nPh = (ed.photos||[]).length + (ed.newPhotos||[]).length;
+    if(nPh > PHOTO_RULES.excursion.max){ showToast(photoRuleError('excursion', nPh),'var(--red)'); return; } }
+  // Photos dans l'ordre choisi : les nouvelles sont envoyées une par une
+  const finalPhotos = [];
+  let failedPh = 0;
+  for(const it of exePhotoItems()){
+    if(it.url){ finalPhotos.push(it.url); continue; }
+    const up = await uploadExcursionPhotos(ed.ref || ed.id, [it.np]);
+    if(up && up[0]) finalPhotos.push(up[0]); else failedPh++;
+  }
+  if(failedPh) showToast(`⚠️ ${failedPh} photo${failedPh>1?'s':''} n'${failedPh>1?'ont':'a'} pas pu être envoyée${failedPh>1?'s':''}`, 'var(--red)');
   if(!ed.meetingTime){ showToast("⚠️ Indiquez l'heure de début de l'excursion",'var(--red)'); return; }
   if(excTimeSpan(ed.meetingTime, ed.meetingTimeEnd) === 0){ showToast("⚠️ L'heure de fin doit être différente de l'heure de début",'var(--red)'); return; }
   const updates = {
@@ -12050,6 +12137,7 @@ async function saveExcursionEdit(){
     not_included: ed.notIncluded||'', what_to_bring: ed.whatToBring||'', schedule: ed.schedule||'',
     meeting_point: ed.meetingPoint||'', meeting_time: ed.meetingTime||'', meeting_time_end: ed.meetingTimeEnd||'',
     availability: ed.availability||[],
+    photos: finalPhotos,
     instant_book: !!ed.instantBook, free_cancellation: !!ed.freeCancellation, pay_on_site: false,
     contact_firstname: ed.firstname||'', contact_lastname: ed.lastname||'',
     contact_email: ed.email||'', contact_phone: ed.phone||'',
