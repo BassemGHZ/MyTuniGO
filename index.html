@@ -2131,9 +2131,12 @@ function getFeaturedHotels(){
 }
 
 /* ===================== CALENDRIER DE RECHERCHE (page d'accueil) ===================== */
+// Téléphone : panneau plein écran qui remonte du bas (le champ « Dates » est
+// en bas de l'écran, un calendrier ouvert dessous sortait de l'écran).
+function heroCalIsPhone(){ return window.innerWidth <= 640; }
 function toggleHeroCalendar(){
   let dd = document.getElementById('hero-cal-dropdown');
-  const isOpen = dd && dd.style.display === 'block';
+  const isOpen = dd && dd.style.display && dd.style.display !== 'none';
   if(isOpen){ dd.style.display='none'; return; }
 
   const field = document.getElementById('s-dates-field');
@@ -2148,15 +2151,22 @@ function toggleHeroCalendar(){
     document.body.appendChild(dd);
   }
 
-  const rect = field.getBoundingClientRect();
-  dd.style.top = (rect.bottom + 8) + 'px';
-  dd.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(520, window.innerWidth-16) - 8)) + 'px';
+  if(heroCalIsPhone()){
+    dd.style.cssText = 'display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.5);align-items:flex-end;justify-content:center;';
+    dd.onclick = e => { if(e.target===dd) dd.style.display='none'; };
+  } else {
+    dd.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.25);padding:18px;width:min(520px, calc(100vw - 16px));box-sizing:border-box;';
+    dd.onclick = null;
+    const rect = field.getBoundingClientRect();
+    dd.style.top = (rect.bottom + 8) + 'px';
+    dd.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(520, window.innerWidth-16) - 8)) + 'px';
+  }
 
   if(!appState._heroCalMonth){
     const base = appState.searchCheckIn ? new Date(appState.searchCheckIn+'T00:00:00') : new Date();
     appState._heroCalMonth = {year: base.getFullYear(), month: base.getMonth()};
   }
-  dd.style.display='block';
+  dd.style.display = heroCalIsPhone() ? 'flex' : 'block';
   renderHeroCalendar();
 }
 
@@ -2187,7 +2197,7 @@ function heroMonthChipsHTML(){
     const shown = idx===curIdx || idx===curIdx+1;        // les 2 mois affichés
     const hasCi = ci === y+'-'+String(m+1).padStart(2,'0');
     const label = d.toLocaleDateString('fr-FR',{month:'short'}).replace('.','') + ' ' + String(y).slice(2);
-    html += `<button type="button" data-active="${idx===curIdx?1:0}" onclick="jumpHeroCal(${y},${m})" style="flex-shrink:0;padding:5px 10px;border-radius:16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ${shown?'var(--blue)':'var(--gray-200)'};background:${idx===curIdx?'var(--blue)':shown?'#e0ecff':'#fff'};color:${idx===curIdx?'#fff':shown?'var(--blue)':'var(--gray-700)'};">${hasCi?'● ':''}${label}</button>`;
+    html += `<button type="button" data-active="${idx===curIdx?1:0}" onclick="jumpHeroCal(${y},${m})" style="flex-shrink:0;padding:${heroCalIsPhone()?'8px 14px':'5px 10px'};border-radius:18px;font-size:${heroCalIsPhone()?14:12}px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ${shown?'var(--blue)':'var(--gray-200)'};background:${idx===curIdx?'var(--blue)':shown?'#e0ecff':'#fff'};color:${idx===curIdx?'#fff':shown?'var(--blue)':'var(--gray-700)'};">${hasCi?'● ':''}${label}</button>`;
   }
   return html;
 }
@@ -2204,8 +2214,9 @@ function renderHeroMonth(year,month){
   const todayStr = localISODate(today);
   const ci = appState.searchCheckIn||'', co = appState.searchCheckOut||'';
   const days=['L','M','M','J','V','S','D'];
+  const ph = heroCalIsPhone();
   let html = '<div style="flex:1;min-width:130px;">';
-  html += '<div style="text-align:center;font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:6px;text-transform:capitalize;">'+heroMonthLabel(year,month)+'</div>';
+  html += '<div style="text-align:center;font-size:'+(ph?15:12)+'px;font-weight:700;color:var(--gray-700);margin-bottom:6px;text-transform:capitalize;">'+heroMonthLabel(year,month)+'</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
   days.forEach(d=>{ html += '<div style="text-align:center;font-size:10px;font-weight:700;color:var(--gray-400);padding:2px 0;">'+d+'</div>'; });
   for(let i=0;i<offset;i++) html+='<div></div>';
@@ -2219,7 +2230,7 @@ function renderHeroMonth(year,month){
     if(isCi||isCo){ bg='var(--blue)'; color='#fff'; fw='700'; }
     else if(inRange){ bg='#e0ecff'; color='var(--blue)'; }
     if(ds===todayStr && !isCi && !isCo) fw='800';
-    html += '<div '+(isPast?'':`onclick="heroSelectDate('${ds}')"`)+' style="text-align:center;padding:7px 2px;font-size:12px;font-weight:'+fw+';cursor:'+(isPast?'default':'pointer')+';background:'+bg+';color:'+color+';border-radius:6px;">'+day+'</div>';
+    html += '<div '+(isPast?'':`onclick="heroSelectDate('${ds}')"`)+' style="text-align:center;padding:'+(ph?'11px 2px':'7px 2px')+';font-size:'+(ph?15:12)+'px;font-weight:'+fw+';cursor:'+(isPast?'default':'pointer')+';background:'+bg+';color:'+color+';border-radius:6px;">'+day+'</div>';
   }
   html += '</div></div>';
   return html;
@@ -2232,15 +2243,23 @@ function renderHeroCalendar(){
   const nextM = new Date(year,month+1,1);
   const now = new Date();
   const atStart = year*12+month <= now.getFullYear()*12+now.getMonth();
-  dd.innerHTML = `
+  const ph = heroCalIsPhone();
+  const ci = appState.searchCheckIn, co = appState.searchCheckOut;
+  const f = ds => ds ? new Date(ds+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}) : '…';
+  const inner = `
+    ${ph?`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div><div style="font-size:17px;font-weight:800;">📅 Vos dates</div>
+        <div style="font-size:13px;color:var(--gray-500);margin-top:2px;">${ci ? f(ci)+' → '+(co?f(co):'choisissez le départ') : 'Choisissez la date d\'arrivée'}</div></div>
+      <button onclick="document.getElementById('hero-cal-dropdown').style.display='none'" aria-label="Fermer" style="background:var(--gray-100);border:none;border-radius:50%;width:34px;height:34px;font-size:18px;cursor:pointer;">✕</button>
+    </div>`:''}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);margin-bottom:6px;">Aller au mois</div>
-    <div id="hero-month-chips" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid var(--gray-100);scrollbar-width:thin;">${heroMonthChipsHTML()}</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div id="hero-month-chips" style="display:flex;gap:${ph?8:6}px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid var(--gray-100);scrollbar-width:thin;-webkit-overflow-scrolling:touch;${ph?'position:sticky;top:-16px;background:#fff;z-index:1;padding-top:8px;':''}">${heroMonthChipsHTML()}</div>
+    <div style="display:${ph?'none':'flex'};align-items:center;justify-content:space-between;margin-bottom:10px;">
       <button onclick="navHeroCal(-1)" ${atStart?'disabled':''} style="background:var(--gray-100);border:none;border-radius:50%;width:26px;height:26px;cursor:${atStart?'default':'pointer'};font-size:13px;flex-shrink:0;opacity:${atStart?'.35':'1'};">‹</button>
       <div style="display:flex;gap:24px;flex:1;justify-content:space-around;"></div>
       <button onclick="navHeroCal(1)" style="background:var(--gray-100);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:13px;flex-shrink:0;">›</button>
     </div>
-    <div style="display:flex;gap:20px;">
+    <div style="display:flex;gap:20px;${ph?'flex-direction:column;':''}">
       ${renderHeroMonth(year,month)}
       ${renderHeroMonth(nextM.getFullYear(),nextM.getMonth())}
     </div>
@@ -2248,6 +2267,13 @@ function renderHeroCalendar(){
       <button onclick="clearHeroDates()" style="background:none;border:none;color:var(--gray-500);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;padding:0;">Effacer les dates</button>
       <button onclick="document.getElementById('hero-cal-dropdown').style.display='none'" style="background:var(--blue);color:#fff;padding:8px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Terminé</button>
     </div>`;
+  if(ph){
+    const prevScroll = dd.querySelector('#hero-cal-sheet')?.scrollTop || 0;
+    dd.innerHTML = `<div id="hero-cal-sheet" style="background:#fff;width:100%;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));box-sizing:border-box;box-shadow:0 -8px 30px rgba(0,0,0,.25);">${inner}</div>`;
+    const sh = dd.querySelector('#hero-cal-sheet'); if(sh) sh.scrollTop = prevScroll;
+  } else {
+    dd.innerHTML = inner;
+  }
   // Le raccourci du mois affiché reste visible dans la rangée
   const act = dd.querySelector('#hero-month-chips [data-active="1"]');
   if(act){ const row = act.parentElement; row.scrollLeft = Math.max(0, act.offsetLeft - row.offsetLeft - 40); }
