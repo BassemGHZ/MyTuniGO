@@ -12374,21 +12374,32 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
     if(isReserved) cell.classList.add('cal-reserved');
     cell.dataset.date = dateStr;
 
+    // Prix toujours visible sur les jours à venir : prix de base, ou prix
+    // modifié avec le prix de base barré au-dessus en « Gestion des tarifs »
+    // (l'hôte voit le prix avant de le modifier à la hausse ou à la baisse).
+    const _base = (appState.myAnnonces.find(x=>x.id===_hostCalAnnonceId)||{}).price_night||0;
+    const onColor = isBlocked || isReserved || promoPct || stayRule;   // case colorée : texte blanc
     if(promoPct || _hostCalPriceMap[dateStr]!=null){
-      const _base = (appState.myAnnonces.find(x=>x.id===_hostCalAnnonceId)||{}).price_night||0;
+      const newPrice = datePriceNight(_base, promoPct, _hostCalPriceMap[dateStr]);
+      if(_calMode==='promo' && !isPast && _base && newPrice!==_base){
+        const oldEl = document.createElement('div');
+        oldEl.style.cssText = 'font-size:9px;color:#fff;opacity:.8;text-decoration:line-through;line-height:1.1;margin-top:1px;';
+        oldEl.textContent = _base+'€';
+        cell.appendChild(oldEl);
+      }
       const pctEl = document.createElement('div');
       pctEl.style.cssText = 'font-size:10px;color:#fff;font-weight:800;margin-top:1px;';
-      pctEl.textContent = datePriceNight(_base, promoPct, _hostCalPriceMap[dateStr])+'€';
+      pctEl.textContent = newPrice+'€';
       cell.appendChild(pctEl);
-    } else if(stayRule){
+    } else if(stayRule && _calMode==='stay'){
       const stayEl = document.createElement('div');
       stayEl.style.cssText = 'font-size:8px;color:#fff;font-weight:800;line-height:1.2;margin-top:1px;';
       stayEl.textContent = stayRule.min+'-'+stayRule.max+'n';
       cell.appendChild(stayEl);
-    } else if(price){
+    } else if(!isPast && (price || _base)){
       const priceEl = document.createElement('div');
-      priceEl.style.cssText = 'font-size:9px;color:'+((isBlocked||isReserved)?'#fff':'var(--blue)')+';font-weight:700;margin-top:2px;';
-      priceEl.textContent = price+'€';
+      priceEl.style.cssText = 'font-size:10px;color:'+(onColor?'#fff':'var(--gray-500)')+';font-weight:600;margin-top:2px;';
+      priceEl.textContent = (price || _base)+'€';
       cell.appendChild(priceEl);
     }
 
