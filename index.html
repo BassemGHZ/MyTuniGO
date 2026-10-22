@@ -4597,10 +4597,10 @@ function requestDateCellHTML(req){
   if(!req || !req.createdAt) return '';
   const pending = req.status === 'en attente';
   const old = pending && (Date.now() - new Date(req.createdAt).getTime()) > 24*3600*1000;
-  return `<div style="background:${old?'#fff8e0':'var(--gray-50)'};border-radius:var(--r-sm);padding:7px 10px;${old?'border:1px solid #ffe080;':''}" title="Date et heure de la demande">
-    <div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Demandée le</div>
-    <div style="font-size:13px;font-weight:600;">🕐 ${fmtDateTimeFR(req.createdAt)}</div>
-    ${pending?`<div style="font-size:11px;color:${old?'#a16207':'var(--gray-500)'};font-weight:${old?700:500};margin-top:1px;">${timeAgoFR(req.createdAt)}</div>`:''}
+  return `<div style="margin-left:auto;text-align:right;background:${old?'#fff8e0':'var(--gray-50)'};border:1px solid ${old?'#ffe080':'var(--gray-200)'};border-radius:var(--r-sm);padding:6px 10px;" title="Date et heure de la demande">
+    <div style="font-size:10px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.3px;font-weight:700;">Date de demande de réservation</div>
+    <div style="font-size:13px;font-weight:700;color:var(--gray-800);">🕐 ${fmtDateTimeFR(req.createdAt)}</div>
+    ${pending?`<div style="font-size:11px;color:${old?'#a16207':'var(--gray-500)'};font-weight:${old?700:500};">${timeAgoFR(req.createdAt)}</div>`:''}
   </div>`;
 }
 
@@ -11377,6 +11377,7 @@ async function loadBookingRequests(container){
                 <span style="font-size:16px;font-weight:700;">${req.guestName}</span>
                 <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[req.status]};color:${statusColor[req.status]};">${(statusLabel[req.status]||req.status).toUpperCase()}</span>
                 ${isExpiring?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#fff0f0;color:var(--red);">⚠️ Date d\'arrivée dépassée — sera refusée automatiquement</span>':''}
+                ${requestDateCellHTML(req)}
               </div>
               <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">${req.propertyEmoji} ${req.propertyName}</div>
               ${guestReviewsSummaryHTML(req.guestId)}
@@ -11386,7 +11387,6 @@ async function loadBookingRequests(container){
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Durée</div><div style="font-size:13px;font-weight:600;">${nights} nuit${nights>1?'s':''}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Voyageurs</div><div style="font-size:13px;font-weight:600;">👥 ${req.guestsCount}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Vous recevez</div><div style="font-size:13px;font-weight:800;color:var(--green);">${fmtNet(req.net)}€</div></div>
-                ${requestDateCellHTML(req)}
               </div>
               ${conflictOf(req)?`<div style="font-size:12.5px;color:var(--red);font-weight:700;margin-bottom:8px;">⚠️ Ces dates chevauchent la demande de ${conflictOf(req).guestName} (${conflictOf(req).status==='confirmée'?'confirmée':'acceptée, paiement en cours'}). Vous ne pouvez pas accepter celle-ci${conflictOf(req).status==='acceptée'?" tant que l'autre n'a pas expiré":''}.</div>`:''}
               ${req.status==='confirmée'?bookingCodeHTML(req.bookingCode,'host-logement'):''}
@@ -11708,13 +11708,13 @@ async function loadExcursionBookingRequests(container){
                 <span style="font-size:16px;font-weight:700;">${req.guestName}</span>
                 <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:${statusBg[req.status]};color:${statusColor[req.status]};">${(statusLabel[req.status]||req.status).toUpperCase()}</span>
                 ${isExpiring?'<span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#fff0f0;color:var(--red);">⚠️ Excursion commencée — demande close automatiquement</span>':''}
+                ${requestDateCellHTML(req)}
               </div>
               <div style="font-size:13px;color:var(--blue-l);margin-bottom:8px;">✈️ ${req.excursionTitle}</div>
               ${req.status==='confirmée'?bookingCodeHTML(req.bookingCode,'host-excursion'):''}
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Date</div><div style="font-size:13px;font-weight:600;">${dt}</div></div>
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Participants</div><div style="font-size:13px;font-weight:600;">👥 ${req.participants}</div></div>
-                ${requestDateCellHTML(req)}
                 <div style="background:var(--gray-50);border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Vous recevez</div><div style="font-size:13px;font-weight:800;color:var(--green);">${fmtNet(req.net)}€</div></div>
                 <div style="background:${req.paymentMethod==='Paiement sur place'?'#fff8e0':'var(--gray-50)'};border-radius:var(--r-sm);padding:7px 10px;"><div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px;">Paiement</div><div style="font-size:13px;font-weight:600;color:${req.paymentMethod==='Paiement sur place'?'#a16800':'inherit'};">${req.paymentMethod==='Paiement sur place'?'💵 Sur place':'💳 En ligne'}</div></div>
               </div>
