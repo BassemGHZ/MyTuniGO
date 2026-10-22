@@ -9826,6 +9826,41 @@ function aeSet(key,val){ appState.annEditData[key]=val; }
 function aeRefresh(){ const el=document.getElementById('ann-edit-form'); if(el) el.innerHTML=buildAnnonceEditFormOwnerInner(); setTimeout(initAnnEditMap, 100); }
 function aeToggleAmenity(id){ const arr=appState.annEditData.amenities||[]; appState.annEditData.amenities = arr.includes(id) ? arr.filter(x=>x!==id) : [...arr,id]; aeRefresh(); }
 
+// Ordre des photos en modification : une seule liste ordonnée mêlant les
+// photos déjà en ligne (url) et les nouvelles (pas encore envoyées).
+// Clés : 'u:<url>' ou 'n:<id>'. La première est la photo principale.
+function edPhotoItems(){
+  const ed = appState.annEditData;
+  const urls = ed.photos||[], news = ed.newPhotos||[];
+  const all = [...urls.map(u=>'u:'+u), ...news.map(p=>'n:'+p.id)];
+  const order = (ed.photoOrder||[]).filter(k=>all.includes(k));
+  all.forEach(k=>{ if(!order.includes(k)) order.push(k); });
+  ed.photoOrder = order;
+  return order.map(k=> k.startsWith('u:') ? { key:k, url:k.slice(2) } : { key:k, np: news.find(p=>'n:'+p.id===k) });
+}
+let _edDragIdx = null;
+function edDragStart(e, idx){ _edDragIdx = idx; e.dataTransfer.effectAllowed = 'move'; }
+function edDragDrop(target){
+  const order = edPhotoItems().map(x=>x.key);
+  const src = _edDragIdx; _edDragIdx = null;
+  if(src===null || src===target || !order[src] || !order[target]) return;
+  const [m] = order.splice(src,1); order.splice(target,0,m);
+  appState.annEditData.photoOrder = order; aeRefresh();
+}
+function edMovePhoto(idx, dir){
+  const order = edPhotoItems().map(x=>x.key), j = idx+dir;
+  if(j<0 || j>=order.length) return;
+  [order[idx], order[j]] = [order[j], order[idx]];
+  appState.annEditData.photoOrder = order; aeRefresh();
+}
+function edSetMainPhoto(idx){
+  const order = edPhotoItems().map(x=>x.key);
+  if(idx<=0 || !order[idx]) return;
+  const [m] = order.splice(idx,1); order.unshift(m);
+  appState.annEditData.photoOrder = order; aeRefresh();
+  showToast('⭐ Photo principale mise à jour','var(--blue)');
+}
+
 function edRemovePhoto(url){
   appState.annEditData.photos = (appState.annEditData.photos||[]).filter(u=>u!==url);
   aeRefresh();
@@ -9964,22 +9999,26 @@ function buildAnnonceEditFormOwnerInner(){
       <div style="font-size:16px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">📷 Photos ${photoCountHTML('annonce', (ed.photos||[]).length + (ed.newPhotos||[]).length)}</div>
       ${photoGuideHTML('annonce')}
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px;">
-        ${(ed.photos||[]).map(url=>`
-          <div style="position:relative;">
-            <img src="${url}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);">
-            <span onclick="edRemovePhoto('${url.replace(/'/g,"\\'")}')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.65);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;font-weight:800;">✕</span>
-          </div>`).join('')}
-        ${(ed.newPhotos||[]).map(p=>`
-          <div style="position:relative;">
-            <img src="${p.dataUrl}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:2px solid var(--green);">
-            <span style="position:absolute;bottom:4px;left:4px;background:var(--green);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;">Nouvelle</span>
-            <span onclick="edRemoveNewPhoto(${p.id})" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.65);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;font-weight:800;">✕</span>
-          </div>`).join('')}
+        ${(()=>{ const items = edPhotoItems(), n = items.length;
+          const b = 'position:absolute;bottom:4px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;line-height:1;padding:4px 6px;';
+          return items.map((it,i)=>{
+            const src = it.url || it.np?.dataUrl || '';
+            const del = it.url ? `edRemovePhoto('${it.url.replace(/'/g,"\\'")}')` : `edRemoveNewPhoto(${it.np.id})`;
+            return `<div draggable="true" ondragstart="edDragStart(event,${i})" ondragover="event.preventDefault();this.style.opacity='.6'" ondragleave="this.style.opacity='1'" ondrop="event.preventDefault();this.style.opacity='1';edDragDrop(${i})" style="position:relative;cursor:grab;">
+              <img src="${src}" draggable="false" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:${it.np?'2px solid var(--green)':'1px solid var(--gray-200)'};pointer-events:none;">
+              ${i===0?'<span style="position:absolute;top:4px;left:4px;background:var(--yellow);color:var(--gray-900);font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;">⭐ Principale</span>':''}
+              ${it.np&&i!==0?'<span style="position:absolute;top:4px;left:4px;background:var(--green);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;">Nouvelle</span>':''}
+              <span onclick="${del}" title="Supprimer" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.65);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;font-weight:800;">✕</span>
+              ${i>0?`<button type="button" onclick="edMovePhoto(${i},-1)" title="Déplacer à gauche" style="${b}left:4px;">◀</button>`:''}
+              ${i>0?`<button type="button" onclick="edSetMainPhoto(${i})" title="Définir comme principale" style="${b}left:50%;transform:translateX(-50%);">⭐</button>`:''}
+              ${i<n-1?`<button type="button" onclick="edMovePhoto(${i},1)" title="Déplacer à droite" style="${b}right:4px;">▶</button>`:''}
+            </div>`; }).join(''); })()}
         ${(ed.photos||[]).length===0 && (ed.newPhotos||[]).length===0 ? `<div style="font-size:13px;color:var(--gray-500);grid-column:1/-1;">Aucune photo.</div>` : ''}
       </div>
       <input type="file" id="ann-edit-photo-input" accept="image/jpeg,image/png,image/webp,image/gif" multiple style="display:none;" onchange="edUploadPhotos(this.files)">
       <button type="button" onclick="document.getElementById('ann-edit-photo-input').click()" style="background:var(--blue);color:#fff;padding:9px 18px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">📤 Ajouter des photos</button>
       <span style="font-size:12px;color:var(--gray-400);margin-left:10px;">JPG, PNG, WEBP — 10 Mo max par photo</span>
+      ${((ed.photos||[]).length + (ed.newPhotos||[]).length) > 1 ? '<p style="font-size:12px;color:var(--gray-500);margin-top:10px;">💡 Glissez les photos (ou utilisez ◀ ▶ et ⭐) pour changer leur ordre. La première est l\'image principale.</p>' : ''}
     </div>
 
     <div style="display:flex;gap:12px;">
@@ -10212,16 +10251,16 @@ async function saveAnnonceEditOwner(){
   { const nPh = (ed.photos||[]).length + (ed.newPhotos||[]).length;
     if(nPh > PHOTO_RULES.annonce.max){ showToast(photoRuleError('annonce', nPh),'var(--red)'); return; } }
 
-  // Upload des nouvelles photos ajoutées (les photos existantes sont déjà en ligne)
-  let finalPhotos = ed.photos||[];
-  if((ed.newPhotos||[]).length){
-    const newUrls = await uploadAnnoncePhotos(ed.id, ed.newPhotos);
-    if(newUrls.length < ed.newPhotos.length){
-      const nb = ed.newPhotos.length - newUrls.length;
-      showToast(`⚠️ ${nb} photo${nb>1?'s':''} n'${nb>1?'ont':'a'} pas pu être envoyée${nb>1?'s':''}`, 'var(--red)');
-    }
-    finalPhotos = [...finalPhotos, ...newUrls];
+  // Photos dans l'ordre choisi : les nouvelles sont envoyées une par une et
+  // prennent leur place dans la liste (les photos existantes sont déjà en ligne)
+  const finalPhotos = [];
+  let failed = 0;
+  for(const it of edPhotoItems()){
+    if(it.url){ finalPhotos.push(it.url); continue; }
+    const up = await uploadAnnoncePhotos(ed.id, [it.np]);
+    if(up && up[0]) finalPhotos.push(up[0]); else failed++;
   }
+  if(failed) showToast(`⚠️ ${failed} photo${failed>1?'s':''} n'${failed>1?'ont':'a'} pas pu être envoyée${failed>1?'s':''}`, 'var(--red)');
 
   // Nom, type, ville, pays, adresse, code postal et position GPS ne sont
   // plus jamais envoyés ici : ces champs sont verrouillés côté hôte (voir la
