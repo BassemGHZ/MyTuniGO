@@ -1274,8 +1274,11 @@ document.addEventListener('click', function(e){
   const el4 = e.target.closest('[data-excbokcalnav]');
   if(el4){ excBookCalNav(parseInt(el4.dataset.excbokcalnav), el4.dataset.excid); e.stopPropagation(); }
   // Ferme le calendrier de recherche (page d'accueil) si on clique en dehors
-  const heroField = e.target.closest('#s-dates-field');
-  const heroDD = e.target.closest('#hero-cal-dropdown');
+  // composedPath : chemin du clic au moment du clic (le calendrier se redessine
+  // pendant le clic, l'élément cliqué n'y est alors plus rattaché)
+  const _path = e.composedPath ? e.composedPath() : [];
+  const heroField = e.target.closest('#s-dates-field') || _path.some(n=>n && n.id==='s-dates-field');
+  const heroDD = e.target.closest('#hero-cal-dropdown') || _path.some(n=>n && n.id==='hero-cal-dropdown');
   if(!heroField && !heroDD){
     const dd = document.getElementById('hero-cal-dropdown');
     if(dd) dd.style.display = 'none';
@@ -2141,13 +2144,13 @@ function toggleHeroCalendar(){
   if(!dd){
     dd = document.createElement('div');
     dd.id = 'hero-cal-dropdown';
-    dd.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.25);padding:18px;min-width:340px;';
+    dd.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);box-shadow:0 10px 30px rgba(0,0,0,.25);padding:18px;width:min(520px, calc(100vw - 16px));box-sizing:border-box;';
     document.body.appendChild(dd);
   }
 
   const rect = field.getBoundingClientRect();
   dd.style.top = (rect.bottom + 8) + 'px';
-  dd.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 360)) + 'px';
+  dd.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(520, window.innerWidth-16) - 8)) + 'px';
 
   if(!appState._heroCalMonth){
     const base = appState.searchCheckIn ? new Date(appState.searchCheckIn+'T00:00:00') : new Date();
@@ -2157,13 +2160,36 @@ function toggleHeroCalendar(){
   renderHeroCalendar();
 }
 
+const HERO_CAL_MONTHS_AHEAD = 24;   // raccourcis : mois en cours + 23 suivants
 function navHeroCal(dir){
   let {year,month} = appState._heroCalMonth;
   month += dir;
   if(month<0){month=11;year--;}
   if(month>11){month=0;year++;}
+  const now = new Date();
+  if(year*12+month < now.getFullYear()*12+now.getMonth()) return;   // pas avant le mois en cours
   appState._heroCalMonth = {year,month};
   renderHeroCalendar();
+}
+// Aller directement à un mois (raccourcis), sans faire défiler les mois un par un
+function jumpHeroCal(year, month){
+  appState._heroCalMonth = {year, month};
+  renderHeroCalendar();
+}
+function heroMonthChipsHTML(){
+  const now = new Date(), cur = appState._heroCalMonth;
+  const curIdx = cur.year*12+cur.month;
+  const ci = appState.searchCheckIn ? appState.searchCheckIn.slice(0,7) : '';
+  let html = '';
+  for(let i=0;i<HERO_CAL_MONTHS_AHEAD;i++){
+    const d = new Date(now.getFullYear(), now.getMonth()+i, 1);
+    const y = d.getFullYear(), m = d.getMonth(), idx = y*12+m;
+    const shown = idx===curIdx || idx===curIdx+1;        // les 2 mois affichés
+    const hasCi = ci === y+'-'+String(m+1).padStart(2,'0');
+    const label = d.toLocaleDateString('fr-FR',{month:'short'}).replace('.','') + ' ' + String(y).slice(2);
+    html += `<button type="button" data-active="${idx===curIdx?1:0}" onclick="jumpHeroCal(${y},${m})" style="flex-shrink:0;padding:5px 10px;border-radius:16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ${shown?'var(--blue)':'var(--gray-200)'};background:${idx===curIdx?'var(--blue)':shown?'#e0ecff':'#fff'};color:${idx===curIdx?'#fff':shown?'var(--blue)':'var(--gray-700)'};">${hasCi?'● ':''}${label}</button>`;
+  }
+  return html;
 }
 
 function heroMonthLabel(year,month){
@@ -2204,9 +2230,13 @@ function renderHeroCalendar(){
   if(!dd) return;
   const {year,month} = appState._heroCalMonth;
   const nextM = new Date(year,month+1,1);
+  const now = new Date();
+  const atStart = year*12+month <= now.getFullYear()*12+now.getMonth();
   dd.innerHTML = `
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);margin-bottom:6px;">Aller au mois</div>
+    <div id="hero-month-chips" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid var(--gray-100);scrollbar-width:thin;">${heroMonthChipsHTML()}</div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <button onclick="navHeroCal(-1)" style="background:var(--gray-100);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:13px;flex-shrink:0;">‹</button>
+      <button onclick="navHeroCal(-1)" ${atStart?'disabled':''} style="background:var(--gray-100);border:none;border-radius:50%;width:26px;height:26px;cursor:${atStart?'default':'pointer'};font-size:13px;flex-shrink:0;opacity:${atStart?'.35':'1'};">‹</button>
       <div style="display:flex;gap:24px;flex:1;justify-content:space-around;"></div>
       <button onclick="navHeroCal(1)" style="background:var(--gray-100);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:13px;flex-shrink:0;">›</button>
     </div>
@@ -2218,6 +2248,9 @@ function renderHeroCalendar(){
       <button onclick="clearHeroDates()" style="background:none;border:none;color:var(--gray-500);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;padding:0;">Effacer les dates</button>
       <button onclick="document.getElementById('hero-cal-dropdown').style.display='none'" style="background:var(--blue);color:#fff;padding:8px 20px;border-radius:var(--r-md);font-size:13px;font-weight:700;border:none;cursor:pointer;">Terminé</button>
     </div>`;
+  // Le raccourci du mois affiché reste visible dans la rangée
+  const act = dd.querySelector('#hero-month-chips [data-active="1"]');
+  if(act){ const row = act.parentElement; row.scrollLeft = Math.max(0, act.offsetLeft - row.offsetLeft - 40); }
 }
 
 function heroSelectDate(ds){
