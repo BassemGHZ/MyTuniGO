@@ -12901,7 +12901,10 @@ async function applyNoLongStay(disable){
   const dates = [..._calNoLongSelection];
   if(disable){
     const rows = dates.map(d=>({ annonce_id: annId, date: d, host_id: auth.currentUser?.id }));
-    const { error } = await _sb.from('date_no_long_stay').upsert(rows, { onConflict: 'annonce_id,date' });
+    // Dates déjà marquées ignorées (ON CONFLICT DO NOTHING) : seul le droit
+    // d'ajout est nécessaire. Avant, l'upsert « mettre à jour si elle existe »
+    // exigeait le droit de modification, absent → « permission denied ».
+    const { error } = await _sb.from('date_no_long_stay').upsert(rows, { onConflict: 'annonce_id,date', ignoreDuplicates: true });
     if(error){ showToast('Erreur : '+error.message,'var(--red)'); return; }
     dates.forEach(d=>_hostCalNoLong.add(d));
     showToast('🚫 Réduction longs séjours désactivée sur '+dates.length+' date'+(dates.length>1?'s':''),'#dc2626');
