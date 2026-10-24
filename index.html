@@ -12745,8 +12745,10 @@ function togglePromoSelection(dateStr){
   } else {
     const start = _calPromoRangeStart;
     if(dateStr === start){
-      // Reclic sur la même date : confirme cette date seule et referme la sélection
+      // Reclic sur la même date : la désélectionne (une date seule se
+      // sélectionne d'un simple clic, déjà prise en compte).
       _calPromoRangeStart = null;
+      _calPromoSelection = new Set();
     } else {
       // Deuxième clic : sélectionne toute la plage entre les deux dates
       const from = start < dateStr ? start : dateStr;
@@ -12842,6 +12844,7 @@ function toggleStaySelection(dateStr){
     const start = _calStayRangeStart;
     if(dateStr === start){
       _calStayRangeStart = null;
+      _calStaySelection = new Set();
     } else {
       const from = start < dateStr ? start : dateStr;
       const to   = start < dateStr ? dateStr : start;
@@ -12871,6 +12874,7 @@ function toggleNoLongSelection(dateStr){
     const start = _calNoLongRangeStart;
     if(dateStr === start){
       _calNoLongRangeStart = null;
+      _calNoLongSelection = new Set();
     } else {
       const from = start < dateStr ? start : dateStr;
       const to   = start < dateStr ? dateStr : start;
@@ -12965,8 +12969,8 @@ async function applyDateStayRule(){
 }
 
 // Mode "Bloquer / débloquer" : même expérience que les autres onglets.
-// On sélectionne une période (clic début → clic fin, ou re-clic = date
-// unique), puis "Bloquer ces dates" ou "Débloquer ces dates". L'écriture en
+// On sélectionne une période (clic début → clic fin ; un seul clic = date
+// unique, re-clic sur la même date = désélection), puis "Bloquer ces dates" ou "Débloquer ces dates". L'écriture en
 // base (table blocked_dates) se fait en une seule requête pour toute la
 // sélection. Les dates déjà réservées ne peuvent jamais être sélectionnées.
 function toggleBlockSelection(dateStr){
@@ -12979,7 +12983,8 @@ function toggleBlockSelection(dateStr){
     _calBlockSelection = new Set([dateStr]);
   } else {
     const start = _calBlockRangeStart;
-    if(dateStr !== start){
+    if(dateStr === start) _calBlockSelection = new Set(); // reclic = désélection
+    else {
       const from = start < dateStr ? start : dateStr;
       const to   = start < dateStr ? dateStr : start;
       const today = localISODate(new Date());
