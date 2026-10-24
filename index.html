@@ -12426,10 +12426,7 @@ function buildHostCalendar(){
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;"><div style="width:16px;height:16px;border-radius:3px;background:#fff;border:2px solid var(--blue);"></div>Aujourd'hui</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:14px 20px;">
-        <div style="font-size:15px;font-weight:700;white-space:nowrap;">📊 Ce mois</div>
-        <div id="cal-stats" style="display:flex;flex:1;gap:10px;flex-wrap:wrap;"></div>
-      </div>
+      <div id="cal-stats" style="margin-top:16px;background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:16px 20px;"></div>
     </div>
   </div>`;
 
@@ -12583,23 +12580,43 @@ function renderCalGrid(year, month, cal, today, firstDay, daysInMonth){
 function updateCalStats(cal, daysInMonth, year, month){
   const el = document.getElementById('cal-stats');
   if(!el) return;
-  // "Nuits bloquées" ne doit compter que les dates bloquées DU MOIS AFFICHÉ
-  // et qui ne sont pas déjà passées — une période de blocage antérieure à
-  // aujourd'hui n'a plus d'impact réel sur la disponibilité, elle ne doit
-  // donc plus être comptabilisée (le compteur retombe à 0 dans ce cas).
+  // Nuits À VENIR du mois affiché (les nuits passées ne comptent plus) :
+  // libres, réservées, bloquées. Avant : les nuits passées et réservées
+  // étaient comptées comme « disponibles ».
   const today = localISODate(new Date());
-  const monthPrefix = year && month ? (year+'-'+String(month).padStart(2,'0')+'-') : null;
-  const blocked = cal.blocked.filter(d => (!monthPrefix || d.startsWith(monthPrefix)) && d >= today).length;
-  const avail   = daysInMonth - blocked;
-  const rate    = Math.round(avail/daysInMonth*100);
-  el.innerHTML = [
-    {label:'Nuits disponibles', val:avail,     color:'var(--green)'},
-    {label:'Nuits bloquées',    val:blocked,   color:'var(--red)'},
-    {label:'Taux disponibilité',val:rate+'%',  color:'var(--blue)'},
-  ].map(s=>'<div style="flex:1;min-width:140px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 14px;background:var(--gray-50,#f8f9fb);border-radius:var(--r-md);font-size:14px;">'
-    +'<span style="color:var(--gray-600);">'+s.label+'</span>'
-    +'<span style="font-weight:800;font-size:16px;color:'+s.color+';">'+s.val+'</span></div>').join('');
+  const monthName = new Date(year, month-1, 1).toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
+  const days = [];
+  for(let d=1; d<=daysInMonth; d++){
+    const ds = year+'-'+String(month).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    if(ds >= today) days.push(ds);
+  }
+  const total = days.length;
+  const reserved = days.filter(d=>_hostCalReservedSet.has(d)).length;
+  const blocked  = days.filter(d=>!_hostCalReservedSet.has(d) && cal.blocked.includes(d)).length;
+  const free     = total - reserved - blocked;
+  const pct = n => total ? Math.round(n/total*100) : 0;
+  const title = `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <div style="font-size:16px;font-weight:800;text-transform:capitalize;">📊 ${monthName}</div>
+      <div style="font-size:13px;color:var(--gray-500);">${total ? total+' nuit'+(total>1?'s':'')+' à venir ce mois-ci' : 'Mois terminé'}</div>
+    </div>`;
+  if(!total){ el.innerHTML = title + '<div style="font-size:13px;color:var(--gray-500);">Toutes les nuits de ce mois sont passées.</div>'; return; }
+  const tile = (icon, n, label, color, bg) => `<div style="flex:1;min-width:120px;background:${bg};border-radius:var(--r-md);padding:12px 14px;">
+      <div style="font-size:26px;font-weight:800;color:${color};line-height:1.1;">${n}</div>
+      <div style="font-size:13px;font-weight:600;color:var(--gray-700);margin-top:2px;">${icon} ${label}</div>
+      <div style="font-size:12px;color:var(--gray-500);">${pct(n)} % des nuits à venir</div>
+    </div>`;
+  const seg = (n, color) => n ? `<div style="width:${n/total*100}%;background:${color};"></div>` : '';
+  el.innerHTML = title
+    + `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        ${tile('🟢', free, 'Nuit'+(free>1?'s':'')+' libre'+(free>1?'s':''), '#0d9e6e', '#e8f9f0')}
+        ${tile('🔴', reserved, 'Nuit'+(reserved>1?'s':'')+' réservée'+(reserved>1?'s':''), 'var(--red)', '#fff0f0')}
+        ${tile('⚫', blocked, 'Nuit'+(blocked>1?'s':'')+' bloquée'+(blocked>1?'s':''), 'var(--gray-700)', 'var(--gray-100)')}
+      </div>
+      <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--gray-100);" title="Libres ${free} · Réservées ${reserved} · Bloquées ${blocked}">
+        ${seg(free,'#34c38f')}${seg(reserved,'var(--red)')}${seg(blocked,'var(--gray-400)')}
+      </div>`;
 }
+
 function navCalendar(dir){
   let {year,month} = appState.calendarView;
   month += dir;
