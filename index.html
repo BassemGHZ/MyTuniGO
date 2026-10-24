@@ -658,6 +658,13 @@ function firstCheckInDate(){
   return localISODate(d);
 }
 
+// 'AAAA-MM-JJ' -> Date à midi, heure locale. new Date('AAAA-MM-JJ') donne
+// minuit UTC : décalé d'un jour à l'ouest de Greenwich, et décalé d'une heure
+// au changement d'heure (fin de plage perdue le 25/10, nuit en trop en mars).
+function dateFromISO(s){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s||''));
+  return m ? new Date(+m[1], +m[2]-1, +m[3], 12) : new Date(s);
+}
 function localISODate(d){
   d = d || new Date();
   const pad = n => String(n).padStart(2,'0');
@@ -2595,13 +2602,13 @@ function validateSearchDates(){
   if(ci && ci < today){ inEl.value = today; }
   // Checkout must be after checkin
   if(ci && co && co <= ci){
-    const minCo = new Date(ci);
+    const minCo = dateFromISO(ci);
     minCo.setDate(minCo.getDate()+1);
     outEl.value = localISODate(minCo);
     showToast('📅 Date de départ ajustée','var(--blue)');
   }
   // Set min on checkout
-  if(ci && outEl) outEl.min = localISODate(new Date(new Date(ci).getTime()+86400000));
+  if(ci && outEl) outEl.min = (()=>{ const m=dateFromISO(ci); m.setDate(m.getDate()+1); return localISODate(m); })();
 }
 
 function doSearch(){
@@ -3088,8 +3095,8 @@ function computeResultsNightlyTotal(h, checkIn, checkOut){
   const noLong = (h.annonceId && appState._resultsNoLongMap && appState._resultsNoLongMap[h.annonceId]) || null;
   let excluded = false;
   let total = 0, nightsN = 0;
-  let d = new Date(checkIn);
-  const end = new Date(checkOut);
+  let d = dateFromISO(checkIn);
+  const end = dateFromISO(checkOut);
   while(d < end){
     const ds = localISODate(d);
     const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
@@ -3197,8 +3204,8 @@ function computeNightlyTotal(h, checkIn, checkOut, rooms, skipLong){
   const noLong = (appState._bkNoLongFor && appState._bkNoLongFor===h.annonceId) ? appState._bkNoLong : null;
   let excluded = false;
   let total = 0, nightsN = 0;
-  let d = new Date(checkIn);
-  const end = new Date(checkOut);
+  let d = dateFromISO(checkIn);
+  const end = dateFromISO(checkOut);
   while(d < end){
     const ds = localISODate(d);
     const pct = promos[ds]!==undefined ? promos[ds] : (h.discount||0);
@@ -3219,7 +3226,7 @@ function longStayBreakdown(h, checkIn, checkOut, rooms){
   const nights = Math.max(0, Math.round((new Date(checkOut)-new Date(checkIn))/86400000));
   const noLong = (appState._bkNoLongFor && appState._bkNoLongFor===h.annonceId) ? appState._bkNoLong : null;
   let excluded = false;
-  if(noLong){ let d = new Date(checkIn); const end = new Date(checkOut); while(d<end){ if(noLong.has(localISODate(d))){ excluded = true; break; } d.setDate(d.getDate()+1); } }
+  if(noLong){ let d = dateFromISO(checkIn); const end = dateFromISO(checkOut); while(d<end){ if(noLong.has(localISODate(d))){ excluded = true; break; } d.setDate(d.getDate()+1); } }
   return { before, after, saving: Math.max(0, before-after), pct: longStayPct(h, nights), excluded };
 }
 
@@ -3932,7 +3939,7 @@ function updateBk(){
   // Enforce: checkout must be strictly after checkin
   if(ci){
     // Set min date for checkout = checkin + 1 day
-    const minCo = new Date(ci);
+    const minCo = dateFromISO(ci);
     minCo.setDate(minCo.getDate()+1);
     const minCoStr = localISODate(minCo);
     if(coEl) coEl.min = minCoStr;
@@ -3997,7 +4004,7 @@ function isDateRangeAvailable(hId, checkIn, checkOut){
   if(!checkIn || !checkOut) return true;
   // Utilise l'ensemble réel (réservations Supabase + blocages hôte) chargé par le calendrier
   if(appState._bkUnavailable && appState._bkHotelId===hId){
-    const start=new Date(checkIn), end=new Date(checkOut);
+    const start=dateFromISO(checkIn), end=dateFromISO(checkOut);
     for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
       if(appState._bkUnavailable.has(localISODate(d))) return false;
     }
@@ -4010,8 +4017,8 @@ function isDateRangeAvailable(hId, checkIn, checkOut){
   if(!ann) return true;
   const cal = calendarData[ann.id];
   if(!cal || !cal.blocked.length) return true;
-  const start = new Date(checkIn);
-  const end   = new Date(checkOut);
+  const start = dateFromISO(checkIn);
+  const end   = dateFromISO(checkOut);
   for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
     const ds = localISODate(d);
     if(cal.blocked.includes(ds)) return false;
@@ -12755,8 +12762,8 @@ function togglePromoSelection(dateStr){
       const to   = start < dateStr ? dateStr : start;
       const cal = getCalForAnnonce(_hostCalAnnonceId || 'ANN-K7L8M9N0');
       const sel = new Set();
-      let d = new Date(from);
-      const end = new Date(to);
+      let d = dateFromISO(from);
+      const end = dateFromISO(to);
       while(d <= end){
         const ds = localISODate(d);
         if(!_hostCalReservedSet.has(ds) && !cal.blocked.includes(ds)) sel.add(ds);
@@ -12850,8 +12857,8 @@ function toggleStaySelection(dateStr){
       const to   = start < dateStr ? dateStr : start;
       const cal = getCalForAnnonce(_hostCalAnnonceId || 'ANN-K7L8M9N0');
       const sel = new Set();
-      let d = new Date(from);
-      const end = new Date(to);
+      let d = dateFromISO(from);
+      const end = dateFromISO(to);
       while(d <= end){
         const ds = localISODate(d);
         if(!_hostCalReservedSet.has(ds) && !cal.blocked.includes(ds)) sel.add(ds);
@@ -12880,8 +12887,8 @@ function toggleNoLongSelection(dateStr){
       const to   = start < dateStr ? dateStr : start;
       const sel = new Set();
       const today = localISODate(new Date());
-      let d = new Date(from);
-      const end = new Date(to);
+      let d = dateFromISO(from);
+      const end = dateFromISO(to);
       while(d <= end){
         const ds = localISODate(d);
         if(ds >= today) sel.add(ds);
@@ -12989,8 +12996,8 @@ function toggleBlockSelection(dateStr){
       const to   = start < dateStr ? dateStr : start;
       const today = localISODate(new Date());
       const sel = new Set();
-      let d = new Date(from);
-      const end = new Date(to);
+      let d = dateFromISO(from);
+      const end = dateFromISO(to);
       while(d <= end){
         const ds = localISODate(d);
         if(ds >= today && !_hostCalReservedSet.has(ds)) sel.add(ds);
@@ -13107,8 +13114,8 @@ async function loadReservedDatesForAnnonce(annonceId){
   const days = new Set();
   (data||[]).forEach(r=>{
     if(!r.check_in || !r.check_out) return;
-    let d = new Date(r.check_in);
-    const end = new Date(r.check_out);
+    let d = dateFromISO(r.check_in);
+    const end = dateFromISO(r.check_out);
     while(d < end){
       days.add(localISODate(d));
       d.setDate(d.getDate()+1);
@@ -13346,8 +13353,8 @@ function bkSelectDate(ds){
     // Vérifie qu'aucune date indisponible ne se trouve dans l'intervalle choisi
     const unavailable = appState._bkUnavailable || new Set();
     let conflict = false;
-    let d = new Date(ci); d.setDate(d.getDate()+1);
-    const end = new Date(ds);
+    let d = dateFromISO(ci); d.setDate(d.getDate()+1);
+    const end = dateFromISO(ds);
     while(d < end){
       if(unavailable.has(localISODate(d))){ conflict = true; break; }
       d.setDate(d.getDate()+1);
@@ -13381,7 +13388,7 @@ function validateDateAgainstBlocked(hId){
     return;
   }
   if(ci && co){
-    const start = new Date(ci), end = new Date(co);
+    const start = dateFromISO(ci), end = dateFromISO(co);
     for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
       const ds = localISODate(d);
       if(blocked.includes(ds)){
