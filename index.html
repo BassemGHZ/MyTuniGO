@@ -1145,6 +1145,16 @@ let appState = {
 };
 
 /* ===================== RENDER ===================== */
+// Après un F5, la liste « Mes annonces » n'est pas encore chargée : les pages
+// qui en dépendent (calendrier, statistiques d'une annonce) la chargent d'abord.
+function needsMyAnnonces(){ return !!auth.currentUser && !appState._myAnnoncesLoaded && !(appState.myAnnonces||[]).length; }
+async function ensureMyAnnonces(){
+  if(!auth.currentUser || appState._myAnnoncesLoaded) return;
+  try{ await loadMesAnnonces(document.createElement('div')); }catch(e){ console.warn('ensureMyAnnonces:', e.message); }
+  appState._myAnnoncesLoaded = true;
+}
+function loadingBox(txt){ const d=document.createElement('div'); d.innerHTML='<div style="text-align:center;padding:60px;color:var(--gray-400);">'+txt+'</div>'; return d; }
+
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
@@ -1172,7 +1182,8 @@ function render() {
     const _adc = document.createElement('div');
     _adc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement…</div>';
     app.appendChild(_adc);
-    loadAnnonceDetail(_adc);
+    if(needsMyAnnonces()) ensureMyAnnonces().then(()=>{ if(appState.page==='annonce-detail') loadAnnonceDetail(_adc); });
+    else loadAnnonceDetail(_adc);
   }
   else if(pg==='profil') app.appendChild(buildProfil());
   else if(pg==='excursions') app.appendChild(buildExcursions());
@@ -1224,7 +1235,10 @@ function render() {
     app.appendChild(_aeoc);
     loadAnnonceEditOwner(_aeoc);
   }
-  else if(pg==='host-calendar') app.appendChild(buildHostCalendar());
+  else if(pg==='host-calendar'){
+    if(needsMyAnnonces()){ app.appendChild(loadingBox('⏳ Chargement du calendrier…')); ensureMyAnnonces().then(()=>{ if(appState.page==='host-calendar') render(); }); }
+    else app.appendChild(buildHostCalendar());
+  }
   else if(pg==='excursion-payment'){
     const _epc = document.createElement('div');
     _epc.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400);">⏳ Chargement de votre réservation…</div>';
@@ -15268,6 +15282,7 @@ _sb.auth.onAuthStateChange((event, session) => {
 const RESTORABLE_PAGES = new Set(['home','results','detail','excursions','excursion-detail',
   'mesannonces','reservations','favoris','messages','profil','booking-requests',
   'excursion-requests','manage-excursions','annonce-edit-owner','excursion-edit',
+  'host-calendar','annonce-detail',
   'about','cgu','privacy','admin','reservation-payment','excursion-payment']);
 
 // Lien de paiement envoyé par e-mail après l'accord de l'hôte :
@@ -15353,6 +15368,9 @@ if(_restoredPage && _restoredPage!=='home'){
   // (ex: fiche détail, "Mes réservations") ne trouve rien et rebascule à
   // tort vers l'accueil faute de données encore chargées.
   app.innerHTML = '<div style="text-align:center;padding:120px 20px;color:var(--gray-400);">⏳ Chargement…</div>';
+  // Pendant ce démarrage, les chargeurs d'annonces/excursions ne redessinent
+  // pas la page (avant : rendu sans session → pages connectées renvoyées à l'accueil).
+  appState._bootWaiting = true;
   Promise.all([
     loadPublishedAnnonces(),
     loadPublishedExcursions(),
@@ -15391,6 +15409,7 @@ if(_restoredPage && _restoredPage!=='home'){
       else { appState.page = 'home'; setTimeout(()=>showToast("Cette annonce n'est plus disponible.",'var(--gray-700)'), 300); }
     }
     appState._deepAnnonceId = null;
+    appState._bootWaiting = false;
     renderAuthArea();
     render();
     if(auth.currentUser) loadUserFavorites();
@@ -15528,7 +15547,7 @@ async function loadPublishedAnnonces(){
       });
     });
 
-    render();
+    if(!appState._bootWaiting) render();
   } catch(e){ console.warn('Erreur loadPublishedAnnonces:', e.message); }
 }
 loadPublishedAnnonces();
@@ -15586,7 +15605,7 @@ async function loadPublishedExcursions(){
       });
     });
 
-    render();
+    if(!appState._bootWaiting) render();
   } catch(e){ console.warn('Erreur loadPublishedExcursions:', e.message); }
 }
 loadPublishedExcursions();
