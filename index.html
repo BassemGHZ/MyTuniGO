@@ -1802,6 +1802,7 @@ function buildRegisterForm(){
     <div class="f-field"><label>Nom</label><input type="text" id="rf-last" placeholder="Dupont"></div>
   </div>
   <div class="f-field"><label>E-mail</label><input type="email" id="rf-email" placeholder="votre@email.com"></div>
+  <div class="f-field"><label>Téléphone</label><input type="tel" id="rf-phone" inputmode="tel" autocomplete="tel" maxlength="30" placeholder="+216 50 123 456"></div>
   <div class="f-field"><label>Mot de passe</label>
     <div class="pw-wrap"><input type="password" id="rf-password" placeholder="Min. 8 caractères">
     <button class="pw-toggle" onclick="togglePw('rf-password',this)">👁️</button></div>
@@ -1815,6 +1816,13 @@ function buildRegisterForm(){
   </div>
   <button class="btn-submit" onclick="handleRegister()">Créer mon compte gratuitement</button>
   <div class="m-footer">Déjà un compte ? <a onclick="modalMode='login';renderModal()">Se connecter</a></div>`;
+}
+
+// Au moins 8 chiffres, caractères autorisés : chiffres, espaces, + - . ( )
+// (même seuil que fn_phone_norm côté base).
+function phoneLooksValid(p){
+  p = String(p||'').trim();
+  return /^[+(\d][\d\s().+-]*$/.test(p) && p.replace(/\D/g,'').length >= 8 && p.length <= 30;
 }
 
 function togglePw(id, btn){ const i=document.getElementById(id); i.type=i.type==='password'?'text':'password'; btn.textContent=i.type==='text'?'🙈':'👁️'; }
@@ -1987,12 +1995,14 @@ async function handleRegister(){
   const first   = document.getElementById('rf-first')?.value?.trim();
   const last    = document.getElementById('rf-last')?.value?.trim();
   const email   = document.getElementById('rf-email')?.value?.trim().toLowerCase();
+  const phone   = (document.getElementById('rf-phone')?.value||'').trim().replace(/\s+/g,' ');
   const pw      = document.getElementById('rf-password')?.value;
   const confirm = document.getElementById('rf-confirm')?.value;
   const terms   = document.getElementById('rf-terms')?.checked;
 
-  if(!first||!last||!email||!pw||!confirm){showModalAlert('Remplissez tous les champs.');return;}
+  if(!first||!last||!email||!phone||!pw||!confirm){showModalAlert('Tous les champs sont obligatoires.');return;}
   if(!/\S+@\S+\.\S+/.test(email)){showModalAlert('E-mail invalide.');return;}
+  if(!phoneLooksValid(phone)){showModalAlert('Numéro de téléphone invalide (au moins 8 chiffres, ex. +216 50 123 456).');return;}
   if(pw.length<8){showModalAlert('Mot de passe trop court (min. 8 caractères).');return;}
   if(!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)){showModalAlert('Le mot de passe doit contenir au moins une lettre et un chiffre.');return;}
   if(pw!==confirm){showModalAlert('Les mots de passe ne correspondent pas.');return;}
@@ -2010,6 +2020,12 @@ async function handleRegister(){
     showModalAlert('Un compte existe déjà avec cet e-mail. Essayez de vous connecter, ou utilisez "Mot de passe oublié" si besoin.');
     return;
   }
+  const { data: phoneTaken } = await _sb.rpc('phone_exists', { check_phone: phone });
+  if(phoneTaken){
+    if(btn){btn.disabled=false;btn.textContent='Créer mon compte gratuitement';}
+    showModalAlert('Ce numéro de téléphone est déjà utilisé par un autre compte.');
+    return;
+  }
 
   if(btn){btn.innerHTML='<span class="spinner-sm"></span> Envoi en cours…';}
 
@@ -2017,7 +2033,7 @@ async function handleRegister(){
     email,
     password: pw,
     options: {
-      data: { first_name: first, last_name: last }
+      data: { first_name: first, last_name: last, phone }
     }
   });
 
@@ -7572,7 +7588,7 @@ let _identityAsked = false;
 function maybeAskCompleteIdentity(){
   const u = auth.currentUser;
   if(!u || _identityAsked || u.profFirst===undefined) return;
-  if(u.profFirst && u.profLast) return;
+  if(u.profFirst && u.profLast && u.phone) return;
   if(document.getElementById('identity-ov') || document.querySelector('#modal-root > *, .modal-overlay')) { setTimeout(maybeAskCompleteIdentity, 2000); return; }
   _identityAsked = true;
   const [sf, sl] = splitFullName(u.suggestName);
@@ -7584,10 +7600,11 @@ function maybeAskCompleteIdentity(){
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
   ov.innerHTML = `<div style="background:#fff;border-radius:var(--r-lg);max-width:420px;width:100%;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
     <div style="font-size:19px;font-weight:800;margin-bottom:6px;">👋 Complétez votre profil</div>
-    <div style="font-size:13.5px;color:var(--gray-600);line-height:1.55;margin-bottom:16px;">Indiquez votre prénom et votre nom tels qu'ils figurent sur votre pièce d'identité : ils sont affichés à vos hôtes et voyageurs.${u.suggestName?' Nous les avons préremplis à partir de votre compte Google, vérifiez-les.':''}</div>
+    <div style="font-size:13.5px;color:var(--gray-600);line-height:1.55;margin-bottom:16px;">Indiquez votre prénom et votre nom tels qu'ils figurent sur votre pièce d'identité, ainsi que votre numéro de téléphone (tous obligatoires).${u.suggestName?' Nous les avons préremplis à partir de votre compte Google, vérifiez-les.':''}</div>
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div><label style="${lab}">Prénom</label><input id="idc-first" maxlength="60" ${u.profFirst?'disabled':''} value="${escHtml(first)}" style="${inp}${u.profFirst?'background:var(--gray-50);':''}"></div>
       <div><label style="${lab}">Nom</label><input id="idc-last" maxlength="60" ${u.profLast?'disabled':''} value="${escHtml(last)}" style="${inp}${u.profLast?'background:var(--gray-50);':''}"></div>
+      <div><label style="${lab}">Téléphone</label><input id="idc-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="30" ${u.phone?'disabled':''} value="${escHtml(u.phone||'')}" placeholder="+216 50 123 456" style="${inp}${u.phone?'background:var(--gray-50);':''}"></div>
     </div>
     <div style="font-size:12px;color:var(--gray-500);line-height:1.5;margin-top:10px;">🔒 Une fois enregistrés, ils ne pourront plus être modifiés que sur demande de correction.</div>
     <div style="display:flex;gap:10px;margin-top:16px;">
@@ -7603,20 +7620,27 @@ async function saveCompleteIdentity(){
   if(!u) return;
   const f = document.getElementById('idc-first')?.value.trim()||'';
   const l = document.getElementById('idc-last')?.value.trim()||'';
-  if(!f || !l){ showToast('⚠️ Prénom et nom obligatoires','var(--red)'); return; }
+  const ph = (document.getElementById('idc-phone')?.value||'').trim().replace(/\s+/g,' ');
+  if(!f || !l || !ph){ showToast('⚠️ Prénom, nom et téléphone obligatoires','var(--red)'); return; }
+  if(!u.phone && !phoneLooksValid(ph)){ showToast('⚠️ Numéro de téléphone invalide (au moins 8 chiffres)','var(--red)'); return; }
   const upd = {};
   if(!u.profFirst) upd.first_name = f;
   if(!u.profLast) upd.last_name = l;
+  if(!u.phone) upd.phone = ph;
   const btn = document.getElementById('idc-go');
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Enregistrement…'; }
   const { error } = await _sb.from('profiles').update(upd).eq('id', u.id);
   if(error){
     if(btn){ btn.disabled = false; btn.textContent = 'Enregistrer'; }
-    showToast(/IDENTITY_LOCKED/.test(error.message||'') ? '⚠️ Votre nom est déjà enregistré : demandez une correction depuis Mon profil.' : 'Erreur : '+error.message,'var(--red)');
+    const m = error.message||'';
+    showToast(/IDENTITY_LOCKED/.test(m) ? '⚠️ Votre nom est déjà enregistré : demandez une correction depuis Mon profil.'
+      : /phone_norm|duplicate key/.test(m) ? '⚠️ Ce numéro de téléphone est déjà utilisé par un autre compte.'
+      : 'Erreur : '+m,'var(--red)');
     return;
   }
   if(upd.first_name){ u.firstName = u.profFirst = upd.first_name; }
   if(upd.last_name){ u.lastName = u.profLast = upd.last_name; }
+  if(upd.phone){ u.phone = upd.phone; }
   document.getElementById('identity-ov')?.remove();
   renderAuthArea();
   if(appState.page==='profil') navigate('profil');
