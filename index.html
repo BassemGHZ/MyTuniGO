@@ -1904,7 +1904,8 @@ async function handleLogin(){
     createdAt: data.user.created_at?.split('T')[0] || '',
     bankData: { preferredMethod: 'virement' },
     profFirst: (prof?.first_name||'').trim(), profLast: (prof?.last_name||'').trim(),
-    suggestName: meta.full_name || meta.name || ''
+    suggestName: meta.full_name || meta.name || '',
+          oauthLabel: ({google:'Google',facebook:'Facebook'})[appMeta.provider] || ''
   };
   closeModal();
   setTimeout(maybeAskCompleteIdentity, 900);
@@ -7607,7 +7608,7 @@ function maybeAskCompleteIdentity(){
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
   ov.innerHTML = `<div style="background:#fff;border-radius:var(--r-lg);max-width:420px;width:100%;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
     <div style="font-size:19px;font-weight:800;margin-bottom:6px;">👋 Complétez votre profil</div>
-    <div style="font-size:13.5px;color:var(--gray-600);line-height:1.55;margin-bottom:16px;">Indiquez votre prénom et votre nom tels qu'ils figurent sur votre pièce d'identité, ainsi que votre numéro de téléphone (tous obligatoires).${u.suggestName?' Nous les avons préremplis à partir de votre compte Google, vérifiez-les.':''}</div>
+    <div style="font-size:13.5px;color:var(--gray-600);line-height:1.55;margin-bottom:16px;">Indiquez votre prénom et votre nom tels qu'ils figurent sur votre pièce d'identité, ainsi que votre numéro de téléphone (tous obligatoires).${u.suggestName?' Nous les avons préremplis à partir de votre compte '+(u.oauthLabel||'Google')+', vérifiez-les.':''}</div>
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div><label style="${lab}">Prénom</label><input id="idc-first" maxlength="60" ${u.profFirst?'disabled':''} value="${escHtml(first)}" style="${inp}${u.profFirst?'background:var(--gray-50);':''}"></div>
       <div><label style="${lab}">Nom</label><input id="idc-last" maxlength="60" ${u.profLast?'disabled':''} value="${escHtml(last)}" style="${inp}${u.profLast?'background:var(--gray-50);':''}"></div>
@@ -15399,6 +15400,22 @@ try{
   }
 }catch(e){}
 
+// Retour de Google/Facebook avec une erreur (accès refusé, compte sans
+// e-mail…) : on l'explique au lieu de revenir silencieusement à l'accueil.
+try{
+  const q = new URLSearchParams(window.location.search + '&' + window.location.hash.replace(/^#/, ''));
+  const err = q.get('error_description') || q.get('error');
+  if(err){
+    const msg = /email/i.test(err)
+      ? "Votre compte Facebook ne partage pas d'adresse e-mail. Ajoutez-en une dans Facebook (ou autorisez son partage), ou inscrivez-vous avec votre e-mail."
+      : /access_denied|denied|cancel/i.test(err)
+      ? 'Connexion annulée.'
+      : 'Connexion impossible : ' + err;
+    setTimeout(()=>showToast('⚠️ ' + msg, 'var(--red)'), 800);
+    history.replaceState(null, '', window.location.pathname);
+  }
+}catch(e){}
+
 try{
   history.replaceState(
     { page: appState.page, ids: Object.fromEntries(NAV_ID_KEYS.map(k=>[k, appState[k]])) },
@@ -15431,7 +15448,7 @@ if(_restoredPage && _restoredPage!=='home'){
         auth.currentUser = {
           id: session.user.id,
           role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
-          firstName: prof?.first_name || meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
+          firstName: prof?.first_name || meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || (session.user.email||'').split('@')[0],
           lastName:  prof?.last_name || meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
           email:     session.user.email,
           photo:     prof?.photo || meta.avatar_url || meta.picture || null,
@@ -15443,7 +15460,8 @@ if(_restoredPage && _restoredPage!=='home'){
           createdAt: session.user.created_at?.split('T')[0] || '',
           bankData: { preferredMethod: 'virement' },
           profFirst: (prof?.first_name||'').trim(), profLast: (prof?.last_name||'').trim(),
-          suggestName: meta.full_name || meta.name || ''
+          suggestName: meta.full_name || meta.name || '',
+          oauthLabel: ({google:'Google',facebook:'Facebook'})[appMeta.provider] || ''
         };
         setTimeout(maybeAskCompleteIdentity, 1500);
       }
@@ -15480,7 +15498,7 @@ _sb.auth.getSession().then(async ({ data: { session } }) => {
     auth.currentUser = {
       id: session.user.id,
       role: appMeta.role==='admin' ? 'admin' : 'user', // admin : app_metadata uniquement (non modifiable par l'utilisateur)
-      firstName: prof?.first_name || meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || session.user.email.split('@')[0],
+      firstName: prof?.first_name || meta.first_name || meta.given_name || (meta.full_name||meta.name||'').split(' ')[0] || (session.user.email||'').split('@')[0],
       lastName:  prof?.last_name || meta.last_name || meta.family_name || (meta.full_name||meta.name||'').split(' ').slice(1).join(' ') || '',
       email:     session.user.email,
       photo:     prof?.photo || meta.avatar_url || meta.picture || null,
@@ -15492,7 +15510,8 @@ _sb.auth.getSession().then(async ({ data: { session } }) => {
       createdAt: session.user.created_at?.split('T')[0] || '',
       bankData: { preferredMethod: 'virement' },
       profFirst: (prof?.first_name||'').trim(), profLast: (prof?.last_name||'').trim(),
-      suggestName: meta.full_name || meta.name || ''
+      suggestName: meta.full_name || meta.name || '',
+          oauthLabel: ({google:'Google',facebook:'Facebook'})[appMeta.provider] || ''
     };
     renderAuthArea();
     render();
