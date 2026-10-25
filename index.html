@@ -47,6 +47,9 @@
     #exc-search{ font-size:16px !important; }
     .exc-cat-pills{ overflow-x:auto; flex-wrap:nowrap !important; padding-bottom:6px; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
     .exc-cat-pills::-webkit-scrollbar{ display:none; }
+    /* Pastilles : largeur du texte, sur une ligne (avant : écrasées, texte
+       coupé lettre par lettre depuis l'ajout de catégories aux noms longs) */
+    .exc-cat-pills > button{ flex-shrink:0; white-space:nowrap; }
     .exc-detail-main, .exc-detail-main *{word-break:break-word;overflow-wrap:anywhere;}
     .exc-detail-grid{grid-template-columns:1fr !important;display:flex !important;flex-direction:column !important;}
     .exc-detail-sidebar{order:2;}
@@ -1263,6 +1266,10 @@ function render() {
   else if(pg==='cgu')       app.appendChild(buildCGUPage());
   else if(pg==='privacy')   app.appendChild(buildPrivacyPage());
   else if(pg==='fidelite')  app.appendChild(buildFidelitePage());
+  // Une page a redirigé pendant sa construction (ex : excursion introuvable
+  // → navigate('excursions')) : la page cible est déjà affichée avec son pied
+  // de page ; on s'arrête là (avant : pied de page en double).
+  if(appState.page!==pg) return;
   app.appendChild(buildFooter());
   // Init maps after DOM is ready
   if(pg==='detail'){
@@ -8418,7 +8425,7 @@ function buildExcursionDetail(){
         <!-- Infos clés -->
         <div style="background:#fff;border:1px solid var(--gray-200);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;">
           <div style="font-size:17px;font-weight:700;margin-bottom:16px;">📋 Informations clés</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:12px;">
             ${[
               {icon:'⏱️',label:'Durée',val:e.duration},
               {icon:'👥',label:'Groupe max',val:e.groupSize+' personnes'},
