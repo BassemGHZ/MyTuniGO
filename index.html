@@ -229,6 +229,30 @@
   .rc-price{display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;min-width:145px;padding:4px 0;}
   .rc-badges{display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
   .badge-green{font-size:12px;color:var(--green);font-weight:600;}
+  /* Titre du panneau des filtres : simple titre sur ordinateur, bouton
+     « replier / déplier » sur téléphone */
+  .f-head{all:unset;display:flex;align-items:center;gap:8px;width:100%;font-size:16px;font-weight:800;margin-bottom:18px;color:var(--gray-900);pointer-events:none;}
+  .f-head-arrow{display:none;margin-left:auto;transition:transform .2s;}
+  .f-head-count{background:var(--blue-l);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;}
+  /* Barre de réservation fixe : téléphone et tablette uniquement */
+  .mob-book-bar{display:none;}
+  @media(max-width:1024px){
+    .mob-book-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;position:fixed;left:0;right:0;bottom:0;z-index:1300;background:#fff;border-top:1px solid var(--gray-200);box-shadow:0 -4px 16px rgba(0,0,0,.08);padding:10px 16px calc(10px + env(safe-area-inset-bottom));}
+    .mbb-price{font-size:20px;font-weight:800;color:var(--gray-900);white-space:nowrap;}
+    .mbb-price span{font-size:13px;font-weight:400;color:var(--gray-500);}
+    .mob-book-bar button{background:var(--blue-l);color:#fff;border:none;border-radius:var(--r-md);font-size:15px;font-weight:700;padding:12px 18px;min-height:44px;cursor:pointer;white-space:nowrap;}
+    body:has(.mob-book-bar) .footer{padding-bottom:84px;}
+    body:has(.mob-book-bar) #mt-assistant-btn{bottom:84px !important;}
+  }
+  @media(max-width:768px){
+    .f-head{pointer-events:auto;cursor:pointer;margin-bottom:0;min-height:44px;}
+    .f-head-arrow{display:inline;}
+    .filters-panel.f-open .f-head{margin-bottom:18px;}
+    .filters-panel.f-open .f-head-arrow{transform:rotate(180deg);}
+    .filters-panel:not(.f-open) > :not(.f-head){display:none !important;}
+    .filters-panel{padding:12px 16px;}
+    .rc-badges{align-items:flex-start;width:100%;}
+  }
   .rc-amount{font-size:22px;font-weight:800;}
   .rc-excl{font-size:11px;color:var(--gray-500);}
   .btn-choose{background:var(--blue-l);color:#fff;padding:9px 16px;border-radius:var(--r-md);font-size:14px;font-weight:700;transition:background .2s;margin-top:6px;}
@@ -813,6 +837,9 @@ const isTablet = () => DEVICE.tablet;
 
 // Show device banner on first load
 function showDeviceBanner(){
+  // Désactivé : message technique sans intérêt pour le visiteur, qui
+  // recouvrait l'en-tête pendant 4 s sur téléphone et tablette.
+  return;
   const existing = document.getElementById('device-banner');
   if(existing) return;
   const type = DEVICE.type;
@@ -3349,8 +3376,8 @@ function buildResults(){
   </div>`:''}
 
   <div class="results-layout">
-    <aside class="filters-panel">
-      <div style="font-size:16px;font-weight:800;margin-bottom:18px;">🔧 Filtres</div>
+    <aside class="filters-panel${appState._filtersOpen?' f-open':''}">
+      <button type="button" class="f-head" onclick="toggleMobFilters(this)" aria-expanded="${appState._filtersOpen?'true':'false'}">🔧 Filtres${activeFilterCount()?` <span class="f-head-count">${activeFilterCount()}</span>`:''}<span class="f-head-arrow" aria-hidden="true">▾</span></button>
       <!-- 0. Promotions -->
       <div class="f-section">
         <div class="f-title">🏷️ PROMOTIONS</div>
@@ -3681,6 +3708,21 @@ function resetFilters(){
   setTimeout(priceDrawThumbs, 80);
   navigate('results');
 }
+// Téléphone : panneau des filtres replié par défaut (avant : ~1 500 px de
+// filtres avant le premier résultat). L'état est gardé dans appState car
+// refreshResults() reconstruit le panneau à chaque changement de filtre.
+function toggleMobFilters(btn){
+  appState._filtersOpen = !appState._filtersOpen;
+  const panel = btn.closest('.filters-panel');
+  panel.classList.toggle('f-open', appState._filtersOpen);
+  btn.setAttribute('aria-expanded', appState._filtersOpen ? 'true' : 'false');
+}
+function activeFilterCount(){
+  const f = appState.filters || {};
+  return (f.types||[]).length + (f.amenities||[]).length
+    + (f.promoOnly ? 1 : 0) + (f.minRating > 0 ? 1 : 0)
+    + ((f.minPrice||30) !== 30 || (f.maxPrice||2000) !== 2000 ? 1 : 0);
+}
 function refreshResults(){
   const old=document.querySelector('.results-layout');
   if(!old)return;
@@ -3772,9 +3814,7 @@ function buildDetail(){
       <div>
         <div class="det-section">
           <div class="det-sec-title">À propos</div>
-          <p style="font-size:15px;color:var(--gray-700);line-height:1.75;">${h.desc}</p>
-          <br>
-          <p style="font-size:15px;color:var(--gray-700);line-height:1.75;">Les chambres sont spacieuses avec vue panoramique, climatisation réversible et literie haut de gamme. Le service de conciergerie est disponible 24h/24. La connexion Wi-Fi fibre optique est disponible dans tout l'établissement.</p>
+          <p style="font-size:15px;color:var(--gray-700);line-height:1.75;white-space:pre-line;overflow-wrap:anywhere;">${h.desc}</p>
         </div>
         <div class="det-section">
           <div class="det-sec-title">🛎️ Équipements</div>
@@ -3818,6 +3858,10 @@ function buildDetail(){
           <div id="hotel-map-${h.id}" style="height:260px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--gray-200);"></div>
           <div style="margin-top:10px;font-size:13px;color:var(--gray-600);">📌 ${h.address}</div>
         </div>
+      </div>
+      <div class="mob-book-bar" role="region" aria-label="Réserver">
+        <div class="mbb-price">${effectivePrice(h)}€ <span>/ nuit</span></div>
+        <button type="button" onclick="document.getElementById('bk-box')?.scrollIntoView({behavior:'smooth',block:'start'})">Choisir mes dates</button>
       </div>
       <div>
         <div class="bk-box" id="bk-box">
@@ -8529,6 +8573,10 @@ function buildExcursionDetail(){
       </div>
 
       <!-- Bloc réservation -->
+      <div class="mob-book-bar" role="region" aria-label="Réserver">
+        <div class="mbb-price">${e.price}€ <span>/ ${e.priceType}</span></div>
+        <button type="button" onclick="document.querySelector('.exc-detail-sidebar')?.scrollIntoView({behavior:'smooth',block:'start'})">Réserver</button>
+      </div>
       <div class="exc-detail-sidebar">
         <div style="background:#fff;border:2px solid var(--gray-200);border-radius:var(--r-lg);padding:22px;position:sticky;top:76px;">
           <div style="font-size:26px;font-weight:800;margin-bottom:4px;">${e.price}€ <span style="font-size:14px;font-weight:400;color:var(--gray-500);">/ ${e.priceType}</span></div>
@@ -15026,7 +15074,7 @@ function buildFidelitePage(){
         +tiers.map((t,i)=>'<div style="flex:1;text-align:center;position:relative;">'
           +'<div style="width:44px;height:44px;border-radius:50%;background:#'+t.bg+';border:3px solid '+t.color+';display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 8px;z-index:1;position:relative;">'+t.emoji+'</div>'
           +(i<tiers.length-1?'<div style="position:absolute;top:22px;left:60%;right:-40%;height:3px;background:linear-gradient(90deg,'+t.color+','+tiers[i+1].color+');z-index:0;"></div>':'')
-          +'<div style="font-size:12px;font-weight:800;color:'+t.color+';">'+t.name+'</div>'
+          +'<div style="font-size:clamp(10px,2.8vw,12px);font-weight:800;color:'+t.color+';overflow-wrap:normal;word-break:keep-all;">'+t.name+'</div>'
           +'<div style="font-size:11px;color:#9ca3af;">'+t.min+'</div>'
           +'</div>').join('')
         +'</div></div>'
@@ -15041,7 +15089,7 @@ function buildFidelitePage(){
           +'<div style="font-size:22px;font-weight:900;color:'+t.color+';">'+t.name+'</div>'
           +'<div style="font-size:13px;color:#6B7280;margin-top:2px;">Accessible à partir de <strong>'+t.min+'</strong></div>'
           +'</div>'
-          +'<span style="margin-left:auto;background:'+t.color+';color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;">Niveau '+(['1','2','3','4'][tiers.indexOf(t)])+'</span>'
+          +'<span style="margin-left:auto;flex-shrink:0;white-space:nowrap;background:'+t.color+';color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;">Niveau '+(['1','2','3','4'][tiers.indexOf(t)])+'</span>'
           +'</div>'
           // Description
           +'<p style="font-size:14px;color:#374151;line-height:1.7;margin-bottom:14px;">'
